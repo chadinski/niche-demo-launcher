@@ -162,6 +162,113 @@ function colorPair(value: string) {
   return [colors[0] ?? DEFAULT_PRIMARY, colors[1] ?? DEFAULT_ACCENT];
 }
 
+function visualProfile(category: string) {
+  const lower = category.toLowerCase();
+  const profiles = [
+    {
+      match: /(auto|mechanic|vehicle|car|detailing)/,
+      mood: "Precision, care, and a finish worth noticing.",
+      hero: "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=2200&q=88",
+      gallery: [
+        "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1400&q=84",
+        "https://images.unsplash.com/photo-1607860108855-64acf2078ed9?auto=format&fit=crop&w=1200&q=84",
+        "https://images.unsplash.com/photo-1520340356584-f9917d1eea6f?auto=format&fit=crop&w=1200&q=84",
+      ],
+      alt: "Premium vehicle presented in refined light",
+    },
+    {
+      match: /(flor|flower|wedding|event)/,
+      mood: "Thoughtful details, beautiful presentation, and moments made memorable.",
+      hero: "https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=2200&q=88",
+      gallery: [
+        "https://images.unsplash.com/photo-1487070183336-b863922373d4?auto=format&fit=crop&w=1400&q=84",
+        "https://images.unsplash.com/photo-1507501336603-6e31db2be093?auto=format&fit=crop&w=1200&q=84",
+        "https://images.unsplash.com/photo-1469259943454-aa100abba749?auto=format&fit=crop&w=1200&q=84",
+      ],
+      alt: "Artfully arranged flowers in a bright studio",
+    },
+    {
+      match: /(restaurant|cafe|food|bakery|catering)/,
+      mood: "An inviting experience shaped by flavor, atmosphere, and attention to detail.",
+      hero: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=2200&q=88",
+      gallery: [
+        "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1400&q=84",
+        "https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=1200&q=84",
+        "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1200&q=84",
+      ],
+      alt: "Welcoming restaurant interior with thoughtful lighting",
+    },
+    {
+      match: /(dental|clinic|medical|health|wellness)/,
+      mood: "Modern care, clear guidance, and a calmer customer experience.",
+      hero: "https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&fit=crop&w=2200&q=88",
+      gallery: [
+        "https://images.unsplash.com/photo-1606811971618-4486d14f3f99?auto=format&fit=crop&w=1400&q=84",
+        "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?auto=format&fit=crop&w=1200&q=84",
+        "https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&fit=crop&w=1200&q=84",
+      ],
+      alt: "Bright, modern care environment",
+    },
+    {
+      match: /(salon|barber|beauty|spa|makeup)/,
+      mood: "Personal style, considered service, and confidence in every detail.",
+      hero: "https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=2200&q=88",
+      gallery: [
+        "https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=1400&q=84",
+        "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=84",
+        "https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=1200&q=84",
+      ],
+      alt: "Polished salon interior with modern styling",
+    },
+    {
+      match: /(real estate|interior|architect|construction|contractor|home)/,
+      mood: "Spaces and projects presented with clarity, confidence, and strong visual intent.",
+      hero: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=2200&q=88",
+      gallery: [
+        "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1400&q=84",
+        "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?auto=format&fit=crop&w=1200&q=84",
+        "https://images.unsplash.com/photo-1600607688969-a5bfcd646154?auto=format&fit=crop&w=1200&q=84",
+      ],
+      alt: "Refined contemporary interior with architectural detail",
+    },
+    {
+      match: /(pet|veterinary|animal)/,
+      mood: "Helpful service, genuine care, and an experience built around pets and their people.",
+      hero: "https://images.unsplash.com/photo-1450778869180-41d0601e046e?auto=format&fit=crop&w=2200&q=88",
+      gallery: [
+        "https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=1400&q=84",
+        "https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=1200&q=84",
+        "https://images.unsplash.com/photo-1518791841217-8f162f1e1131?auto=format&fit=crop&w=1200&q=84",
+      ],
+      alt: "Happy pet in warm natural light",
+    },
+  ];
+
+  return (
+    profiles.find((profile) => profile.match.test(lower)) ?? {
+      mood: "Professional service, clear next steps, and a presentation built around trust.",
+      hero: "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=2200&q=88",
+      gallery: [
+        "https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=1400&q=84",
+        "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=84",
+        "https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=1200&q=84",
+      ],
+      alt: "Professional modern workspace",
+    }
+  );
+}
+
+function schemaType(category: string) {
+  const lower = category.toLowerCase();
+  if (/(restaurant|cafe|food)/.test(lower)) return "Restaurant";
+  if (/(dental|dentist)/.test(lower)) return "Dentist";
+  if (/(auto|mechanic|vehicle|car)/.test(lower)) return "AutoRepair";
+  if (/(salon|beauty|spa)/.test(lower)) return "BeautySalon";
+  if (/(real estate)/.test(lower)) return "RealEstateAgent";
+  if (/(pet|veterinary)/.test(lower)) return "PetStore";
+  return "ProfessionalService";
+}
+
 export function generateWebsiteHTML(info: BusinessInfo) {
   const businessName = escapeHtml(info.businessName || "Your Business");
   const category = escapeHtml(info.category || "professional services");
@@ -172,6 +279,26 @@ export function generateWebsiteHTML(info: BusinessInfo) {
   const social = safeUrl(info.socialUrl);
   const services = servicesFrom(info.services, info.category);
   const [primary, accent] = colorPair(info.brandColors);
+  const profile = visualProfile(info.category);
+  const schema = {
+    "@context": "https://schema.org",
+    "@type": schemaType(info.category),
+    name: info.businessName || "Your Business",
+    description: `${info.businessName || "This business"} provides ${info.category || "professional services"}${info.location ? ` in ${info.location}` : ""}.`,
+    ...(website ? { url: website } : {}),
+    ...(info.phone ? { telephone: info.phone } : {}),
+    ...(info.email ? { email: info.email } : {}),
+    ...(info.location ? { areaServed: info.location } : {}),
+    hasOfferCatalog: {
+      "@type": "OfferCatalog",
+      name: "Services",
+      itemListElement: services.map((service) => ({
+        "@type": "Offer",
+        itemOffered: { "@type": "Service", name: service },
+      })),
+    },
+  };
+  const jsonLd = JSON.stringify(schema).replace(/</g, "\\u003c");
   const phoneHref = info.phone.replace(/[^\d+]/g, "");
   const locationPhrase = location ? ` in ${location}` : "";
   const title = `${businessName} | ${category}${locationPhrase}`;
@@ -197,6 +324,12 @@ export function generateWebsiteHTML(info: BusinessInfo) {
   <meta property="og:type" content="website">
   <meta property="og:title" content="${title}">
   <meta property="og:description" content="${escapeHtml(description.slice(0, 160))}">
+  <meta property="og:image" content="${escapeHtml(profile.hero)}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${escapeHtml(description.slice(0, 160))}">
+  <meta name="twitter:image" content="${escapeHtml(profile.hero)}">
+  <script type="application/ld+json">${jsonLd}</script>
   <style>
     :root {
       --ink: #172033;
@@ -232,6 +365,7 @@ export function generateWebsiteHTML(info: BusinessInfo) {
     .nav-links a { text-decoration: none; color: var(--muted); }
     .nav-links a:hover { color: var(--ink); }
     .nav-cta { padding: 11px 17px; border-radius: 999px; background: var(--ink); color: white !important; font-weight: 700; }
+    .menu-toggle { display: none; width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink); font: inherit; font-weight: 800; }
     .hero { padding: clamp(72px, 10vw, 136px) 0 72px; overflow: hidden; }
     .hero-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(320px, .92fr); gap: clamp(40px, 7vw, 96px); align-items: center; }
     .eyebrow { margin: 0 0 18px; color: var(--primary); font-size: .78rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
@@ -245,8 +379,8 @@ export function generateWebsiteHTML(info: BusinessInfo) {
     .button:hover { transform: translateY(-2px); }
     .button-primary { background: var(--primary); color: white; box-shadow: 0 14px 30px color-mix(in srgb, var(--primary) 24%, transparent); }
     .button-ghost { border-color: var(--line); background: var(--surface); color: var(--ink); }
-    .hero-art { position: relative; min-height: 510px; border-radius: 34px; background: linear-gradient(145deg, var(--primary), color-mix(in srgb, var(--primary) 44%, var(--accent))); box-shadow: var(--shadow); overflow: hidden; }
-    .hero-art::before { content: ""; position: absolute; width: 340px; height: 340px; right: -100px; top: -80px; border: 1px solid rgba(255,255,255,.38); border-radius: 50%; box-shadow: 0 0 0 50px rgba(255,255,255,.08), 0 0 0 100px rgba(255,255,255,.06); }
+    .hero-art { position: relative; min-height: 510px; border-radius: 34px; background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,.5)), url("${profile.hero}") center/cover; box-shadow: var(--shadow); overflow: hidden; }
+    .hero-art::before { content: ""; position: absolute; inset: 0; border: 1px solid rgba(255,255,255,.32); border-radius: inherit; background: linear-gradient(145deg, color-mix(in srgb, var(--primary) 22%, transparent), transparent 54%); }
     .art-card { position: absolute; left: 8%; right: 8%; bottom: 8%; padding: 28px; border: 1px solid rgba(255,255,255,.32); border-radius: 22px; background: rgba(255,255,255,.9); backdrop-filter: blur(18px); }
     .art-label { color: var(--primary); font-size: .75rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
     .art-card strong { display: block; margin-top: 8px; font-family: Georgia, serif; font-size: clamp(1.75rem, 4vw, 3rem); line-height: 1.1; font-weight: 500; }
@@ -271,6 +405,14 @@ export function generateWebsiteHTML(info: BusinessInfo) {
     .about-copy p { margin: 0 0 20px; }
     .principles { display: grid; gap: 12px; margin-top: 28px; }
     .principle { padding: 18px 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .feature-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(320px, .95fr); gap: clamp(32px, 7vw, 88px); align-items: center; }
+    .feature-image { min-height: 560px; border-radius: 30px; background: url("${profile.gallery[0]}") center/cover; box-shadow: var(--shadow); }
+    .feature-copy p:not(.eyebrow) { color: var(--muted); font-size: 1.06rem; }
+    .gallery { display: grid; grid-template-columns: 1.2fr .8fr .8fr; gap: 14px; }
+    .gallery figure { min-height: 390px; margin: 0; border-radius: 22px; overflow: hidden; background: var(--surface); }
+    .gallery img { width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+    .gallery figure:hover img { transform: scale(1.035); }
+    .gallery-note { margin: 18px 0 0; color: var(--muted); font-size: .84rem; }
     .process { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin-top: 48px; }
     .step { padding-top: 22px; border-top: 2px solid var(--line); }
     .step b { color: var(--primary); font-size: .78rem; letter-spacing: .12em; text-transform: uppercase; }
@@ -288,18 +430,29 @@ export function generateWebsiteHTML(info: BusinessInfo) {
     .footer-row { display: flex; justify-content: space-between; gap: 24px; }
     .footer-links { display: flex; flex-wrap: wrap; gap: 18px; }
     .footer-links a { text-decoration: none; }
+    .reveal { opacity: 0; transform: translateY(22px); transition: opacity .65s ease, transform .65s ease; }
+    .reveal.is-visible { opacity: 1; transform: none; }
     @media (max-width: 900px) {
-      .hero-grid, .section-head, .about-grid, .faq { grid-template-columns: 1fr; }
+      .hero-grid, .section-head, .about-grid, .feature-grid, .faq { grid-template-columns: 1fr; }
       .hero-art { min-height: 390px; }
+      .feature-image { min-height: 430px; }
       .service-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .gallery { grid-template-columns: 1fr 1fr; }
+      .gallery figure:first-child { grid-column: 1 / -1; }
       .section-head { gap: 18px; }
     }
     @media (max-width: 680px) {
       .container { width: min(100% - 28px, 1160px); }
-      .nav-links a:not(.nav-cta) { display: none; }
+      .menu-toggle { display: grid; place-items: center; }
+      .nav-links { display: none; position: absolute; left: 14px; right: 14px; top: 68px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow); }
+      .nav-links.is-open { display: grid; }
+      .nav-links .nav-cta { text-align: center; }
       .hero { padding-top: 58px; }
       .hero-art { min-height: 330px; }
       .trust-grid, .service-list, .process { grid-template-columns: 1fr; }
+      .gallery { grid-template-columns: 1fr; }
+      .gallery figure:first-child { grid-column: auto; }
+      .gallery figure { min-height: 310px; }
       .trust-item + .trust-item { border-left: 0; border-top: 1px solid var(--line); }
       .footer-row { flex-direction: column; }
       .actions .button { width: 100%; }
@@ -307,6 +460,7 @@ export function generateWebsiteHTML(info: BusinessInfo) {
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
       *, *::before, *::after { transition-duration: .01ms !important; }
+      .reveal { opacity: 1; transform: none; }
     }
   </style>
 </head>
@@ -315,12 +469,14 @@ export function generateWebsiteHTML(info: BusinessInfo) {
   <header class="header">
     <nav class="container nav" aria-label="Primary navigation">
       <a class="brand" href="#top">${businessName}</a>
-      <div class="nav-links">
+      <div class="nav-links" id="primary-links">
         <a href="#services">Services</a>
         <a href="#about">About</a>
+        <a href="#gallery">Gallery</a>
         <a href="#contact">Contact</a>
         <a class="nav-cta" href="#contact">Get in touch</a>
       </div>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="primary-links" aria-label="Open navigation">Menu</button>
     </nav>
   </header>
   <main id="main">
@@ -328,15 +484,15 @@ export function generateWebsiteHTML(info: BusinessInfo) {
       <div class="container hero-grid">
         <div>
           <p class="eyebrow">${category}${location ? ` · ${location}` : ""}</p>
-          <h1>Clear service. Thoughtful details. A better way to connect.</h1>
-          <p class="hero-copy">${businessName} helps customers find the right ${category} support with a focused, personal experience${locationPhrase}.</p>
+          <h1>A distinctive ${category} experience, made easy to explore.</h1>
+          <p class="hero-copy">${profile.mood} Explore ${businessName}'s services and connect directly${locationPhrase}.</p>
           <div class="actions">${contactLink}${secondaryLink}</div>
         </div>
-        <div class="hero-art" aria-hidden="true">
+        <div class="hero-art" role="img" aria-label="${escapeHtml(profile.alt)}">
           <div class="art-card">
-            <span class="art-label">Designed around your next step</span>
+            <span class="art-label">A considered first impression</span>
             <strong>${escapeHtml(services[0])}</strong>
-            <p>Explore the offer, ask a question, or connect directly with ${businessName}.</p>
+            <p>Explore the offer, confirm current options, or connect directly with ${businessName}.</p>
           </div>
         </div>
       </div>
@@ -377,6 +533,37 @@ export function generateWebsiteHTML(info: BusinessInfo) {
             <div class="principle"><strong>Mobile ready</strong><br>Important details and actions stay readable on smaller screens.</div>
           </div>
         </div>
+      </div>
+    </section>
+    <section class="section section-muted">
+      <div class="container feature-grid reveal">
+        <div class="feature-image" role="img" aria-label="${escapeHtml(profile.alt)}"></div>
+        <div class="feature-copy">
+          <p class="eyebrow">The experience</p>
+          <h2>Designed to feel specific, useful, and easy to trust.</h2>
+          <p>The visual direction reflects the character of ${category}, while the content keeps real customer questions, available services, and direct contact at the center.</p>
+          <div class="principles">
+            <div class="principle"><strong>Business-specific identity</strong><br>Color, imagery, typography, and pacing are shaped around the niche and supplied brand details.</div>
+            <div class="principle"><strong>Credible by design</strong><br>No invented awards, ratings, testimonials, prices, or unsupported claims.</div>
+            <div class="principle"><strong>Ready for action</strong><br>Contact paths remain visible and comfortable to use across screen sizes.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="section" id="gallery">
+      <div class="container reveal">
+        <div class="section-head">
+          <div><p class="eyebrow">Visual direction</p><h2>A richer view of the world around the business.</h2></div>
+          <p>Relevant imagery gives the experience context without making unverified claims about completed work.</p>
+        </div>
+        <div class="gallery">
+          ${profile.gallery
+            .map(
+              (image, index) => `<figure><img src="${escapeHtml(image)}" alt="${escapeHtml(`${profile.alt}, representative image ${index + 1}`)}" loading="lazy"></figure>`,
+            )
+            .join("")}
+        </div>
+        <p class="gallery-note">Representative imagery for this website concept. Replace with verified business photography when ready.</p>
       </div>
     </section>
     <section class="section section-muted">
@@ -425,6 +612,30 @@ export function generateWebsiteHTML(info: BusinessInfo) {
       </div>
     </div>
   </footer>
+  <script>
+    const menuButton = document.querySelector(".menu-toggle");
+    const menu = document.querySelector(".nav-links");
+    menuButton?.addEventListener("click", () => {
+      const open = menu?.classList.toggle("is-open") || false;
+      menuButton.setAttribute("aria-expanded", String(open));
+    });
+    menu?.querySelectorAll("a").forEach((link) => link.addEventListener("click", () => {
+      menu.classList.remove("is-open");
+      menuButton?.setAttribute("aria-expanded", "false");
+    }));
+    const observer = "IntersectionObserver" in window
+      ? new IntersectionObserver((entries) => entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        }), { threshold: .14 })
+      : null;
+    document.querySelectorAll(".reveal").forEach((element) => {
+      if (observer) observer.observe(element);
+      else element.classList.add("is-visible");
+    });
+  </script>
 </body>
 </html>`;
 }
