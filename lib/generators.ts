@@ -143,14 +143,14 @@ demoUrl: "",
 
 export function parseBusinessInfo(raw: string): Partial<BusinessInfo> {
 const email = firstMatch(raw, /[\w.+-]+@[\w-]+(?:.[\w-]+)+/i);
-const urls = raw.match(/https?://[^\s,)]]+/gi) ?? [];
+const urls = raw.match(/https?:\/\/[^\s,)\]]+/gi) ?? [];
 const socialUrl =
 urls.find((url) => /(instagram|facebook|tiktok|linkedin|youtube|x.com|twitter).com/i.test(url)) ?? "";
 const websiteUrl = urls.find((url) => url !== socialUrl) ?? "";
 
 const phone =
 valueAfterLabel(raw, ["phone", "whatsapp", "tel", "telephone", "call"]) ||
-firstMatch(raw, /(?:+?\d[\d\s().-]{7,}\d)/);
+firstMatch(raw, /(?:\+?\d[\d\s().-]{7,}\d)/);
 
 const colors = raw.match(/#[0-9a-f]{6}\b/gi)?.slice(0, 3).join(", ") ?? "";
 
@@ -171,11 +171,11 @@ painPoints: inferPainPoints(raw, websiteUrl),
 
 function escapeHtml(value: string) {
 return value
-.replace(/&/g, "&")
-.replace(/</g, "<")
-.replace(/>/g, ">")
-.replace(/"/g, """)
-.replace(/'/g, "'");
+.replace(/&/g, "&amp;")
+.replace(/</g, "&lt;")
+.replace(/>/g, "&gt;")
+.replace(/"/g, "&quot;")
+.replace(/'/g, "&#039;");
 }
 
 function safeUrl(value: string) {
@@ -1899,8 +1899,6 @@ footer {
   }
   .reveal { opacity: 1; transform: none; }
 }
-```
-
   </style>
 </head>
 <body>
@@ -1932,7 +1930,6 @@ footer {
       <span class="sparkle" style="top:23%;right:31%"></span>
       <span class="sparkle" style="top:42%;right:9%;animation-delay:1.4s"></span>
 
-```
   <div class="container">
     <div class="hero-copy reveal visible">
       <div class="eyebrow">${category}${location ? ` · ${location}` : ""}</div>
@@ -2200,8 +2197,6 @@ footer {
     </div>
   </div>
 </section>
-```
-
   </main>
 
   <footer>
@@ -2218,7 +2213,6 @@ footer {
           <p style="margin-top:20px">Private website concept for review. Replace representative content with verified business details before publishing as an official website.</p>
         </div>
 
-```
     <div>
       <span class="footer-title">Navigate</span>
       <div class="footer-links">
@@ -2255,8 +2249,6 @@ footer {
     <span>Website concept created for presentation purposes.</span>
   </div>
 </div>
-```
-
   </footer>
 
   <script>
@@ -2387,11 +2379,9 @@ Would you be open to taking a quick look and telling me what you think?
 ${sender}
 ${company}`,
 
-```
 emailSubject: `Private website concept for ${name}`,
 
 email: `Hi ${name},
-```
 
 ${intro}
 
@@ -2411,13 +2401,11 @@ ${company}
 ${settings.mailingAddress ? `${settings.mailingAddress}\n` : ""}
 If you would prefer not to receive another message from me, just let me know.`,
 
-```
 dm: `Hi ${name}. ${specificObservation} I made a private website concept to show a clearer, more polished direction for the business. ${info.demoUrl ? `Preview: ${info.demoUrl}` : "I can send the preview link once it is live."} ${price} Open to a quick look? - ${sender}, ${company}`,
 
 followUp: `Hi ${name}, just following up on the private website concept I prepared. ${info.demoUrl ? `Here is the preview again: ${info.demoUrl}` : "I can send the live preview whenever convenient."} No pressure at all; I would value your honest feedback.`,
 
 finalFollowUp: `Hi ${name}, one last note from me about the website concept. ${info.demoUrl ? `The preview is here if you would still like to see it: ${info.demoUrl}` : "I am happy to share the preview if it becomes useful."} I will close the loop after this, but you are welcome to reach out anytime. - ${sender}, ${company}`,
-```
 
 };
 }
