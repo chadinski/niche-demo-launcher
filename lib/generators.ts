@@ -565,7 +565,6 @@ return `<!DOCTYPE html>
       --ease: cubic-bezier(.2,.7,.2,1);
     }
 
-```
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
