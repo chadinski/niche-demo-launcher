@@ -5,6 +5,7 @@ Private internal command center for Niche Technologies. Paste business informati
 ## Core Workflow
 
 1. Paste messy business information into **Create Demo**.
+   You can also import a business screenshot or photo. Browser-based OCR extracts the text, populates the profile, and suggests dominant brand colors.
 2. Parse and review the extracted facts.
 3. Generate a private `noindex` single-file `index.html`.
 4. Generate WhatsApp, email, DM, and follow-up messages.
@@ -13,6 +14,8 @@ Private internal command center for Niche Technologies. Paste business informati
 7. Manually approve sending and update the prospect status.
 
 The app does not bulk-send or automatically submit outreach.
+
+Screenshot OCR runs locally in the browser through Tesseract.js. Imported images are not uploaded to the application server, but the OCR engine may download its language model files when first used.
 
 ## Stack
 

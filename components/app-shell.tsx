@@ -76,7 +76,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="min-w-0 lg:col-start-2">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[#e7e8ef] bg-white/88 px-4 backdrop-blur-xl sm:px-6 lg:hidden">
           <Link href="/" className="flex items-center gap-2.5 font-bold tracking-[-0.03em]">
-            <span className="grid size-9 place-items-center rounded-xl bg-ink-950 text-white">
+            <span className="grid size-9 place-items-center rounded-xl bg-brand-600 text-white">
               <BriefcaseBusiness className="size-4" />
             </span>
             Niche Demo Launcher
@@ -103,7 +103,7 @@ function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
   return (
     <>
       <div className="flex h-20 items-center gap-3 border-b border-[#ececf2] px-5">
-        <span className="grid size-10 place-items-center rounded-2xl bg-ink-950 text-white shadow-[0_10px_24px_rgba(21,26,45,.18)]">
+        <span className="grid size-10 place-items-center rounded-2xl bg-brand-600 text-white shadow-[0_10px_24px_rgba(77,124,15,.2)]">
           <BriefcaseBusiness className="size-[18px]" />
         </span>
         <div className="min-w-0">

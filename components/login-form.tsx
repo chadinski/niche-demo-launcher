@@ -32,7 +32,7 @@ export function LoginForm() {
   return (
     <main className="grid min-h-screen place-items-center bg-[#f6f6fa] p-4">
       <div className="grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white bg-white shadow-[0_30px_100px_rgba(21,26,45,.16)] lg:grid-cols-[.95fr_1.05fr]">
-        <div className="relative hidden min-h-[640px] overflow-hidden bg-ink-950 p-10 text-white lg:block">
+        <div className="relative hidden min-h-[640px] overflow-hidden bg-brand-700 p-10 text-white lg:block">
           <div className="absolute -top-24 -right-24 size-80 rounded-full border border-white/10 shadow-[0_0_0_50px_rgba(255,255,255,.035),0_0_0_100px_rgba(255,255,255,.02)]" />
           <div className="relative">
             <span className="grid size-12 place-items-center rounded-2xl bg-white/10">

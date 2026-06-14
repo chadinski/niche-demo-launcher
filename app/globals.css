@@ -3,26 +3,28 @@
 @theme {
   --color-ink-950: #151a2d;
   --color-ink-800: #27314d;
-  --color-brand-50: #f2f1ff;
-  --color-brand-100: #e7e5ff;
-  --color-brand-500: #6d5dfc;
-  --color-brand-600: #5a49ef;
-  --color-brand-700: #4938d4;
-  --color-mint-50: #eefcf7;
-  --color-mint-500: #28b78d;
+  --color-brand-50: #f7fee7;
+  --color-brand-100: #ecfccb;
+  --color-brand-200: #d9f99d;
+  --color-brand-300: #bef264;
+  --color-brand-500: #84cc16;
+  --color-brand-600: #4d7c0f;
+  --color-brand-700: #3f6212;
+  --color-mint-50: #f7fee7;
+  --color-mint-500: #84cc16;
   --color-warm-50: #faf9f6;
   --font-sans: "Inter", "Avenir Next", "Segoe UI", sans-serif;
 }
 
 :root {
   color-scheme: light;
-  --app-background: #f7f7fa;
+  --app-background: #f8faf5;
   --panel: #ffffff;
   --panel-muted: #fafafd;
   --border: #e8e9f0;
   --muted: #70778b;
   --shadow-card: 0 1px 2px rgba(21, 26, 45, 0.03), 0 12px 34px rgba(21, 26, 45, 0.06);
-  --shadow-float: 0 22px 60px rgba(36, 31, 88, 0.14);
+  --shadow-float: 0 22px 60px rgba(63, 98, 18, 0.14);
 }
 
 * {
@@ -38,7 +40,7 @@ body {
   margin: 0;
   color: #151a2d;
   background:
-    radial-gradient(circle at 80% -10%, rgba(109, 93, 252, 0.08), transparent 30rem),
+    radial-gradient(circle at 80% -10%, rgba(132, 204, 22, 0.13), transparent 30rem),
     var(--app-background);
   font-family: var(--font-sans);
   text-rendering: optimizeLegibility;
@@ -63,13 +65,13 @@ a {
 }
 
 :focus-visible {
-  outline: 3px solid rgba(109, 93, 252, 0.28);
+  outline: 3px solid rgba(132, 204, 22, 0.42);
   outline-offset: 2px;
 }
 
 ::selection {
   color: #ffffff;
-  background: #5a49ef;
+  background: #4d7c0f;
 }
 
 .panel {
@@ -111,9 +113,9 @@ a {
 }
 
 .field-input:focus {
-  border-color: #8b80fa;
+  border-color: #84cc16;
   outline: none;
-  box-shadow: 0 0 0 4px rgba(109, 93, 252, 0.1);
+  box-shadow: 0 0 0 4px rgba(132, 204, 22, 0.14);
 }
 
 .field-input:disabled {

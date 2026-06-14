@@ -9,18 +9,23 @@ import {
   Download,
   ExternalLink,
   FileCode2,
+  FileImage,
   Globe2,
+  ImageUp,
   Mail,
   MessageCircle,
   MousePointerClick,
   Save,
+  ScanText,
   Send,
   Sparkles,
   WandSparkles,
+  X,
 } from "lucide-react";
 import {
   useCallback,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type ReactNode,
@@ -38,6 +43,11 @@ import {
   parseBusinessInfo,
 } from "@/lib/generators";
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
+import {
+  combineOcrText,
+  createHeaderCrop,
+  extractImageColors,
+} from "@/lib/image-extraction";
 import type {
   BusinessInfo,
   MessageTone,
@@ -63,7 +73,7 @@ const messageTabs: Array<{ key: keyof SalesMessages; label: string }> = [
   { key: "finalFollowUp", label: "Final follow-up" },
 ];
 
-type BusyAction = "parse" | "website" | "message" | "both" | "save" | null;
+type BusyAction = "image" | "parse" | "website" | "message" | "both" | "save" | null;
 
 export function DemoWorkspace() {
   const { saveProspect, setStatus } = useProspects();
@@ -76,6 +86,11 @@ export function DemoWorkspace() {
   const [messageTab, setMessageTab] = useState<keyof SalesMessages>("whatsapp");
   const [prospectId, setProspectId] = useState<string | null>(null);
   const [confirmSent, setConfirmSent] = useState(false);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState("");
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const names = useMemo(() => generatedNames(info), [info]);
 
@@ -107,6 +122,92 @@ export function DemoWorkspace() {
       },
       "Business details extracted",
     );
+
+  const removeImage = () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(null);
+    setImagePreview("");
+    setOcrProgress(0);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+  };
+
+  const importBusinessImage = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Choose a PNG, JPG, WebP, or other image file");
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      toast.error("The image must be 12 MB or smaller");
+      return;
+    }
+
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setBusy("image");
+    setOcrProgress(0.04);
+
+    try {
+      const [{ createWorker }, sampledColors, headerCrop] = await Promise.all([
+        import("tesseract.js"),
+        extractImageColors(file).catch(() => ""),
+        createHeaderCrop(file),
+      ]);
+      let scanPhase: "full" | "header" = "full";
+      const worker = await createWorker("eng", undefined, {
+        logger(message) {
+          if (message.status === "recognizing text") {
+            const progress =
+              scanPhase === "full"
+                ? 0.08 + message.progress * 0.68
+                : 0.76 + message.progress * 0.22;
+            setOcrProgress(progress);
+          }
+        },
+      });
+      let fullResult;
+      let headerResult;
+      try {
+        fullResult = await worker.recognize(file);
+        scanPhase = "header";
+        headerResult = await worker.recognize(headerCrop);
+      } finally {
+        await worker.terminate();
+      }
+      const extractedText = combineOcrText(
+        headerResult.data.text,
+        fullResult.data.text,
+      );
+
+      if (!extractedText) {
+        setOcrProgress(0);
+        toast.error("No readable text was found in that image");
+        return;
+      }
+
+      const parsed = parseBusinessInfo(extractedText);
+      setInfo((current) => {
+        const populated = Object.fromEntries(
+          Object.entries(parsed).filter(([, value]) => Boolean(value)),
+        ) as Partial<BusinessInfo>;
+
+        return {
+          ...current,
+          ...populated,
+          rawInfo: extractedText,
+          brandColors:
+            parsed.brandColors || sampledColors || current.brandColors,
+        };
+      });
+      setOcrProgress(1);
+      toast.success("Screenshot text extracted and business profile populated");
+    } catch {
+      setOcrProgress(0);
+      toast.error("The screenshot could not be read. Try a clearer or tighter crop.");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const handleGenerateWebsite = () =>
     runAction(
@@ -264,7 +365,7 @@ export function DemoWorkspace() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         {[
-          ["01", "Paste and parse", "Drop in messy business information."],
+          ["01", "Import or paste", "Use a screenshot, photo, listing, or notes."],
           ["02", "Generate and review", "Create the site and personalized copy."],
           ["03", "Deploy and contact", "Add the URL, approve, then open a draft."],
         ].map(([number, title, text], index) => (
@@ -292,12 +393,128 @@ export function DemoWorkspace() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <SectionLabel>Source information</SectionLabel>
-                <h2 className="mt-2 text-xl font-extrabold tracking-[-0.035em]">Paste business info</h2>
+                <h2 className="mt-2 text-xl font-extrabold tracking-[-0.035em]">Import business info</h2>
                 <p className="mt-1 text-xs leading-5 text-[#7f8597]">
-                  Paste a profile, listing, notes, or mixed contact details. You can correct every field.
+                  Import a screenshot or paste mixed details. Review the extracted facts before generating.
                 </p>
               </div>
               <Clipboard className="size-5 text-[#a3a8b7]" />
+            </div>
+
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void importBusinessImage(file);
+              }}
+            />
+
+            {imagePreview ? (
+              <div className="mt-5 overflow-hidden rounded-2xl border border-brand-200 bg-brand-50/50">
+                <div className="relative aspect-[16/9] overflow-hidden bg-white">
+                  <div
+                    role="img"
+                    aria-label={`Imported screenshot: ${imageFile?.name ?? "business image"}`}
+                    className="absolute inset-0 bg-contain bg-center bg-no-repeat"
+                    style={{ backgroundImage: `url("${imagePreview}")` }}
+                  />
+                  <button
+                    type="button"
+                    className="absolute top-3 right-3 grid size-9 place-items-center rounded-xl border border-white/70 bg-white/92 text-[#596075] shadow-lg hover:bg-white hover:text-ink-950"
+                    onClick={removeImage}
+                    aria-label="Remove imported screenshot"
+                    disabled={busy === "image"}
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+                <div className="p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-ink-950">
+                        {imageFile?.name}
+                      </p>
+                      <p className="mt-1 text-[0.7rem] text-[#7d8496]">
+                        {busy === "image"
+                          ? `Reading screenshot · ${Math.round(ocrProgress * 100)}%`
+                          : ocrProgress === 1
+                            ? "Screenshot imported · review the populated fields below"
+                            : "Screenshot ready · scan again or try a clearer crop"}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => imageFile && void importBusinessImage(imageFile)}
+                      loading={busy === "image"}
+                      disabled={!imageFile}
+                    >
+                      <ScanText className="size-4" />
+                      Scan Again
+                    </Button>
+                  </div>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white">
+                    <div
+                      className="h-full rounded-full bg-brand-500 transition-[width]"
+                      style={{
+                        width: `${
+                          ocrProgress
+                            ? Math.max(ocrProgress * 100, busy === "image" ? 6 : 0)
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={cn(
+                  "mt-5 flex min-h-44 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-8 text-center",
+                  isDraggingImage
+                    ? "border-brand-500 bg-brand-50"
+                    : "border-[#dfe3d8] bg-[#fbfcf8] hover:border-brand-300 hover:bg-brand-50/55",
+                )}
+                onClick={() => imageInputRef.current?.click()}
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  setIsDraggingImage(true);
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDragLeave={(event) => {
+                  event.preventDefault();
+                  if (event.currentTarget === event.target) setIsDraggingImage(false);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setIsDraggingImage(false);
+                  const file = event.dataTransfer.files?.[0];
+                  if (file) void importBusinessImage(file);
+                }}
+              >
+                <span className="grid size-12 place-items-center rounded-2xl bg-white text-brand-600 shadow-sm">
+                  <ImageUp className="size-5" />
+                </span>
+                <span className="mt-4 text-sm font-extrabold text-ink-950">
+                  Upload a business screenshot or photo
+                </span>
+                <span className="mt-1 max-w-sm text-xs leading-5 text-[#7f8597]">
+                  Click or drag an image here. OCR runs in your browser and fills the profile automatically.
+                </span>
+                <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[0.68rem] font-bold text-[#697084] shadow-sm">
+                  <FileImage className="size-3.5 text-brand-600" />
+                  PNG, JPG or WebP · 12 MB max
+                </span>
+              </button>
+            )}
+
+            <div className="my-5 flex items-center gap-3 text-[0.66rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">
+              <span className="h-px flex-1 bg-[#e8e9ef]" />
+              Or paste text
+              <span className="h-px flex-1 bg-[#e8e9ef]" />
             </div>
             <label className="mt-5 block">
               <span className="sr-only">Paste business information</span>

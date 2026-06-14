@@ -34,25 +34,25 @@ const statIcons = {
 };
 
 const statToneClasses: Record<string, string> = {
-  violet: "bg-violet-50 text-violet-600",
-  indigo: "bg-indigo-50 text-indigo-600",
+  lime: "bg-lime-50 text-lime-700",
+  green: "bg-green-50 text-green-700",
   blue: "bg-blue-50 text-blue-600",
   cyan: "bg-cyan-50 text-cyan-600",
   amber: "bg-amber-50 text-amber-600",
   orange: "bg-orange-50 text-orange-600",
-  green: "bg-emerald-50 text-emerald-600",
+  emerald: "bg-emerald-50 text-emerald-600",
   rose: "bg-rose-50 text-rose-600",
 };
 
 export function Dashboard({ nowIso }: { nowIso: string }) {
   const { prospects } = useProspects();
   const metrics = [
-    { label: "Total prospects", value: prospects.length, icon: statIcons.prospects, tone: "violet" },
+    { label: "Total prospects", value: prospects.length, icon: statIcons.prospects, tone: "lime" },
     {
       label: "Websites generated",
       value: prospects.filter((item) => item.generated_website_html).length,
       icon: statIcons.websites,
-      tone: "indigo",
+      tone: "green",
     },
     {
       label: "Messages generated",
@@ -87,7 +87,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
       label: "Won clients",
       value: prospects.filter((item) => item.outreach_status === "won").length,
       icon: statIcons.won,
-      tone: "green",
+      tone: "emerald",
     },
     {
       label: "Lost clients",
@@ -104,7 +104,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
   const pipeline = [
     { label: "Not sent", count: prospects.filter((p) => p.outreach_status === "not_sent").length, color: "bg-slate-400" },
     { label: "Sent", count: prospects.filter((p) => p.outreach_status === "sent").length, color: "bg-blue-500" },
-    { label: "Replied", count: prospects.filter((p) => p.outreach_status === "replied").length, color: "bg-violet-500" },
+    { label: "Replied", count: prospects.filter((p) => p.outreach_status === "replied").length, color: "bg-lime-500" },
     { label: "Follow-up", count: prospects.filter((p) => p.outreach_status === "follow_up").length, color: "bg-amber-500" },
     { label: "Won", count: prospects.filter((p) => p.outreach_status === "won").length, color: "bg-emerald-500" },
   ];
@@ -216,7 +216,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(320px,.7fr)_minmax(0,1.5fr)]">
-        <Card className="relative overflow-hidden bg-ink-950 p-6 text-white">
+        <Card className="relative overflow-hidden border-brand-700 bg-brand-700 p-6 text-white">
           <div className="absolute -top-20 -right-16 size-60 rounded-full border border-white/10 shadow-[0_0_0_36px_rgba(255,255,255,.035),0_0_0_72px_rgba(255,255,255,.02)]" />
           <div className="relative">
             <div className="grid size-10 place-items-center rounded-2xl bg-white/10">
