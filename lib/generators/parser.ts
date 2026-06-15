@@ -15,6 +15,60 @@ function firstMatch(raw: string, pattern: RegExp) {
 return raw.match(pattern)?.[0]?.trim() ?? "";
 }
 
+const noiseLabels = new Set([
+"search", "home", "posts", "photos", "reviews", "about", "menu", "share",
+"follow", "like", "comment", "sponsored", "open", "directions", "call",
+"message", "more", "back", "today", "screenshot", "image", "photo",
+"facebook", "instagram", "google", "chrome", "safari", "january", "february",
+"march", "april", "may", "june", "july", "august", "september", "october",
+"november", "december",
+]);
+
+const businessNameKeywords =
+/\b(studio|salon|auto|automotive|dental|care|restaurant|cafe|coffee|barber|print|printing|design|works|services|construction|memorial|funeral|clinic|spa|interiors|events|music|company|co\.?|ltd\.?|limited|group|solutions|supplies|florist|bakery|fitness|gym|law|accounting|veterinary|pet)\b/i;
+
+function isNoiseLine(line: string) {
+const value = line.trim();
+const lower = value.toLowerCase().replace(/[.!]+$/, "");
+const usefulCharacters = value.match(/[a-z]/gi)?.length ?? 0;
+
+if (!value || usefulCharacters < 3) return true;
+if (noiseLabels.has(lower)) return true;
+if (/^\d{1,2}:\d{2}(?:\s?[ap]m)?$/i.test(value)) return true;
+if (/^\d{1,2}:\d{2}(?:\s?[ap]m)?\s+(?:today|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?))/i.test(value)) return true;
+if (/^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:,?\s+\d{4})?$/i.test(value)) return true;
+if (/^(?:19|20)\d{2}$/.test(value)) return true;
+if (/^\d{1,2}[/-]\d{1,2}[/-](?:\d{2}|\d{4})$/.test(value)) return true;
+if (/^(?:https?:\/\/|www\.)\S+$/i.test(value)) return true;
+if (/\b(?:battery|wi-?fi|lte|5g|4g|3g|carrier|signal|airplane mode|no service|charging|verizon|t-mobile|at&t|digicel|flow)\b/i.test(value)) return true;
+if (/\b(?:screenshot|screen shot|image metadata|file name|dimensions|megapixels|edited|saved to photos)\b/i.test(value)) return true;
+if (/^[\d\s.,:;|/\\()[\]{}+%#@!?_-]+$/.test(value)) return true;
+if (usefulCharacters / value.length < 0.35) return true;
+
+return false;
+}
+
+function isLikelyBusinessName(line: string) {
+const value = line.trim();
+
+if (isNoiseLine(value)) return false;
+if (value.length < 3 || value.length > 80) return false;
+if (/@|https?:\/\/|www\./i.test(value)) return false;
+if (/^(?:welcome|contact us|learn more|book now|shop now|see all|view all)\b/i.test(value)) return false;
+if (/[.!?]$/.test(value) && value.split(/\s+/).length > 7) return false;
+
+const words = value.match(/[a-z][a-z'&.-]*/gi) ?? [];
+return words.length >= 1 && words.length <= 10;
+}
+
+function cleanRawBusinessInfo(raw: string) {
+return raw
+.split(/\r?\n/)
+.map((line) => line.replace(/\s+/g, " ").trim())
+.filter((line) => !isNoiseLine(line))
+.join("\n");
+}
+
 function inferCategory(raw: string) {
 const categories = [
 "auto detailing",
@@ -60,14 +114,26 @@ function inferName(raw: string) {
 const labeled = valueAfterLabel(raw, ["business name", "company", "name", "brand"]);
 if (labeled) return labeled;
 
-const firstLine = raw
+const candidates = cleanRawBusinessInfo(raw)
 .split(/\r?\n/)
 .map((line) => line.trim())
-.find(Boolean);
+.filter(isLikelyBusinessName)
+.slice(0, 12);
 
-if (!firstLine) return "";
+const bestCandidate = candidates
+.map((line, index) => ({
+line,
+score:
+(businessNameKeywords.test(line) ? 8 : 0) +
+(/^[A-Z0-9][A-Za-z0-9'&.-]*(?:\s+[A-Z0-9][A-Za-z0-9'&.-]*){0,7}$/.test(line) ? 4 : 0) +
+(line.split(/\s+/).length <= 5 ? 2 : 0) +
+Math.max(0, 4 - index),
+}))
+.sort((a, b) => b.score - a.score)[0]?.line;
 
-return firstLine
+if (!bestCandidate) return "";
+
+return bestCandidate
 .split(/[|•]/)[0]
 .split(/\s[-–]\s/)[0]
 .replace(/^business\s*[:-]\s*/i, "")
@@ -133,6 +199,7 @@ demoUrl: "",
 }
 
 export function parseBusinessInfo(raw: string): Partial<BusinessInfo> {
+const cleanedRaw = cleanRawBusinessInfo(raw);
 const email = firstMatch(raw, /[\w.+-]+@[\w-]+(?:.[\w-]+)+/i);
 const urls = raw.match(/https?:\/\/[^\s,)\]]+/gi) ?? [];
 const socialUrl =
@@ -148,13 +215,13 @@ const colors = raw.match(/#[0-9a-f]{6}\b/gi)?.slice(0, 3).join(", ") ?? "";
 return {
 rawInfo: raw,
 businessName: inferName(raw),
-category: valueAfterLabel(raw, ["category", "business type", "industry", "niche"]) || inferCategory(raw),
+category: valueAfterLabel(raw, ["category", "business type", "industry", "niche"]) || inferCategory(cleanedRaw),
 location: valueAfterLabel(raw, ["location", "address", "service area", "based in"]),
 phone,
 email,
 websiteUrl,
 socialUrl,
-services: inferServices(raw),
+services: inferServices(cleanedRaw),
 brandColors: valueAfterLabel(raw, ["brand colors", "brand colours", "colours", "colors"]) || colors,
 painPoints: inferPainPoints(raw, websiteUrl),
 };
