@@ -6,6 +6,8 @@ export type CopyAngleName =
   | "craftsmanship"
   | "local authority"
   | "booking simplicity"
+  | "care clarity"
+  | "hospitality experience"
   | "emotional memorial tone"
   | "creative portfolio tone"
   | "technical precision";
@@ -99,6 +101,28 @@ export const copyAngles: Record<CopyAngleName, CopyAngle> = {
     process: ["Explore services", "Ask about suitability", "Confirm availability", "Arrange the visit"],
     galleryCaptions: ["A welcoming first step", "Carefully presented options", "Comfort in the details", "A smoother booking path", "Service with clarity", "Prepared for real photography"],
     finalPrompt: "Make the next appointment or enquiry feel simple and comfortable.",
+  },
+  "care clarity": {
+    name: "care clarity",
+    heroLead: "Modern care made easier to understand and easier to book with",
+    valueLine: "Help patients review services, comfort details, and appointment options before they reach out.",
+    serviceLine: "Explain care options in a calm, practical way so patients know what to ask next.",
+    credibility: ["Clean care presentation", "Appointment clarity", "Patient-friendly guidance", "Proof-ready trust"],
+    transformation: "From clinical uncertainty to a calmer path toward care.",
+    process: ["Review care options", "Ask about suitability", "Confirm availability", "Arrange the appointment"],
+    galleryCaptions: ["Clean care environment", "Comfortable first step", "Patient guidance", "Modern appointment path", "Care made clearer", "Ready for verified clinic photography"],
+    finalPrompt: "Make care feel clearer, calmer, and easier to book.",
+  },
+  "hospitality experience": {
+    name: "hospitality experience",
+    heroLead: "Make the atmosphere, menu, and booking path feel immediate for",
+    valueLine: "Bring the dining experience forward with warm imagery, clear offers, and practical visit details.",
+    serviceLine: "Frame each offer around what guests want to taste, book, or ask about.",
+    credibility: ["Atmosphere first", "Menu clarity", "Reservation path", "Visit details"],
+    transformation: "From a place people hear about to an experience they can picture and plan.",
+    process: ["Explore the atmosphere", "Review current options", "Plan the visit", "Confirm availability"],
+    galleryCaptions: ["Atmosphere worth visiting", "Menu moments", "Hospitality in focus", "A table-ready experience", "Warm visual appetite", "Representative dining imagery"],
+    finalPrompt: "Turn interest into a visit, booking, order, or catering enquiry.",
   },
   "emotional memorial tone": {
     name: "emotional memorial tone",

@@ -21,11 +21,13 @@ const noiseLabels = new Set([
 "message", "more", "back", "today", "screenshot", "image", "photo",
 "facebook", "instagram", "google", "chrome", "safari", "january", "february",
 "march", "april", "may", "june", "july", "august", "september", "october",
-"november", "december",
+"november", "december", "yesterday", "save", "visit", "website", "maps",
+"reels", "profile", "notifications", "likes", "comments", "shares", "followers",
+"following", "overview", "mentions", "tagged", "story", "stories", "ad", "ads",
 ]);
 
 const businessNameKeywords =
-/\b(studio|salon|auto|automotive|dental|care|restaurant|cafe|coffee|barber|print|printing|design|works|services|construction|memorial|funeral|clinic|spa|interiors|events|music|company|co\.?|ltd\.?|limited|group|solutions|supplies|florist|bakery|fitness|gym|law|accounting|veterinary|pet)\b/i;
+/\b(studio|salon|auto|automotive|detailing|repairs?|dental|care|restaurant|cafe|coffee|bar|grill|catering|barber|print|printing|3d|design|works|services|construction|memorial|funeral|clinic|spa|interiors|events|music|company|co\.?|ltd\.?|limited|group|solutions|supplies|florist|bakery|fitness|gym|wellness|beauty|realty|law|accounting|cleaning|veterinary|pet)\b/i;
 
 function isNoiseLine(line: string) {
 const value = line.trim();
@@ -40,8 +42,10 @@ if (/^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)
 if (/^(?:19|20)\d{2}$/.test(value)) return true;
 if (/^\d{1,2}[/-]\d{1,2}[/-](?:\d{2}|\d{4})$/.test(value)) return true;
 if (/^(?:https?:\/\/|www\.)\S+$/i.test(value)) return true;
+if (/^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/i.test(value)) return true;
 if (/\b(?:battery|wi-?fi|lte|5g|4g|3g|carrier|signal|airplane mode|no service|charging|verizon|t-mobile|at&t|digicel|flow)\b/i.test(value)) return true;
 if (/\b(?:screenshot|screen shot|image metadata|file name|dimensions|megapixels|edited|saved to photos)\b/i.test(value)) return true;
+if (/^(?:visit\s+website|view\s+profile|open\s+app|see\s+more|send\s+message|get\s+directions)$/i.test(value)) return true;
 if (/^[\d\s.,:;|/\\()[\]{}+%#@!?_-]+$/.test(value)) return true;
 if (usefulCharacters / value.length < 0.35) return true;
 
@@ -59,6 +63,26 @@ if (/[.!?]$/.test(value) && value.split(/\s+/).length > 7) return false;
 
 const words = value.match(/[a-z][a-z'&.-]*/gi) ?? [];
 return words.length >= 1 && words.length <= 10;
+}
+
+function scoreBusinessNameCandidate(line: string, index: number) {
+const value = line.trim();
+const words = value.split(/\s+/).filter(Boolean);
+const titleLike = /^[A-Z0-9][A-Za-z0-9'&.-]*(?:\s+[A-Z0-9][A-Za-z0-9'&.-]*){0,7}$/.test(value);
+const hasBusinessKeyword = businessNameKeywords.test(value);
+const allCaps = /^[A-Z0-9&'. -]+$/.test(value) && /[A-Z]/.test(value);
+const tooGeneric = /^(?:official|public figure|local business|community|product\/service|company|business)$/i.test(value);
+
+if (!isLikelyBusinessName(value) || tooGeneric) return -100;
+
+return (
+(hasBusinessKeyword ? 14 : 0) +
+(titleLike ? 8 : 0) +
+(allCaps ? 3 : 0) +
+(words.length >= 2 && words.length <= 5 ? 5 : 0) +
+(words.length === 1 && hasBusinessKeyword ? 2 : 0) +
+Math.max(0, 8 - index)
+);
 }
 
 function cleanRawBusinessInfo(raw: string) {
@@ -123,11 +147,7 @@ const candidates = cleanRawBusinessInfo(raw)
 const bestCandidate = candidates
 .map((line, index) => ({
 line,
-score:
-(businessNameKeywords.test(line) ? 8 : 0) +
-(/^[A-Z0-9][A-Za-z0-9'&.-]*(?:\s+[A-Z0-9][A-Za-z0-9'&.-]*){0,7}$/.test(line) ? 4 : 0) +
-(line.split(/\s+/).length <= 5 ? 2 : 0) +
-Math.max(0, 4 - index),
+score: scoreBusinessNameCandidate(line, index),
 }))
 .sort((a, b) => b.score - a.score)[0]?.line;
 

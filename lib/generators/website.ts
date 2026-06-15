@@ -238,6 +238,7 @@ return `<!DOCTYPE html>
       --accent: ${accent};
       --page-bg: ${preset.theme.pageBg};
       --surface: ${preset.theme.surface};
+      --surface-alt: ${preset.theme.surfaceAlt};
       --text: ${preset.theme.text};
       --theme-muted: ${preset.theme.muted};
       --hero-overlay: ${preset.theme.heroOverlay};
@@ -249,6 +250,10 @@ return `<!DOCTYPE html>
       --display-font: ${preset.theme.displayFont};
       --body-font: ${preset.theme.bodyFont};
       --theme-shadow: ${preset.theme.shadow};
+      --card-radius: ${preset.theme.cardRadius};
+      --button-radius: ${preset.theme.buttonRadius};
+      --section-spacing: ${preset.theme.sectionPadding};
+      --hero-min-height: ${preset.theme.heroMinHeight};
       --white: var(--text);
       --silver: var(--theme-muted);
       --muted: var(--theme-muted);
@@ -1603,6 +1608,9 @@ main { display: flex; flex-direction: column; }
 .trust { order: 9; }
 #faq { order: 10; }
 .final-cta { order: 11; }
+.section { padding: var(--section-spacing) 0; }
+.section-tight { padding: calc(var(--section-spacing) - 26px) 0; }
+.hero { min-height: var(--hero-min-height); }
 
 h1, h2, h3,
 .brand-name,
@@ -1660,13 +1668,27 @@ h1, h2, h3,
 .quote-card {
   color: var(--text);
   border-color: var(--theme-border);
+  border-radius: var(--card-radius);
   background: var(--card-bg);
   box-shadow: var(--theme-shadow);
 }
 
 .why,
 .gallery,
-.trust { background: var(--section-bg); }
+.trust { background: var(--surface-alt); }
+
+.btn { border-radius: var(--button-radius); }
+.button-quiet .btn-primary { box-shadow: none; }
+.button-sharp .btn,
+.button-technical .btn { letter-spacing: .13em; }
+.button-technical .btn { min-height: 50px; }
+.button-cinematic .btn-primary { box-shadow: 0 0 44px color-mix(in srgb, var(--accent) 28%, transparent); }
+.rhythm-compact .section { padding-block: calc(var(--section-spacing) - 10px); }
+.rhythm-measured .section { padding-block: var(--section-spacing); }
+.rhythm-immersive .section { padding-block: calc(var(--section-spacing) + 12px); }
+.rhythm-structured .section { padding-block: var(--section-spacing); }
+.rhythm-structured .cards-grid,
+.rhythm-structured .process-grid { gap: 12px; }
 
 .faq-question { color: var(--text); }
 .notice,
@@ -1786,7 +1808,7 @@ footer { color: var(--text); background: var(--page-bg); }
 }
   </style>
 </head>
-<body class="${preset.themeClass} mode-${preset.themeMode} type-${preset.typographyMood} card-${preset.cardStyle} hero-${preset.heroTreatment} intensity-${preset.colorIntensity}">
+<body class="${preset.themeClass} mode-${preset.themeMode} type-${preset.typographyMood} card-${preset.cardStyle} hero-${preset.heroTreatment} intensity-${preset.colorIntensity} button-${preset.buttonStyle} rhythm-${preset.sectionRhythm}">
   <nav class="nav" id="nav" aria-label="Main navigation">
     <div class="container nav-wrap">
       <a class="brand" href="#top" aria-label="${businessName} home">
