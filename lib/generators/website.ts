@@ -1,6 +1,8 @@
 import type { BusinessInfo } from "@/lib/types";
+import { getCopyAngle } from "@/lib/generators/copy-angles";
 import { colorPair } from "@/lib/generators/palettes";
 import { schemaType, visualProfile } from "@/lib/generators/visual-profiles";
+import { getWebsitePreset } from "@/lib/generators/website-presets";
 
 function escapeHtml(value: string) {
 return value
@@ -102,14 +104,15 @@ function readableCategory(category: string) {
 return category || "professional service";
 }
 
-function contactButtons(phone: string, email: string, social: string, website: string) {
+function contactButtons(phone: string, email: string, social: string, website: string, ctaLanguage: string) {
 const phoneHref = phone.replace(/[^\d+]/g, "");
+const cta = escapeHtml(ctaLanguage);
 
 const primary = phoneHref
-? `<a class="btn btn-primary" href="tel:${phoneHref}">Call ${phone}</a>`
+? `<a class="btn btn-primary" href="tel:${phoneHref}">${cta}</a>`
 : email
-? `<a class="btn btn-primary" href="mailto:${email}">Send an enquiry</a>`
-: `<a class="btn btn-primary" href="#contact">View contact options</a>`;
+? `<a class="btn btn-primary" href="mailto:${email}">${cta}</a>`
+: `<a class="btn btn-primary" href="#contact">${cta}</a>`;
 
 const secondary = social
 ? `<a class="btn btn-glass" href="${escapeHtml(social)}" target="_blank" rel="noopener">Visit social profile <span>↗</span></a>`
@@ -134,11 +137,13 @@ const social = safeUrl(info.socialUrl);
 const services = servicesFrom(info.services, info.category);
 const [primary, accent] = colorPair(info.brandColors, info.category);
 const profile = visualProfile(info.category || info.rawInfo);
+const preset = getWebsitePreset(profile.preferredPreset);
+const copy = getCopyAngle(profile.copyAngle);
 const locationPhrase = location ? ` in ${location}` : "";
 const offerLead = escapeHtml(services[0] || categoryRaw);
 const description = `${businessNameRaw} provides ${categoryRaw}${locationRaw ? ` in ${locationRaw}` : ""}. Explore services, contact options, and current availability through this private website concept.`;
 const title = `${businessNameRaw} | ${categoryRaw}${locationRaw ? ` in ${locationRaw}` : ""}`;
-const buttons = contactButtons(phone, email, social, website);
+const buttons = contactButtons(phone, email, social, website, profile.ctaLanguage);
 
 const schema = {
 "@context": "https://schema.org",
@@ -165,13 +170,39 @@ const jsonLd = JSON.stringify(schema).replace(/</g, "\u003c");
 
 const serviceCards = services
 .map(
-(service, index) => `<article class="service-card reveal">         <div class="card-index"><span>${String(index + 1).padStart(2, "0")}</span><span class="card-icon">${["◇", "✦", "◈", "↻", "◆", "＋"][index] ?? "✦"}</span></div>         <h3>${escapeHtml(service)}</h3>         <p>Ask about current scope, availability, pricing, and the right option for your specific needs.</p>         <a class="text-link" href="#contact">Discuss this service <span>→</span></a>       </article>`,
+(service, index) => `<article class="service-card reveal">         <div class="card-index"><span>${String(index + 1).padStart(2, "0")}</span><span class="card-icon">${["◇", "✦", "◈", "↻", "◆", "＋"][index] ?? "✦"}</span></div>         <h3>${escapeHtml(service)}</h3>         <p>${escapeHtml(copy.serviceLine)} Ask about current scope, availability, and the right option for your needs.</p>         <a class="text-link" href="#contact">${escapeHtml(profile.ctaLanguage)} <span>→</span></a>       </article>`,
 )
 .join("");
 
 const galleryCards = profile.gallery
 .map(
-(image, index) => `<figure class="gallery-card reveal">         <img src="${escapeHtml(image)}" alt="${escapeHtml(`${profile.alt}, representative image ${index + 1}`)}" loading="lazy">         <figcaption class="gallery-caption">           <strong>${["A stronger first impression", "Service with visual confidence", "Details customers can trust", "A polished customer journey", "Designed for action", "Built around the brand"][index] ?? "Visual direction"}</strong>           <span>Representative concept imagery</span>         </figcaption>       </figure>`,
+(image, index) => `<figure class="gallery-card reveal">         <img src="${escapeHtml(image)}" alt="${escapeHtml(`${profile.alt}, representative image ${index + 1}`)}" loading="lazy">         <figcaption class="gallery-caption">           <strong>${escapeHtml(copy.galleryCaptions[index] ?? "Visual direction")}</strong>           <span>Representative imagery</span>         </figcaption>       </figure>`,
+)
+.join("");
+
+const credibilityDescriptions = [
+`A ${preset.tone.toLowerCase()} first impression shaped around ${profile.sectionEmphasis[0]}.`,
+`Clear sections help visitors understand ${profile.sectionEmphasis[1]} and ask informed questions.`,
+`The contact path supports ${profile.sectionEmphasis[3]} without implying unavailable services.`,
+"Representative content is ready to be replaced with verified photography and proof.",
+];
+
+const credibilityCards = copy.credibility
+.map(
+(heading, index) => `<article class="cred-card reveal${index ? ` delay-${index}` : ""}"><span class="cred-num">${String(index + 1).padStart(2, "0")}</span><h3>${escapeHtml(heading)}</h3><p>${escapeHtml(credibilityDescriptions[index])}</p></article>`,
+)
+.join("");
+
+const processDescriptions = [
+`Start with ${profile.sectionEmphasis[0]} and the information currently available.`,
+`Ask about ${profile.sectionEmphasis[1]}, current options, and suitability.`,
+`Use the available contact route to discuss ${profile.sectionEmphasis[2]}.`,
+`Confirm availability, scope, and the next step directly with ${businessNameRaw}.`,
+];
+
+const processCards = copy.process
+.map(
+(heading, index) => `<article class="step reveal${index ? ` delay-${index}` : ""}"><span class="step-no">${String(index + 1).padStart(2, "0")}</span><h3>${escapeHtml(heading)}</h3><p>${escapeHtml(processDescriptions[index])}</p></article>`,
 )
 .join("");
 
@@ -1583,8 +1614,8 @@ footer {
   <div class="container">
     <div class="hero-copy reveal visible">
       <div class="eyebrow">${category}${location ? ` · ${location}` : ""}</div>
-      <h1 id="hero-title">A sharper online presence for <span class="accent-text">${businessName}.</span></h1>
-      <p class="lead">${escapeHtml(profile.mood)} This private concept shows how ${businessName} can present services, contact options, and customer value with more clarity and polish${locationPhrase}.</p>
+      <h1 id="hero-title">${escapeHtml(copy.heroLead)} <span class="accent-text">${businessName}.</span></h1>
+      <p class="lead">${escapeHtml(profile.mood)} ${escapeHtml(copy.valueLine)}${location ? ` Serving customers in ${location}.` : ""}</p>
       <div class="hero-actions">
         ${buttons.primary}
         ${buttons.secondary}
@@ -1596,9 +1627,9 @@ footer {
       </div>
       <div class="badges" aria-label="Business highlights">
         <span class="badge accent">${category}</span>
-        <span class="badge">Mobile-ready concept</span>
-        <span class="badge">Clear contact path</span>
-        <span class="badge accent">Premium presentation</span>
+        <span class="badge">${escapeHtml(profile.sectionEmphasis[0])}</span>
+        <span class="badge">${escapeHtml(profile.sectionEmphasis[1])}</span>
+        <span class="badge accent">${escapeHtml(preset.name)}</span>
       </div>
     </div>
   </div>
@@ -1606,20 +1637,14 @@ footer {
   <div class="premium-seal" aria-hidden="true">Private<br>Concept</div>
 
   <aside class="hero-float" aria-label="Website concept highlights">
-    <div class="hero-float-title">Built for better first impressions</div>
-    <div class="mini-stat"><strong>Clarity</strong><span>Services explained</span></div>
-    <div class="mini-stat"><strong>Trust</strong><span>Proof-ready layout</span></div>
-    <div class="mini-stat"><strong>Action</strong><span>Contact made easy</span></div>
-    <div class="mini-stat"><strong>Mobile</strong><span>Responsive flow</span></div>
+    <div class="hero-float-title">${escapeHtml(preset.headlineStyle)}</div>
+    ${profile.sectionEmphasis.map((item, index) => `<div class="mini-stat"><strong>${String(index + 1).padStart(2, "0")}</strong><span>${escapeHtml(item)}</span></div>`).join("")}
   </aside>
 </section>
 
 <section class="credibility" aria-label="Why this website concept helps">
   <div class="container cred-grid">
-    <article class="cred-card reveal"><span class="cred-num">01</span><h3>Premium first impression</h3><p>A stronger visual identity helps customers understand the business faster.</p></article>
-    <article class="cred-card reveal delay-1"><span class="cred-num">02</span><h3>Service clarity</h3><p>Clear sections make it easier to see what is offered and what to ask about.</p></article>
-    <article class="cred-card reveal delay-2"><span class="cred-num">03</span><h3>Mobile contact path</h3><p>Calls, email, social, and booking prompts stay easy to reach on smaller screens.</p></article>
-    <article class="cred-card reveal delay-3"><span class="cred-num">04</span><h3>Ready for real content</h3><p>Representative imagery can be replaced with verified business photos when available.</p></article>
+    ${credibilityCards}
   </div>
 </section>
 
@@ -1628,9 +1653,9 @@ footer {
     <div class="section-head reveal">
       <div>
         <div class="eyebrow">Services and offers</div>
-        <h2>Make every offer feel <span class="accent-text">easy to understand.</span></h2>
+        <h2>${escapeHtml(copy.serviceLine)}</h2>
       </div>
-      <p>Customers should not have to guess what is available. This concept organizes the main services into clear, premium cards with direct next steps.</p>
+      <p>${escapeHtml(preset.sectionEmphasis.join(", "))}. Ask about current options and confirm availability directly.</p>
     </div>
 
     <div class="cards-grid">
@@ -1650,15 +1675,15 @@ footer {
     </div>
 
     <div>
-      <div class="eyebrow reveal">Why this presentation works</div>
-      <h2 class="reveal">Because customers decide quickly who feels <span class="accent-text">credible.</span></h2>
-      <p class="lead reveal">A website should make the business feel active, trustworthy, easy to contact, and worth choosing. This structure gives ${businessName} a stronger presentation without inventing unsupported claims.</p>
+      <div class="eyebrow reveal">${escapeHtml(preset.visualMood)}</div>
+      <h2 class="reveal">${escapeHtml(copy.finalPrompt)}</h2>
+      <p class="lead reveal">${escapeHtml(preset.tone)} ${businessName} can use this structure to clarify ${escapeHtml(profile.sectionEmphasis.join(", "))} without inventing unsupported claims.</p>
 
       <div class="reasons">
-        <article class="reason-card reveal"><span class="card-icon">✦</span><h3>Business-specific identity</h3><p>Color, imagery, and copy can be shaped around the actual brand and niche.</p></article>
-        <article class="reason-card reveal delay-1"><span class="card-icon">↗</span><h3>Clearer conversion path</h3><p>Visitors are guided toward calling, emailing, messaging, or reviewing services.</p></article>
-        <article class="reason-card reveal"><span class="card-icon">◎</span><h3>Useful on mobile</h3><p>Important details stay readable and easy to act on across screen sizes.</p></article>
-        <article class="reason-card reveal delay-1"><span class="card-icon">◆</span><h3>Proof-ready sections</h3><p>Real testimonials, project photos, and booking links can be added when available.</p></article>
+        <article class="reason-card reveal"><span class="card-icon">✦</span><h3>${escapeHtml(profile.sectionEmphasis[0])}</h3><p>${escapeHtml(copy.credibility[0])} with wording grounded in supplied business details.</p></article>
+        <article class="reason-card reveal delay-1"><span class="card-icon">↗</span><h3>${escapeHtml(profile.sectionEmphasis[1])}</h3><p>${escapeHtml(copy.credibility[1])} while leaving current options open for confirmation.</p></article>
+        <article class="reason-card reveal"><span class="card-icon">◎</span><h3>${escapeHtml(profile.sectionEmphasis[2])}</h3><p>${escapeHtml(preset.preferredLayoutRhythm)}</p></article>
+        <article class="reason-card reveal delay-1"><span class="card-icon">◆</span><h3>${escapeHtml(profile.sectionEmphasis[3])}</h3><p>${escapeHtml(preset.ctaStyle)} Confirm availability directly.</p></article>
       </div>
     </div>
   </div>
@@ -1670,17 +1695,17 @@ footer {
       <img src="${escapeHtml(profile.hero)}" alt="${escapeHtml(profile.alt)}" loading="lazy">
       <div class="transform-copy">
         <span class="demo-label">Website concept • private review</span>
-        <h2>From scattered information to a site that <span class="accent-text">feels intentional.</span></h2>
-        <p>${businessName} can use this structure to turn existing details into a polished customer journey: what you do, why it matters, how to contact you, and what customers should do next.</p>
+        <h2>${escapeHtml(copy.transformation)}</h2>
+        <p>${businessName} can use this structure to connect ${escapeHtml(profile.sectionEmphasis.join(", "))} in one ${escapeHtml(preset.tone.toLowerCase())} customer journey.</p>
         <div class="benefit-stack">
-          <span class="benefit-pill">Clear service positioning</span>
-          <span class="benefit-pill">Stronger visual trust</span>
-          <span class="benefit-pill">Better mobile action flow</span>
+          <span class="benefit-pill">${escapeHtml(copy.credibility[0])}</span>
+          <span class="benefit-pill">${escapeHtml(copy.credibility[1])}</span>
+          <span class="benefit-pill">${escapeHtml(copy.credibility[2])}</span>
         </div>
       </div>
       <aside class="transform-note">
-        <strong>Ready to personalize.</strong>
-        <p>Replace representative imagery with real business photos, confirmed reviews, packages, and booking links.</p>
+        <strong>${escapeHtml(preset.name)} direction.</strong>
+        <p>Replace representative imagery with verified business photography. Ask about current options before publishing service details.</p>
       </aside>
     </div>
   </div>
@@ -1691,9 +1716,9 @@ footer {
     <div class="section-head reveal">
       <div>
         <div class="eyebrow">Visual showcase</div>
-        <h2>A richer view of the <span class="accent-text">brand world.</span></h2>
+        <h2>${escapeHtml(copy.galleryCaptions[0])}: a richer view of the brand world.</h2>
       </div>
-      <p>Strong visuals create context. This gallery uses niche-relevant representative imagery until verified business photos are available.</p>
+      <p>${escapeHtml(preset.visualMood)} Representative imagery should be replaced with verified business photography when ready.</p>
     </div>
 
     <div class="gallery-grid">
@@ -1706,17 +1731,14 @@ footer {
   <div class="container">
     <div class="section-head reveal">
       <div>
-        <div class="eyebrow">Simple customer journey</div>
-        <h2>Four steps from interest to <span class="accent-text">action.</span></h2>
+        <div class="eyebrow">${escapeHtml(profile.sectionEmphasis[3])}</div>
+        <h2>Four steps shaped around ${escapeHtml(copy.name)}.</h2>
       </div>
-      <p>A good website should reduce friction. This section gives customers a simple path to contact, confirm details, and move forward.</p>
+      <p>${escapeHtml(preset.ctaStyle)} Current scope and availability should always be confirmed directly.</p>
     </div>
 
     <div class="process-grid">
-      <article class="step reveal"><span class="step-no">01</span><h3>Explore the offer</h3><p>Customers quickly understand the service, product, or experience available.</p></article>
-      <article class="step reveal delay-1"><span class="step-no">02</span><h3>Ask the right questions</h3><p>They can confirm scope, availability, pricing, booking, or custom needs.</p></article>
-      <article class="step reveal delay-2"><span class="step-no">03</span><h3>Use a clear contact path</h3><p>Phone, email, website, or social links are placed where customers can act.</p></article>
-      <article class="step reveal delay-3"><span class="step-no">04</span><h3>Move with confidence</h3><p>The business feels more credible because the information is organized well.</p></article>
+      ${processCards}
     </div>
   </div>
 </section>
@@ -1793,16 +1815,16 @@ footer {
 <section class="section" id="faq">
   <div class="container faq-wrap">
     <div class="faq-intro reveal">
-      <div class="eyebrow">Frequently asked</div>
-      <h2>Useful answers before customers <span class="accent-text">reach out.</span></h2>
-      <p class="lead">Clear questions reduce hesitation and help visitors understand what to do next.</p>
+      <div class="eyebrow">Before you ${escapeHtml(profile.ctaLanguage.toLowerCase())}</div>
+      <h2>Useful answers about ${escapeHtml(profile.sectionEmphasis[0])} and current options.</h2>
+      <p class="lead">${escapeHtml(preset.safeWordingRules[0])} ${escapeHtml(preset.safeWordingRules[1])}</p>
       ${buttons.primary}
     </div>
 
     <div class="faq-list reveal">
       <div class="faq-item open">
-        <button class="faq-question" type="button" aria-expanded="true"><span>What does ${businessName} offer?</span><span>+</span></button>
-        <div class="faq-answer"><div><p>${businessName} is presented as a ${category} business${locationPhrase}. Contact the business directly to confirm current options, packages, pricing, and availability.</p></div></div>
+        <button class="faq-question" type="button" aria-expanded="true"><span>What ${escapeHtml(profile.sectionEmphasis[0])} options are available?</span><span>+</span></button>
+        <div class="faq-answer"><div><p>${businessName} is presented as a ${category} business${locationPhrase}. Ask about current options, scope, and availability directly.</p></div></div>
       </div>
 
       <div class="faq-item">
@@ -1811,8 +1833,8 @@ footer {
       </div>
 
       <div class="faq-item">
-        <button class="faq-question" type="button" aria-expanded="false"><span>Are prices listed?</span><span>+</span></button>
-        <div class="faq-answer"><div><p>No confirmed public pricing is included in this concept unless added by the business. Customers should contact ${businessName} to confirm current pricing and scope.</p></div></div>
+        <button class="faq-question" type="button" aria-expanded="false"><span>How can I confirm ${escapeHtml(profile.sectionEmphasis[1])}?</span><span>+</span></button>
+        <div class="faq-answer"><div><p>Use the available contact route to ask ${businessName} about current options, pricing, timing, and suitability. No unverified pricing is included.</p></div></div>
       </div>
 
       <div class="faq-item">
@@ -1822,7 +1844,7 @@ footer {
 
       <div class="faq-item">
         <button class="faq-question" type="button" aria-expanded="false"><span>How do customers get started?</span><span>+</span></button>
-        <div class="faq-answer"><div><p>Use the contact section to call, email, visit social media, or open the existing website if those details are available.</p></div></div>
+        <div class="faq-answer"><div><p>${escapeHtml(copy.process[0])}, then use the contact section to call, email, visit social media, or open the existing website when those details are available.</p></div></div>
       </div>
     </div>
   </div>
@@ -1831,9 +1853,9 @@ footer {
 <section class="final-cta" id="contact">
   <div class="container">
     <div class="cta-shell reveal">
-      <div class="eyebrow">Ready for a stronger presence</div>
-      <h2>Turn this concept into a website customers can <span class="accent-text">trust and use.</span></h2>
-      <p>This private concept shows how ${businessName} can present services, visuals, trust, and contact options with more polish and purpose.</p>
+      <div class="eyebrow">${escapeHtml(profile.ctaLanguage)}</div>
+      <h2>${escapeHtml(copy.finalPrompt)}</h2>
+      <p>This ${escapeHtml(preset.name)} concept shows how ${businessName} can present ${escapeHtml(profile.sectionEmphasis.join(", "))} with more clarity and purpose.</p>
       <div class="cta-actions">
         ${buttons.primary}
         ${email ? `<a class="btn btn-glass" href="mailto:${email}">Send an email</a>` : ""}
@@ -1860,7 +1882,7 @@ footer {
               <span class="brand-sub">${category}${location ? ` • ${location}` : ""}</span>
             </span>
           </a>
-          <p style="margin-top:20px">Private website concept for review. Replace representative content with verified business details before publishing as an official website.</p>
+          <p style="margin-top:20px">${escapeHtml(preset.name)} private concept for review. Replace representative content with verified business details before publishing as an official website.</p>
         </div>
 
     <div>
@@ -1886,10 +1908,10 @@ footer {
     <div>
       <span class="footer-title">Concept Notes</span>
       <div class="footer-links">
-        <span>Representative imagery only</span>
-        <span>No fake reviews or claims</span>
-        <span>Services should be confirmed</span>
-        <span>Designed for private review</span>
+        <span>${escapeHtml(preset.safeWordingRules[2])}</span>
+        <span>No fake reviews, awards, or guarantees</span>
+        <span>${escapeHtml(preset.safeWordingRules[1])}</span>
+        <span>${escapeHtml(preset.tone)}</span>
       </div>
     </div>
   </div>

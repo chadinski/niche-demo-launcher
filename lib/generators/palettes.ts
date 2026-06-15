@@ -4,17 +4,20 @@ const DEFAULT_ACCENT = "#14b8a6";
 function categoryPalette(category: string) {
 const lower = category.toLowerCase();
 
-if (/(auto|mechanic|vehicle|car|detailing)/.test(lower)) return ["#d97706", "#f59e0b"];
-if (/(restaurant|cafe|food|bakery|catering)/.test(lower)) return ["#b45309", "#f97316"];
-if (/(flor|flower|wedding|event)/.test(lower)) return ["#be185d", "#84cc16"];
-if (/(dental|clinic|medical|health|wellness)/.test(lower)) return ["#0f766e", "#38bdf8"];
-if (/(salon|barber|beauty|spa|makeup)/.test(lower)) return ["#be185d", "#f59e0b"];
-if (/(real estate|interior|architect|construction|contractor|home)/.test(lower)) return ["#92400e", "#d6a955"];
-if (/(pet|veterinary|animal)/.test(lower)) return ["#15803d", "#f97316"];
-if (/(funeral|memorial|tribute|urn)/.test(lower)) return ["#8b6f3d", "#d6b46a"];
-if (/(3d|printing|prototype|custom product|sign)/.test(lower)) return ["#7c3aed", "#06b6d4"];
-if (/(music|artist|band|violin|studio|entertainment)/.test(lower)) return ["#7c2d12", "#eab308"];
-if (/(law|legal|accounting|finance|consulting)/.test(lower)) return ["#1d4ed8", "#94a3b8"];
+if (/(auto detailing|detailing|car care)/.test(lower)) return ["#0f172a", "#38bdf8"];
+if (/(auto repair|mechanic|vehicle|car)/.test(lower)) return ["#1f2937", "#f97316"];
+if (/(restaurant|cafe|food|bakery|catering)/.test(lower)) return ["#7c2d12", "#fb923c"];
+if (/(flor|flower|wedding|event)/.test(lower)) return ["#9d174d", "#84cc16"];
+if (/(dental|clinic|medical|health)/.test(lower)) return ["#0f766e", "#38bdf8"];
+if (/(wellness|therapy|spa)/.test(lower)) return ["#52796f", "#d4a373"];
+if (/(salon|barber|beauty|makeup)/.test(lower)) return ["#9f1239", "#e8b4a2"];
+if (/(real estate|interior|architect|property)/.test(lower)) return ["#57534e", "#c08457"];
+if (/(construction|contractor|builder|roofing|plumbing|electrical)/.test(lower)) return ["#334155", "#f59e0b"];
+if (/(pet|veterinary|animal|grooming)/.test(lower)) return ["#166534", "#f59e0b"];
+if (/(funeral|memorial|tribute|urn|cremation)/.test(lower)) return ["#465649", "#b8a47a"];
+if (/(3d|printing|prototype|custom product|fabrication|sign)/.test(lower)) return ["#6d28d9", "#06b6d4"];
+if (/(music|artist|band|violin|performer|entertainment)/.test(lower)) return ["#581c87", "#f43f5e"];
+if (/(law|legal|accounting|finance|consulting|professional service)/.test(lower)) return ["#1e3a5f", "#64748b"];
 
 return [DEFAULT_PRIMARY, DEFAULT_ACCENT];
 }
