@@ -216,7 +216,7 @@ export function DemoWorkspace() {
         setHtml(generateWebsiteHTML(info));
         setOutputTab("preview");
       },
-      "Premium website concept generated",
+      "Production-ready website generated",
     );
 
   const handleGenerateMessages = () =>
@@ -346,9 +346,9 @@ export function DemoWorkspace() {
   return (
     <div className="space-y-7">
       <PageHeading
-        eyebrow="Demo workspace"
-        title="Create a new website demo"
-        description="Paste what you have, shape the facts, generate the private concept, then prepare outreach for manual approval."
+        eyebrow="Website workspace"
+        title="Create a production-ready site"
+        description="Paste what you have, shape the facts, generate the website, then prepare outreach for manual approval."
         action={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={handleSave} loading={busy === "save"}>
@@ -560,7 +560,7 @@ export function DemoWorkspace() {
             </div>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <Field label="Package price" value={info.packagePrice} onChange={(value) => updateInfo("packagePrice", value)} />
-              <Field label="Live demo URL" type="url" value={info.demoUrl} onChange={(value) => updateInfo("demoUrl", value)} placeholder="https://demo.vercel.app" />
+              <Field label="Live site URL" type="url" value={info.demoUrl} onChange={(value) => updateInfo("demoUrl", value)} placeholder="https://business-name.vercel.app" />
             </div>
           </Card>
 
@@ -592,7 +592,7 @@ export function DemoWorkspace() {
             <div className="flex flex-col justify-between gap-4 border-b border-[#e9eaf0] px-5 py-4 sm:flex-row sm:items-center sm:px-6">
               <div>
                 <SectionLabel>Website generator output</SectionLabel>
-                <h2 className="mt-1 text-lg font-extrabold tracking-[-0.035em]">Private website concept</h2>
+                <h2 className="mt-1 text-lg font-extrabold tracking-[-0.035em]">Production-ready website</h2>
               </div>
               <div className="flex rounded-xl bg-[#f1f1f5] p-1">
                 <TabButton active={outputTab === "preview"} onClick={() => setOutputTab("preview")}>
@@ -632,7 +632,7 @@ export function DemoWorkspace() {
                 )}
                 <div className="grid gap-3 border-t border-[#e9eaf0] p-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end sm:p-5">
                   <div>
-                    <label className="field-label" htmlFor="demo-url-output">Live demo URL</label>
+                    <label className="field-label" htmlFor="demo-url-output">Live site URL</label>
                     <input
                       id="demo-url-output"
                       type="url"
@@ -665,7 +665,7 @@ export function DemoWorkspace() {
                   </div>
                   <h3 className="mt-5 text-lg font-extrabold tracking-[-0.03em]">Your preview will appear here</h3>
                   <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#7a8194]">
-                    Add the business details, then generate a complete single-file website with private demo metadata.
+                    Add the business details, then generate a complete single-file website with production-minded metadata.
                   </p>
                   <Button className="mt-5" onClick={handleGenerateWebsite} loading={busy === "website"}>
                     <Sparkles className="size-4" />
@@ -747,7 +747,7 @@ export function DemoWorkspace() {
                   </Button>
                   <Button variant="outline" onClick={() => copyText(info.demoUrl, "Demo link")}>
                     <ExternalLink className="size-4" />
-                    Copy Demo Link
+                    Copy Site Link
                   </Button>
                   <Button variant="outline" onClick={openWhatsApp}>
                     <MessageCircle className="size-4" />
@@ -802,7 +802,7 @@ export function DemoWorkspace() {
       <ConfirmModal
         open={confirmSent}
         title="Mark this outreach as sent?"
-        description="This only updates the prospect status. Niche Demo Launcher does not send messages automatically."
+        description="This only updates the prospect status. Seraphim does not send messages automatically."
         confirmLabel="Mark as sent"
         onCancel={() => setConfirmSent(false)}
         onConfirm={markSent}

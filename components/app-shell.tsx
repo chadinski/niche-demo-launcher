@@ -21,7 +21,7 @@ import { buttonClass } from "@/components/ui";
 
 const navigation = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/create", label: "Create Demo", icon: Sparkles },
+  { href: "/create", label: "Create Site", icon: Sparkles },
   { href: "/prospects", label: "Prospects", icon: Users },
   { href: "/templates", label: "Templates", icon: FileStack },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="grid size-9 place-items-center rounded-xl bg-brand-600 text-white">
               <BriefcaseBusiness className="size-4" />
             </span>
-            Niche Demo Launcher
+            Seraphim
           </Link>
           <button
             type="button"
@@ -103,12 +103,12 @@ function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
   return (
     <>
       <div className="flex h-20 items-center gap-3 border-b border-[#ececf2] px-5">
-        <span className="grid size-10 place-items-center rounded-2xl bg-brand-600 text-white shadow-[0_10px_24px_rgba(77,124,15,.2)]">
+        <span className="grid size-10 place-items-center rounded-2xl bg-brand-600 text-white shadow-[0_10px_24px_rgba(124,58,237,.2)]">
           <BriefcaseBusiness className="size-[18px]" />
         </span>
         <div className="min-w-0">
           <div className="truncate text-[0.94rem] font-extrabold tracking-[-0.035em]">
-            Niche Demo Launcher
+            Seraphim
           </div>
           <div className="text-[0.68rem] font-semibold tracking-[0.12em] text-[#969bad] uppercase">
             Private command center
@@ -119,7 +119,7 @@ function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
       <div className="px-4 pt-5">
         <Link href="/create" className={buttonClass("primary", "w-full min-h-11")} onClick={onNavigate}>
           <Plus className="size-4" />
-          Create New Demo
+          Create New Site
         </Link>
       </div>
 
@@ -159,7 +159,7 @@ function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
           Ready to launch
         </div>
         <p className="mt-2 text-xs leading-5 text-[#70778b]">
-          Paste business info, generate the concept, then approve outreach manually.
+          Paste business info, generate the site, then approve outreach manually.
         </p>
       </div>
 

@@ -39,10 +39,10 @@ export function LoginForm() {
               <BriefcaseBusiness className="size-5" />
             </span>
             <h1 className="mt-24 max-w-sm text-5xl leading-[1.02] font-extrabold tracking-[-0.06em]">
-              Your private demo and outreach command center.
+              Your private website and outreach command center.
             </h1>
             <p className="mt-5 max-w-sm text-sm leading-7 text-white/58">
-              Turn copied business information into a polished concept, a personalized message, and a tracked prospect.
+              Turn copied business information into a polished website, a personalized message, and a tracked prospect.
             </p>
           </div>
           <div className="absolute right-10 bottom-10 left-10 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">
@@ -51,7 +51,7 @@ export function LoginForm() {
               Manual approval by design
             </div>
             <p className="mt-2 text-xs leading-5 text-white/48">
-              The launcher prepares drafts and deep links. It never bulk-sends outreach.
+              Seraphim prepares drafts and deep links. It never bulk-sends outreach.
             </p>
           </div>
         </div>

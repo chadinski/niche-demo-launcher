@@ -1,10 +1,10 @@
-# Niche Demo Launcher
+# Seraphim
 
-Private internal command center for Niche Technologies. Paste business information, generate a premium single-file website concept, prepare personalized outreach, add the deployed demo URL, and track the prospect.
+Private internal command center for Niche Technologies. Paste business information, generate a premium single-file website, prepare personalized outreach, add the deployed live URL, and track the prospect.
 
 ## Core Workflow
 
-1. Paste messy business information into **Create Demo**.
+1. Paste messy business information into **Create Site**.
    You can also import a business screenshot or photo. Browser-based OCR extracts the text, populates the profile, and suggests dominant brand colors.
 2. Parse and review the extracted facts.
 3. Generate a private `noindex` single-file `index.html`.
@@ -35,7 +35,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-When Supabase variables are blank, the app runs in local demo mode using browser storage and bundled mock prospects.
+When Supabase variables are blank, the app runs in local mode using browser storage and bundled mock prospects.
 
 ## Supabase Setup
 

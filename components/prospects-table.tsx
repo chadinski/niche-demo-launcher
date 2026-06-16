@@ -54,7 +54,7 @@ export function ProspectsTable() {
       <PageHeading
         eyebrow="Prospect CRM"
         title="Prospects"
-        description="Track generated demos, outreach status, follow-ups, replies, and client outcomes in one place."
+        description="Track generated websites, outreach status, follow-ups, replies, and client outcomes in one place."
         action={
           <Link href="/create" className={buttonClass("primary", "min-h-11 px-4")}>
             <Plus className="size-4" />
@@ -102,7 +102,7 @@ export function ProspectsTable() {
                     <th className="px-5 py-3.5">Business</th>
                     <th className="px-5 py-3.5">Contact</th>
                     <th className="px-5 py-3.5">Status</th>
-                    <th className="px-5 py-3.5">Demo</th>
+                    <th className="px-5 py-3.5">Site</th>
                     <th className="px-5 py-3.5">Follow-up</th>
                     <th className="px-5 py-3.5" aria-label="Actions" />
                   </tr>
@@ -178,7 +178,7 @@ export function ProspectsTable() {
             action={
               <Link href="/create" className={buttonClass("primary")}>
                 <Plus className="size-4" />
-                Create Demo
+                Create Site
               </Link>
             }
           />

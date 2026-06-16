@@ -115,11 +115,11 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
       <PageHeading
         eyebrow="Sales workspace"
         title="Good morning, Chad."
-        description="Your private command center for turning business information into polished demos and respectful, personalized outreach."
+        description="Your private command center for turning business information into premium websites and respectful, personalized outreach."
         action={
           <Link href="/create" className={buttonClass("primary", "min-h-11 px-4")}>
             <Plus className="size-4" />
-            Create New Demo
+            Create New Site
           </Link>
         }
       />
@@ -181,7 +181,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
             <EmptyState
               icon={<Users className="size-5" />}
               title="No prospects yet"
-              description="Create a demo to add your first prospect to the pipeline."
+              description="Create a site to add your first prospect to the pipeline."
             />
           )}
         </Card>
@@ -226,7 +226,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
               Go from copied info to outreach-ready in minutes.
             </h2>
             <p className="mt-3 max-w-sm text-sm leading-6 text-white/58">
-              Generate the concept, review the copy, attach the live URL, and open the right draft.
+              Generate the site, review the copy, attach the live URL, and open the right draft.
             </p>
             <Link href="/create" className={buttonClass("outline", "mt-6 border-white/15 bg-white text-ink-950")}>
               Launch workspace

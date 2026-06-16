@@ -3,13 +3,13 @@
 @theme {
   --color-ink-950: #151a2d;
   --color-ink-800: #27314d;
-  --color-brand-50: #f7fee7;
-  --color-brand-100: #ecfccb;
-  --color-brand-200: #d9f99d;
-  --color-brand-300: #bef264;
-  --color-brand-500: #84cc16;
-  --color-brand-600: #4d7c0f;
-  --color-brand-700: #3f6212;
+  --color-brand-50: #faf5ff;
+  --color-brand-100: #f3e8ff;
+  --color-brand-200: #e9d5ff;
+  --color-brand-300: #d8b4fe;
+  --color-brand-500: #a855f7;
+  --color-brand-600: #8b5cf6;
+  --color-brand-700: #6d28d9;
   --color-mint-50: #f7fee7;
   --color-mint-500: #84cc16;
   --color-warm-50: #faf9f6;
@@ -18,13 +18,13 @@
 
 :root {
   color-scheme: light;
-  --app-background: #f8faf5;
+  --app-background: #fbf8ff;
   --panel: #ffffff;
   --panel-muted: #fafafd;
   --border: #e8e9f0;
   --muted: #70778b;
   --shadow-card: 0 1px 2px rgba(21, 26, 45, 0.03), 0 12px 34px rgba(21, 26, 45, 0.06);
-  --shadow-float: 0 22px 60px rgba(63, 98, 18, 0.14);
+  --shadow-float: 0 22px 60px rgba(109, 40, 217, 0.14);
 }
 
 * {
@@ -40,7 +40,7 @@ body {
   margin: 0;
   color: #151a2d;
   background:
-    radial-gradient(circle at 80% -10%, rgba(132, 204, 22, 0.13), transparent 30rem),
+    radial-gradient(circle at 80% -10%, rgba(168, 85, 247, 0.14), transparent 30rem),
     var(--app-background);
   font-family: var(--font-sans);
   text-rendering: optimizeLegibility;
@@ -65,13 +65,13 @@ a {
 }
 
 :focus-visible {
-  outline: 3px solid rgba(132, 204, 22, 0.42);
+  outline: 3px solid rgba(168, 85, 247, 0.42);
   outline-offset: 2px;
 }
 
 ::selection {
   color: #ffffff;
-  background: #4d7c0f;
+  background: #7c3aed;
 }
 
 .panel {
@@ -113,9 +113,9 @@ a {
 }
 
 .field-input:focus {
-  border-color: #84cc16;
+  border-color: #a855f7;
   outline: none;
-  box-shadow: 0 0 0 4px rgba(132, 204, 22, 0.14);
+  box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.14);
 }
 
 .field-input:disabled {

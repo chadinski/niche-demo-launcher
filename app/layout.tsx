@@ -6,11 +6,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Niche Demo Launcher",
-    template: "%s | Niche Demo Launcher",
+    default: "Seraphim",
+    template: "%s | Seraphim",
   },
   description:
-    "Private demo generation and prospect outreach command center for Niche Technologies.",
+    "Private website generation and prospect outreach command center for Niche Technologies.",
   robots: {
     index: false,
     follow: false,

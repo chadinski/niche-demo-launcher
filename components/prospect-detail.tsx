@@ -304,7 +304,7 @@ export function ProspectDetail() {
             />
           )}
           <div className="border-t border-[#e9eaf0] p-5">
-            <label className="field-label" htmlFor="detail-demo-url">Live demo URL</label>
+            <label className="field-label" htmlFor="detail-demo-url">Live site URL</label>
             <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 id="detail-demo-url"
@@ -314,7 +314,7 @@ export function ProspectDetail() {
                 onChange={(event) => updateProspect(prospect.id, { demo_url: event.target.value })}
                 placeholder="https://project.vercel.app"
               />
-              <Button variant="outline" onClick={() => copyText(prospect.demo_url, "Demo link")}>
+              <Button variant="outline" onClick={() => copyText(prospect.demo_url, "Site link")}>
                 <ExternalLink className="size-4" /> Copy Link
               </Button>
             </div>
