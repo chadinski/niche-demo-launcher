@@ -18,10 +18,14 @@ import { formatDate } from "@/lib/utils";
 
 const statusFilters: Array<{ value: "all" | OutreachStatus; label: string }> = [
   { value: "all", label: "All statuses" },
-  { value: "not_sent", label: "Not sent" },
-  { value: "sent", label: "Sent" },
+  { value: "new", label: "New" },
+  { value: "profile_extracted", label: "Profile extracted" },
+  { value: "demo_generated", label: "Demo generated" },
+  { value: "demo_deployed", label: "Demo deployed" },
+  { value: "message_ready", label: "Message ready" },
+  { value: "contacted", label: "Contacted" },
+  { value: "follow_up_due", label: "Follow-up due" },
   { value: "replied", label: "Replied" },
-  { value: "follow_up", label: "Follow-up" },
   { value: "won", label: "Won" },
   { value: "lost", label: "Lost" },
   { value: "opt_out", label: "Opt-out" },
@@ -100,7 +104,7 @@ export function ProspectsTable() {
                 <thead>
                   <tr className="border-b border-[#ececf2] bg-[#fafafd] text-[0.67rem] font-bold tracking-[0.1em] text-[#969bac] uppercase">
                     <th className="px-5 py-3.5">Business</th>
-                    <th className="px-5 py-3.5">Contact</th>
+                    <th className="px-5 py-3.5">Score</th>
                     <th className="px-5 py-3.5">Status</th>
                     <th className="px-5 py-3.5">Site</th>
                     <th className="px-5 py-3.5">Follow-up</th>
@@ -117,12 +121,8 @@ export function ProspectsTable() {
                         </div>
                       </td>
                       <td className="px-5 py-4">
-                        <div className="max-w-48 truncate text-xs font-semibold text-[#5f6679]">
-                          {prospect.phone || prospect.email || "No contact added"}
-                        </div>
-                        {prospect.phone && prospect.email ? (
-                          <div className="mt-1 max-w-48 truncate text-[0.7rem] text-[#969bac]">{prospect.email}</div>
-                        ) : null}
+                        <div className="text-sm font-extrabold text-ink-950">{prospect.lead_score || 0}</div>
+                        <div className="mt-1 text-xs font-semibold text-[#858b9d]">{prospect.lead_temperature}</div>
                       </td>
                       <td className="px-5 py-4">
                         <StatusBadge status={prospect.outreach_status} />

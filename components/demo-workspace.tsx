@@ -12,13 +12,16 @@ import {
   FileImage,
   Globe2,
   ImageUp,
+  ListChecks,
   Mail,
   MessageCircle,
   MousePointerClick,
+  Rocket,
   Save,
   ScanText,
   Send,
   Sparkles,
+  Target,
   WandSparkles,
   X,
 } from "lucide-react";
@@ -32,6 +35,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { deployGeneratedWebsite } from "@/app/deployment-actions";
 import { PageHeading } from "@/components/page-heading";
 import { Button, Card, SectionLabel } from "@/components/ui";
 import { useProspects } from "@/components/prospect-provider";
@@ -48,6 +52,10 @@ import {
   createHeaderCrop,
   extractImageColors,
 } from "@/lib/image-extraction";
+import { generateBusinessIntelligence } from "@/lib/automation/business-intelligence";
+import { nextFollowUpDate, statusAfterMilestone } from "@/lib/automation/follow-ups";
+import { scoreLead } from "@/lib/automation/lead-scoring";
+import { auditWebsite } from "@/lib/automation/quality-audit";
 import type {
   BusinessInfo,
   MessageTone,
@@ -69,14 +77,16 @@ const messageTabs: Array<{ key: keyof SalesMessages; label: string }> = [
   { key: "whatsapp", label: "WhatsApp" },
   { key: "email", label: "Email" },
   { key: "dm", label: "DM" },
-  { key: "followUp", label: "Follow-up" },
-  { key: "finalFollowUp", label: "Final follow-up" },
+  { key: "facebook", label: "Facebook" },
+  { key: "followUp", label: "Follow-up 1" },
+  { key: "followUp2", label: "Follow-up 2" },
+  { key: "finalFollowUp", label: "Final check-in" },
 ];
 
-type BusyAction = "image" | "parse" | "website" | "message" | "both" | "save" | null;
+type BusyAction = "image" | "parse" | "website" | "message" | "both" | "save" | "deploy" | null;
 
 export function DemoWorkspace() {
-  const { saveProspect, setStatus } = useProspects();
+  const { saveProspect, setStatus, updateProspect } = useProspects();
   const [info, setInfo] = useState<BusinessInfo>(() => emptyBusinessInfo());
   const [html, setHtml] = useState("");
   const [messages, setMessages] = useState<SalesMessages | null>(null);
@@ -93,6 +103,15 @@ export function DemoWorkspace() {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const names = useMemo(() => generatedNames(info), [info]);
+  const leadScore = useMemo(() => scoreLead(info), [info]);
+  const intelligence = useMemo(
+    () => generateBusinessIntelligence(info, leadScore),
+    [info, leadScore],
+  );
+  const qualityAudit = useMemo(
+    () => (html ? auditWebsite(html, info) : null),
+    [html, info],
+  );
 
   const updateInfo = useCallback(
     (key: keyof BusinessInfo, value: string) => {
@@ -248,6 +267,7 @@ export function DemoWorkspace() {
       email: info.email,
       website_url: info.websiteUrl,
       social_url: info.socialUrl,
+      source: imageFile ? `Image import: ${imageFile.name}` : info.rawInfo ? "Pasted business info" : "Manual entry",
       pasted_raw_info: info.rawInfo,
       extracted_summary: [
         info.businessName,
@@ -258,14 +278,34 @@ export function DemoWorkspace() {
         .filter(Boolean)
         .join(". "),
       package_price: info.packagePrice,
+      deal_value: info.packagePrice,
+      lead_score: leadScore.score,
+      lead_temperature: leadScore.temperature,
+      lead_score_explanation: leadScore.explanation.join(" "),
+      recommended_sales_angle: leadScore.recommendedAngle,
+      business_intelligence: intelligence,
+      website_quality_audit: qualityAudit,
       generated_website_html: html,
       demo_url: info.demoUrl,
       whatsapp_message: messages?.whatsapp ?? "",
       email_subject: messages?.emailSubject ?? "",
       email_message: messages?.email ?? "",
       dm_message: messages?.dm ?? "",
-      outreach_status: "not_sent",
+      facebook_message: messages?.facebook ?? "",
+      follow_up_1_message: messages?.followUp ?? "",
+      follow_up_2_message: messages?.followUp2 ?? "",
+      final_check_in_message: messages?.finalFollowUp ?? "",
+      outreach_status: statusAfterMilestone({
+        generated_website_html: html,
+        demo_url: info.demoUrl,
+        whatsapp_message: messages?.whatsapp ?? "",
+        email_message: messages?.email ?? "",
+        dm_message: messages?.dm ?? "",
+        extracted_summary: info.businessName || info.category || info.location,
+        outreach_status: "new",
+      } as Prospect),
       notes: info.notes,
+      follow_up_count: 0,
       created_at: now,
       updated_at: now,
       last_contacted_at: null,
@@ -330,15 +370,54 @@ export function DemoWorkspace() {
   };
 
   const markSent = () => {
+    const nextDate = nextFollowUpDate(0);
     if (!prospectId) {
       const prospect = buildProspect();
-      saveProspect({ ...prospect, outreach_status: "sent", last_contacted_at: new Date().toISOString() });
+      saveProspect({
+        ...prospect,
+        outreach_status: "contacted",
+        last_contacted_at: new Date().toISOString(),
+        next_follow_up_at: nextDate,
+        follow_up_count: 1,
+      });
       setProspectId(prospect.id);
     } else {
-      setStatus(prospectId, "sent");
+      setStatus(prospectId, "contacted");
+      updateProspect(prospectId, {
+        next_follow_up_at: nextDate,
+        follow_up_count: 1,
+      });
     }
     setConfirmSent(false);
     toast.success("Outreach marked as sent");
+  };
+
+  const handleDeploy = async () => {
+    if (!html) {
+      toast.error("Generate the website before deploying");
+      return;
+    }
+    if (qualityAudit && !qualityAudit.passed) {
+      toast.warning("Quality audit has warnings. Review them before sending this live.");
+    }
+    setBusy("deploy");
+    const result = await deployGeneratedWebsite({
+      businessName: info.businessName || names.project,
+      html,
+    });
+    setBusy(null);
+
+    if (result.ok && result.url) {
+      updateInfo("demoUrl", result.url);
+      toast.success("Website deployed and live URL added");
+      return;
+    }
+
+    if (result.status === "setup_required") {
+      toast.info(`Deployment setup required: ${(result.missing ?? []).join(", ")}`);
+    } else {
+      toast.error(result.message);
+    }
   };
 
   const activeMessage = messages?.[messageTab] ?? "";
@@ -385,6 +464,52 @@ export function DemoWorkspace() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+        <Card className="p-5">
+          <div className="flex items-center justify-between gap-3">
+            <SectionLabel>Lead score</SectionLabel>
+            <span
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-extrabold",
+                leadScore.temperature === "Hot"
+                  ? "bg-rose-50 text-rose-700"
+                  : leadScore.temperature === "Warm"
+                    ? "bg-amber-50 text-amber-700"
+                    : "bg-slate-100 text-slate-600",
+              )}
+            >
+              {leadScore.temperature}
+            </span>
+          </div>
+          <div className="mt-4 flex items-end gap-3">
+            <div className="text-5xl font-black tracking-[-0.08em] text-ink-950">{leadScore.score}</div>
+            <div className="pb-2 text-xs font-bold text-[#858b9d]">/ 100</div>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#eeeef4]">
+            <div className="h-full rounded-full bg-brand-600" style={{ width: `${leadScore.score}%` }} />
+          </div>
+          <p className="mt-4 text-xs leading-5 text-[#747b8f]">{leadScore.recommendedAngle}</p>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-start gap-3">
+            <span className="grid size-9 place-items-center rounded-xl bg-brand-50 text-brand-600">
+              <Target className="size-4" />
+            </span>
+            <div>
+              <h2 className="font-extrabold tracking-[-0.025em]">Business intelligence</h2>
+              <p className="mt-1 text-xs leading-5 text-[#858b9d]">{intelligence.summary}</p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-4">
+            <Insight label="Best CTA" value={intelligence.bestCta} />
+            <Insight label="Suggested package" value={intelligence.suggestedPackage} />
+            <Insight label="Price range" value={intelligence.suggestedPriceRange} />
+            <Insight label="Likely weakness" value={intelligence.onlineWeakness} />
+          </div>
+        </Card>
       </div>
 
       <div className="grid items-start gap-5 2xl:grid-cols-[minmax(380px,.75fr)_minmax(0,1.25fr)]">
@@ -656,6 +781,43 @@ export function DemoWorkspace() {
                   <OutputName label="Vercel project" value={names.project} />
                   <OutputName label="File" value={names.file} />
                 </div>
+                <div className="border-t border-[#eff0f4] p-5">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <ListChecks className="size-4 text-brand-600" />
+                        <h3 className="text-sm font-extrabold">Website quality audit</h3>
+                      </div>
+                      <p className="mt-1 text-xs text-[#858b9d]">
+                        {qualityAudit
+                          ? `${qualityAudit.score}/100 ${qualityAudit.passed ? "ready with review" : "needs review"}`
+                          : "Generate a website to run the checklist."}
+                      </p>
+                    </div>
+                    <Button onClick={handleDeploy} loading={busy === "deploy"} disabled={!html}>
+                      <Rocket className="size-4" />
+                      Deploy Website
+                    </Button>
+                  </div>
+                  {qualityAudit ? (
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      {qualityAudit.items.map((check) => (
+                        <div
+                          key={check.label}
+                          className={cn(
+                            "rounded-xl border p-3 text-xs",
+                            check.passed
+                              ? "border-emerald-100 bg-emerald-50 text-emerald-800"
+                              : "border-amber-200 bg-amber-50 text-amber-800",
+                          )}
+                        >
+                          <div className="font-bold">{check.passed ? "Pass" : "Review"}: {check.label}</div>
+                          <p className="mt-1 leading-5 opacity-80">{check.detail}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </>
             ) : (
               <div className="grid min-h-[520px] place-items-center px-6 py-14 text-center">
@@ -745,7 +907,7 @@ export function DemoWorkspace() {
                     <Copy className="size-4" />
                     Copy Message
                   </Button>
-                  <Button variant="outline" onClick={() => copyText(info.demoUrl, "Demo link")}>
+                  <Button variant="outline" onClick={() => copyText(info.demoUrl, "Site link")}>
                     <ExternalLink className="size-4" />
                     Copy Site Link
                   </Button>
@@ -829,6 +991,15 @@ function SectionHeader({
         <h2 className="font-extrabold tracking-[-0.025em]">{title}</h2>
         <p className="mt-1 text-xs text-[#858b9d]">{description}</p>
       </div>
+    </div>
+  );
+}
+
+function Insight({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-[#ececf2] bg-[#fafafd] p-3">
+      <div className="text-[0.62rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">{label}</div>
+      <div className="mt-2 text-xs leading-5 font-semibold text-[#555d70]">{value}</div>
     </div>
   );
 }

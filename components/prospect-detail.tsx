@@ -25,11 +25,16 @@ import {
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { deployGeneratedWebsite } from "@/app/deployment-actions";
 import { useProspects } from "@/components/prospect-provider";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, Card, EmptyState, buttonClass } from "@/components/ui";
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
 import { generateSalesMessages, generateWebsiteHTML } from "@/lib/generators";
+import { generateBusinessIntelligence } from "@/lib/automation/business-intelligence";
+import { nextFollowUpDate } from "@/lib/automation/follow-ups";
+import { scoreLead } from "@/lib/automation/lead-scoring";
+import { auditWebsite } from "@/lib/automation/quality-audit";
 import type { BusinessInfo, OutreachStatus, Prospect } from "@/lib/types";
 import { cn, formatDate, phoneDigits } from "@/lib/utils";
 
@@ -42,6 +47,7 @@ export function ProspectDetail() {
   const prospect = getProspect(params.id);
   const [tab, setTab] = useState<DetailTab>("profile");
   const [confirmStatus, setConfirmStatus] = useState<OutreachStatus | null>(null);
+  const [deploying, setDeploying] = useState(false);
 
   if (!prospect && !hydrated) {
     return <div className="panel min-h-96 animate-pulse bg-white" />;
@@ -62,6 +68,11 @@ export function ProspectDetail() {
 
   const info = prospectToBusinessInfo(prospect);
   const generatedMessages = generateSalesMessages(info, "Friendly", DEFAULT_SETTINGS);
+  const leadScore = scoreLead(info);
+  const intelligence = prospect.business_intelligence ?? generateBusinessIntelligence(info, leadScore);
+  const qualityAudit = prospect.website_quality_audit ?? (
+    prospect.generated_website_html ? auditWebsite(prospect.generated_website_html, info) : null
+  );
 
   const copyText = async (value: string, label: string) => {
     if (!value) {
@@ -88,7 +99,12 @@ export function ProspectDetail() {
   };
 
   const regenerateWebsite = () => {
-    updateProspect(prospect.id, { generated_website_html: generateWebsiteHTML(info) });
+    const nextHtml = generateWebsiteHTML(info);
+    updateProspect(prospect.id, {
+      generated_website_html: nextHtml,
+      website_quality_audit: auditWebsite(nextHtml, info),
+      outreach_status: "demo_generated",
+    });
     toast.success("Website regenerated");
   };
 
@@ -98,6 +114,11 @@ export function ProspectDetail() {
       email_subject: generatedMessages.emailSubject,
       email_message: generatedMessages.email,
       dm_message: generatedMessages.dm,
+      facebook_message: generatedMessages.facebook,
+      follow_up_1_message: generatedMessages.followUp,
+      follow_up_2_message: generatedMessages.followUp2,
+      final_check_in_message: generatedMessages.finalFollowUp,
+      outreach_status: "message_ready",
     });
     toast.success("Messages regenerated");
   };
@@ -124,9 +145,46 @@ export function ProspectDetail() {
   };
 
   const applyStatus = (status: OutreachStatus) => {
-    setStatus(prospect.id, status);
+    if (status === "contacted") {
+      updateProspect(prospect.id, {
+        outreach_status: status,
+        last_contacted_at: new Date().toISOString(),
+        next_follow_up_at: nextFollowUpDate(prospect.follow_up_count || 0),
+        follow_up_count: (prospect.follow_up_count || 0) + 1,
+      });
+    } else {
+      setStatus(prospect.id, status);
+    }
     setConfirmStatus(null);
-    toast.success(`Prospect marked ${status.replace("_", " ")}`);
+    toast.success(`Prospect marked ${status.replaceAll("_", " ")}`);
+  };
+
+  const deployWebsite = async () => {
+    if (!prospect.generated_website_html) {
+      toast.error("Generate the website before deploying");
+      return;
+    }
+    setDeploying(true);
+    const result = await deployGeneratedWebsite({
+      businessName: prospect.business_name,
+      html: prospect.generated_website_html,
+    });
+    setDeploying(false);
+
+    if (result.ok && result.url) {
+      updateProspect(prospect.id, {
+        demo_url: result.url,
+        outreach_status: "demo_deployed",
+      });
+      toast.success("Website deployed and URL saved");
+      return;
+    }
+
+    if (result.status === "setup_required") {
+      toast.info(`Deployment setup required: ${(result.missing ?? []).join(", ")}`);
+    } else {
+      toast.error(result.message);
+    }
   };
 
   return (
@@ -163,7 +221,7 @@ export function ProspectDetail() {
               <MessageSquareText className="size-4" />
               Regenerate Message
             </Button>
-            <Button onClick={() => setConfirmStatus("sent")}>
+            <Button onClick={() => setConfirmStatus("contacted")}>
               <Send className="size-4" />
               Mark Sent
             </Button>
@@ -207,7 +265,26 @@ export function ProspectDetail() {
                 <Detail label="Package price" value={prospect.package_price} />
                 <Detail label="Existing website" value={prospect.website_url} link />
                 <Detail label="Social profile" value={prospect.social_url} link />
+                <Detail label="Source" value={prospect.source} />
+                <Detail label="Deal value" value={prospect.deal_value || prospect.package_price} />
               </dl>
+            </Card>
+            <Card className="p-5 sm:p-6">
+              <CardHeading title="Lead intelligence" icon={<Trophy className="size-4" />} />
+              <div className="mt-5 grid gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
+                <div className="rounded-2xl border border-brand-100 bg-brand-50 p-4">
+                  <div className="text-[0.65rem] font-bold tracking-[0.12em] text-brand-700 uppercase">Lead score</div>
+                  <div className="mt-3 text-5xl font-black tracking-[-0.08em] text-ink-950">{prospect.lead_score || leadScore.score}</div>
+                  <div className="mt-1 text-sm font-bold text-brand-700">{prospect.lead_temperature || leadScore.temperature}</div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Detail label="Recommended angle" value={prospect.recommended_sales_angle || leadScore.recommendedAngle} />
+                  <Detail label="Best CTA" value={intelligence.bestCta} />
+                  <Detail label="Suggested package" value={intelligence.suggestedPackage} />
+                  <Detail label="Suggested price range" value={intelligence.suggestedPriceRange} />
+                </div>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-[#62697c]">{intelligence.websiteStrategy}</p>
             </Card>
             <Card className="p-5 sm:p-6">
               <CardHeading title="Original pasted information" icon={<Clipboard className="size-4" />} />
@@ -226,8 +303,12 @@ export function ProspectDetail() {
             <Card className="p-5">
               <CardHeading title="Pipeline controls" icon={<Trophy className="size-4" />} />
               <div className="mt-5 grid grid-cols-2 gap-2">
+                <Button variant="outline" onClick={() => applyStatus("demo_generated")}>Demo Generated</Button>
+                <Button variant="outline" onClick={() => applyStatus("demo_deployed")}>Demo Deployed</Button>
+                <Button variant="outline" onClick={() => applyStatus("message_ready")}>Message Ready</Button>
+                <Button variant="outline" onClick={() => applyStatus("contacted")}>Contacted</Button>
                 <Button variant="outline" onClick={() => applyStatus("replied")}>Mark Replied</Button>
-                <Button variant="outline" onClick={() => applyStatus("follow_up")}>Follow-up</Button>
+                <Button variant="outline" onClick={() => applyStatus("follow_up_due")}>Follow-up Due</Button>
                 <Button variant="outline" onClick={() => applyStatus("won")}>Mark Won</Button>
                 <Button variant="danger" onClick={() => setConfirmStatus("lost")}>Mark Lost</Button>
                 <Button variant="ghost" className="col-span-2" onClick={() => setConfirmStatus("opt_out")}>
@@ -251,6 +332,7 @@ export function ProspectDetail() {
                 }
               />
               <p className="mt-2 text-xs text-[#8b91a2]">Current: {formatDate(prospect.next_follow_up_at)}</p>
+              <p className="mt-1 text-xs text-[#8b91a2]">Touches recorded: {prospect.follow_up_count || 0}</p>
             </Card>
             <Card className="p-5">
               <CardHeading title="Internal notes" icon={<Save className="size-4" />} />
@@ -278,6 +360,9 @@ export function ProspectDetail() {
               </Button>
               <Button variant="secondary" onClick={downloadHtml}>
                 <Download className="size-4" /> Download index.html
+              </Button>
+              <Button onClick={deployWebsite} loading={deploying}>
+                <Globe2 className="size-4" /> Deploy
               </Button>
             </div>
           </div>
@@ -319,6 +404,30 @@ export function ProspectDetail() {
               </Button>
             </div>
           </div>
+          {qualityAudit ? (
+            <div className="border-t border-[#e9eaf0] p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-extrabold">Quality audit</h3>
+                  <p className="mt-1 text-xs text-[#858b9d]">{qualityAudit.score}/100 checklist score</p>
+                </div>
+                <span className={cn(
+                  "rounded-full px-3 py-1 text-xs font-bold",
+                  qualityAudit.passed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
+                )}>
+                  {qualityAudit.passed ? "Ready" : "Review"}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {qualityAudit.items.map((check) => (
+                  <div key={check.label} className="rounded-xl border border-[#ececf2] bg-[#fafafd] p-3 text-xs">
+                    <div className="font-bold">{check.passed ? "Pass" : "Review"}: {check.label}</div>
+                    <p className="mt-1 leading-5 text-[#747b8f]">{check.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </Card>
       ) : null}
 
@@ -361,14 +470,56 @@ export function ProspectDetail() {
               </Button>
             }
           />
+          <MessageCard
+            title="Facebook message"
+            value={prospect.facebook_message}
+            onChange={(value) => updateProspect(prospect.id, { facebook_message: value })}
+            actions={
+              <Button variant="outline" onClick={() => copyText(prospect.facebook_message, "Facebook message")}>
+                <Copy className="size-4" /> Copy Facebook
+              </Button>
+            }
+          />
+          <MessageCard
+            title="Follow-up 1"
+            value={prospect.follow_up_1_message}
+            onChange={(value) => updateProspect(prospect.id, { follow_up_1_message: value })}
+            actions={
+              <Button variant="outline" onClick={() => copyText(prospect.follow_up_1_message, "Follow-up 1")}>
+                <Copy className="size-4" /> Copy Follow-up
+              </Button>
+            }
+          />
+          <MessageCard
+            title="Follow-up 2"
+            value={prospect.follow_up_2_message}
+            onChange={(value) => updateProspect(prospect.id, { follow_up_2_message: value })}
+            actions={
+              <Button variant="outline" onClick={() => copyText(prospect.follow_up_2_message, "Follow-up 2")}>
+                <Copy className="size-4" /> Copy Follow-up 2
+              </Button>
+            }
+          />
+          <MessageCard
+            title="Final check-in"
+            value={prospect.final_check_in_message}
+            onChange={(value) => updateProspect(prospect.id, { final_check_in_message: value })}
+            actions={
+              <Button variant="outline" onClick={() => copyText(prospect.final_check_in_message, "Final check-in")}>
+                <Copy className="size-4" /> Copy Final
+              </Button>
+            }
+          />
           <Card className="p-5 sm:p-6">
             <CardHeading title="Outreach actions" icon={<Send className="size-4" />} />
             <p className="mt-4 text-sm leading-6 text-[#70778b]">
               Drafts open in the selected channel. Nothing is sent automatically.
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Button onClick={() => setConfirmStatus("sent")}><Send className="size-4" /> Mark Sent</Button>
+              <Button onClick={() => setConfirmStatus("contacted")}><Send className="size-4" /> Mark Sent</Button>
               <Button variant="outline" onClick={() => applyStatus("replied")}>Mark Replied</Button>
+              <Button variant="outline" onClick={() => applyStatus("won")}>Mark Won</Button>
+              <Button variant="danger" onClick={() => setConfirmStatus("lost")}>Mark Lost</Button>
             </div>
           </Card>
         </div>
@@ -408,14 +559,14 @@ export function ProspectDetail() {
         title={
           confirmStatus === "opt_out"
             ? "Mark this prospect as opted out?"
-            : `Mark prospect as ${confirmStatus?.replace("_", " ")}?`
+            : `Mark prospect as ${confirmStatus?.replaceAll("_", " ")}?`
         }
         description={
-          confirmStatus === "sent"
+          confirmStatus === "contacted"
             ? "This records the outreach as sent. It does not send a message."
             : "This status change will be saved in the local workspace."
         }
-        confirmLabel={confirmStatus === "sent" ? "Mark as sent" : "Update status"}
+        confirmLabel={confirmStatus === "contacted" ? "Mark as sent" : "Update status"}
         destructive={confirmStatus === "lost" || confirmStatus === "opt_out"}
         onCancel={() => setConfirmStatus(null)}
         onConfirm={() => confirmStatus && applyStatus(confirmStatus)}

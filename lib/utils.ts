@@ -15,6 +15,20 @@ export function slugify(value: string) {
 }
 
 export function statusLabel(status: OutreachStatus) {
+  const labels: Record<OutreachStatus, string> = {
+    new: "New",
+    profile_extracted: "Profile Extracted",
+    demo_generated: "Demo Generated",
+    demo_deployed: "Demo Deployed",
+    message_ready: "Message Ready",
+    contacted: "Contacted",
+    follow_up_due: "Follow-Up Due",
+    replied: "Replied",
+    won: "Won",
+    lost: "Lost",
+    opt_out: "Opt-Out",
+  };
+  if (labels[status]) return labels[status];
   return status
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

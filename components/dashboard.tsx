@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { MOCK_ACTIVITY } from "@/lib/mock-data";
 import { formatRelativeDate } from "@/lib/utils";
+import { isFollowUpDue } from "@/lib/automation/follow-ups";
 import { useProspects } from "@/components/prospect-provider";
 import { PageHeading } from "@/components/page-heading";
 import { StatusBadge } from "@/components/status-badge";
@@ -33,6 +34,15 @@ const statIcons = {
   lost: CheckCheck,
 };
 
+function moneyValue(value: string) {
+  const numeric = Number(value.replace(/[^0-9.]/g, ""));
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function moneyLabel(value: number) {
+  return value ? `$${value.toLocaleString()}` : "$0";
+}
+
 const statToneClasses: Record<string, string> = {
   lime: "bg-lime-50 text-lime-700",
   green: "bg-green-50 text-green-700",
@@ -46,13 +56,30 @@ const statToneClasses: Record<string, string> = {
 
 export function Dashboard({ nowIso }: { nowIso: string }) {
   const { prospects } = useProspects();
+  const pipelineValue = prospects
+    .filter((item) => !["won", "lost", "opt_out"].includes(item.outreach_status))
+    .reduce((total, item) => total + moneyValue(item.deal_value || item.package_price), 0);
+  const closedRevenue = prospects
+    .filter((item) => item.outreach_status === "won")
+    .reduce((total, item) => total + moneyValue(item.deal_value || item.package_price), 0);
+  const contacted = prospects.filter((item) => item.last_contacted_at).length;
+  const conversionRate = contacted
+    ? Math.round((prospects.filter((item) => item.outreach_status === "won").length / contacted) * 100)
+    : 0;
   const metrics = [
     { label: "Total prospects", value: prospects.length, icon: statIcons.prospects, tone: "lime" },
+    { label: "Hot leads", value: prospects.filter((item) => item.lead_temperature === "Hot").length, icon: statIcons.replies, tone: "rose" },
     {
       label: "Websites generated",
       value: prospects.filter((item) => item.generated_website_html).length,
       icon: statIcons.websites,
       tone: "green",
+    },
+    {
+      label: "Websites deployed",
+      value: prospects.filter((item) => item.demo_url).length,
+      icon: statIcons.sent,
+      tone: "cyan",
     },
     {
       label: "Messages generated",
@@ -74,26 +101,27 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
     },
     {
       label: "Follow-ups due",
-      value: prospects.filter(
-        (item) =>
-          item.next_follow_up_at &&
-          item.next_follow_up_at <= nowIso &&
-          !["won", "lost", "opt_out"].includes(item.outreach_status),
-      ).length,
+      value: prospects.filter((item) => isFollowUpDue(item, nowIso)).length,
       icon: statIcons.followups,
       tone: "orange",
     },
     {
-      label: "Won clients",
-      value: prospects.filter((item) => item.outreach_status === "won").length,
+      label: "Pipeline value",
+      value: moneyLabel(pipelineValue),
       icon: statIcons.won,
       tone: "emerald",
     },
     {
-      label: "Lost clients",
-      value: prospects.filter((item) => item.outreach_status === "lost").length,
+      label: "Closed revenue",
+      value: moneyLabel(closedRevenue),
+      icon: statIcons.won,
+      tone: "emerald",
+    },
+    {
+      label: "Conversion rate",
+      value: `${conversionRate}%`,
       icon: statIcons.lost,
-      tone: "rose",
+      tone: "blue",
     },
   ];
 
@@ -102,13 +130,19 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
     .slice(0, 5);
 
   const pipeline = [
-    { label: "Not sent", count: prospects.filter((p) => p.outreach_status === "not_sent").length, color: "bg-slate-400" },
-    { label: "Sent", count: prospects.filter((p) => p.outreach_status === "sent").length, color: "bg-blue-500" },
+    { label: "New", count: prospects.filter((p) => p.outreach_status === "new").length, color: "bg-slate-400" },
+    { label: "Profile", count: prospects.filter((p) => p.outreach_status === "profile_extracted").length, color: "bg-violet-500" },
+    { label: "Generated", count: prospects.filter((p) => p.outreach_status === "demo_generated").length, color: "bg-indigo-500" },
+    { label: "Deployed", count: prospects.filter((p) => p.outreach_status === "demo_deployed").length, color: "bg-cyan-500" },
+    { label: "Contacted", count: prospects.filter((p) => p.outreach_status === "contacted").length, color: "bg-blue-500" },
     { label: "Replied", count: prospects.filter((p) => p.outreach_status === "replied").length, color: "bg-lime-500" },
-    { label: "Follow-up", count: prospects.filter((p) => p.outreach_status === "follow_up").length, color: "bg-amber-500" },
+    { label: "Follow-up", count: prospects.filter((p) => p.outreach_status === "follow_up_due").length, color: "bg-amber-500" },
     { label: "Won", count: prospects.filter((p) => p.outreach_status === "won").length, color: "bg-emerald-500" },
   ];
   const maxPipeline = Math.max(1, ...pipeline.map((item) => item.count));
+  const todayActions = prospects
+    .filter((item) => isFollowUpDue(item, nowIso) || item.lead_temperature === "Hot" || item.outreach_status === "message_ready")
+    .slice(0, 5);
 
   return (
     <div className="space-y-7">
@@ -124,7 +158,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
         }
       />
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8" aria-label="Performance overview">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5" aria-label="Performance overview">
         {metrics.map((metric) => {
           const Icon = metric.icon;
           return (
@@ -262,6 +296,43 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
           </div>
         </Card>
       </section>
+
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between border-b border-[#ececf2] px-5 py-4 sm:px-6">
+          <div>
+            <h2 className="font-bold tracking-[-0.025em]">Today&apos;s action list</h2>
+            <p className="mt-1 text-xs text-[#848a9c]">Hot leads, ready messages, and overdue follow-ups.</p>
+          </div>
+          <CalendarClock className="size-4 text-[#a1a6b5]" />
+        </div>
+        {todayActions.length ? (
+          <div className="divide-y divide-[#eff0f4]">
+            {todayActions.map((prospect) => (
+              <Link
+                key={prospect.id}
+                href={`/prospects/${prospect.id}`}
+                className="grid gap-3 px-5 py-4 hover:bg-[#fbfbfd] sm:grid-cols-[minmax(0,1fr)_120px_140px_20px] sm:items-center sm:px-6"
+              >
+                <div>
+                  <p className="text-sm font-bold text-ink-950">{prospect.business_name}</p>
+                  <p className="mt-1 text-xs text-[#858b9d]">
+                    {isFollowUpDue(prospect, nowIso) ? "Follow-up due now" : prospect.recommended_sales_angle || "Review next best action"}
+                  </p>
+                </div>
+                <span className="text-xs font-bold text-brand-700">{prospect.lead_temperature}</span>
+                <StatusBadge status={prospect.outreach_status} className="w-fit" />
+                <ArrowUpRight className="hidden size-4 text-[#aeb2bf] sm:block" />
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={<CalendarClock className="size-5" />}
+            title="No urgent actions"
+            description="When follow-ups are due or hot leads are ready, they will appear here."
+          />
+        )}
+      </Card>
     </div>
   );
 }

@@ -72,7 +72,7 @@ export async function updateProspectStatus(
   id: string,
   status: OutreachStatus,
 ) {
-  const contactStatuses: OutreachStatus[] = ["sent", "replied"];
+  const contactStatuses: OutreachStatus[] = ["contacted", "replied"];
   return patchProspect(id, {
     outreach_status: status,
     last_contacted_at: contactStatuses.includes(status)

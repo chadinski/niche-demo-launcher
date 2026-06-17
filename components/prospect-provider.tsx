@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { MOCK_PROSPECTS } from "@/lib/mock-data";
-import type { OutreachStatus, Prospect } from "@/lib/types";
+import type { LeadTemperature, OutreachStatus, Prospect } from "@/lib/types";
 import {
   listProspects,
   patchProspect,
@@ -18,6 +18,42 @@ import {
 } from "@/app/data-actions";
 
 const STORAGE_KEY = "niche-demo-launcher-prospects";
+
+const legacyStatusMap: Record<string, OutreachStatus> = {
+  not_sent: "new",
+  sent: "contacted",
+  follow_up: "follow_up_due",
+};
+
+function normalizeStatus(status: string): OutreachStatus {
+  if (legacyStatusMap[status]) return legacyStatusMap[status];
+  return status as OutreachStatus;
+}
+
+function normalizeTemperature(value: unknown): LeadTemperature {
+  return value === "Hot" || value === "Warm" || value === "Cold" ? value : "Cold";
+}
+
+function normalizeProspect(prospect: Prospect): Prospect {
+  const status = normalizeStatus(prospect.outreach_status as string);
+  return {
+    ...prospect,
+    outreach_status: status,
+    source: prospect.source ?? "",
+    deal_value: prospect.deal_value ?? prospect.package_price ?? "",
+    lead_score: prospect.lead_score ?? 0,
+    lead_temperature: normalizeTemperature(prospect.lead_temperature),
+    lead_score_explanation: prospect.lead_score_explanation ?? "",
+    recommended_sales_angle: prospect.recommended_sales_angle ?? "",
+    business_intelligence: prospect.business_intelligence ?? null,
+    website_quality_audit: prospect.website_quality_audit ?? null,
+    facebook_message: prospect.facebook_message ?? "",
+    follow_up_1_message: prospect.follow_up_1_message ?? "",
+    follow_up_2_message: prospect.follow_up_2_message ?? "",
+    final_check_in_message: prospect.final_check_in_message ?? "",
+    follow_up_count: prospect.follow_up_count ?? 0,
+  };
+}
 
 interface ProspectContextValue {
   prospects: Prospect[];
@@ -41,14 +77,14 @@ export function ProspectProvider({ children }: { children: ReactNode }) {
         const remote = await listProspects();
         if (!active) return;
         if (remote.configured) {
-          setProspects(remote.data);
+          setProspects(remote.data.map(normalizeProspect));
         } else {
           const stored = window.localStorage.getItem(STORAGE_KEY);
-          if (stored) setProspects(JSON.parse(stored) as Prospect[]);
+          if (stored) setProspects((JSON.parse(stored) as Prospect[]).map(normalizeProspect));
         }
       } catch {
         const stored = window.localStorage.getItem(STORAGE_KEY);
-        if (stored && active) setProspects(JSON.parse(stored) as Prospect[]);
+        if (stored && active) setProspects((JSON.parse(stored) as Prospect[]).map(normalizeProspect));
       } finally {
         if (active) setHydrated(true);
       }
@@ -95,10 +131,11 @@ export function ProspectProvider({ children }: { children: ReactNode }) {
 
   const setStatus = useCallback(
     (id: string, status: OutreachStatus) => {
+      const now = new Date();
       updateProspect(id, {
         outreach_status: status,
         last_contacted_at:
-          status === "sent" || status === "replied" ? new Date().toISOString() : undefined,
+          status === "contacted" || status === "replied" ? now.toISOString() : undefined,
       });
     },
     [updateProspect],
