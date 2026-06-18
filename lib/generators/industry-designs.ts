@@ -33,6 +33,15 @@ export interface IndustryDesign {
   cssClass: string;
 }
 
+export interface IndustryWebsiteContent {
+  serviceDefaults: [string, string, string, string, string, string];
+  serviceIntro: string;
+  credibilityDetails: [string, string, string, string];
+  processDetails: [string, string, string, string];
+  faqQuestions: [string, string, string];
+  contactContext: string;
+}
+
 export const industryDesigns: IndustryDesign[] = [
   {
     id: "restaurant",
@@ -246,6 +255,135 @@ export const fallbackIndustryDesign: IndustryDesign = {
   trustCue: "Services, customer guidance, contact, and verified proof.",
   cssClass: "industry-local-service",
 };
+
+const sharedProofNote = "Representative content is ready to be replaced with verified photos, reviews, credentials, and business proof.";
+
+export const industryWebsiteContent: Record<IndustryDesignId, IndustryWebsiteContent> = {
+  restaurant: {
+    serviceDefaults: ["Current menu highlights", "Dine-in experience", "Takeout or ordering details", "Catering or group enquiries", "Location and hours", "Reservations or visit planning"],
+    serviceIntro: "Guests should quickly understand what they can taste, how the space feels, and how to plan a visit or order.",
+    credibilityDetails: ["Atmosphere and menu context come forward before generic service claims.", "Visit, order, or reservation details sit close to the main offer.", "The layout makes hours, location, and contact routes easy to confirm.", sharedProofNote],
+    processDetails: ["Explore the menu direction and atmosphere.", "Check current hours, availability, or ordering options.", "Use the preferred contact route to reserve, order, or ask a question.", "Confirm details directly before visiting or placing an order."],
+    faqQuestions: ["What menu or dining options are available?", "Can guests book, order, or ask about catering?", "Where can visitors confirm hours and location?"],
+    contactContext: "Use this page to connect menu interest to a visit, order, reservation, or catering enquiry.",
+  },
+  "auto-detailing": {
+    serviceDefaults: ["Exterior wash and finish care", "Interior detailing", "Paint correction enquiries", "Ceramic coating options", "Maintenance detail packages", "Custom vehicle care quotes"],
+    serviceIntro: "Vehicle owners need to see the finish quality, understand service levels, and know how to ask for the right package.",
+    credibilityDetails: ["Finish-focused imagery supports the service value.", "Service cards distinguish maintenance care from premium correction work.", "The quote path is direct without implying fixed prices.", sharedProofNote],
+    processDetails: ["Share the vehicle condition and desired finish.", "Review suitable detailing or protection options.", "Confirm timing, scope, and preparation needs.", "Book the detail or request a custom quote."],
+    faqQuestions: ["Which detailing option fits the vehicle?", "How should customers prepare before service?", "How can they request a quote?"],
+    contactContext: "Use this page to move from visual interest to a clear detailing enquiry or quote request.",
+  },
+  "auto-repair": {
+    serviceDefaults: ["Vehicle diagnostics", "Brake and suspension service", "Oil change and maintenance", "Engine or electrical checks", "Repair estimates", "Service scheduling"],
+    serviceIntro: "Drivers need practical service clarity, fast contact, and enough process detail to feel comfortable requesting help.",
+    credibilityDetails: ["Capability-led sections explain what can be checked or repaired.", "The process reduces uncertainty before a quote.", "Mobile contact routes stay visible for urgent service needs.", sharedProofNote],
+    processDetails: ["Describe the vehicle issue or maintenance need.", "Ask about diagnostics, timing, and availability.", "Confirm estimate expectations and required parts.", "Schedule service directly with the shop."],
+    faqQuestions: ["What repair or diagnostic services are available?", "How can customers request an estimate?", "What details should drivers share first?"],
+    contactContext: "Use this page to convert service uncertainty into a direct repair or diagnostic enquiry.",
+  },
+  clinic: {
+    serviceDefaults: ["Consultations", "Preventive care", "Family or patient services", "Appointment guidance", "Patient preparation details", "Direct contact options"],
+    serviceIntro: "Patients need calm service explanations, visible appointment routes, and careful wording that avoids unsupported medical claims.",
+    credibilityDetails: ["Care options are presented with calm, factual language.", "Appointment guidance is placed near the primary contact path.", "The page leaves room for real credentials and patient information.", sharedProofNote],
+    processDetails: ["Review available care options.", "Ask about suitability and current appointment availability.", "Confirm preparation details directly with the clinic.", "Arrange the appointment through the supplied contact route."],
+    faqQuestions: ["What care options can patients ask about?", "How should someone request an appointment?", "What details should be confirmed before visiting?"],
+    contactContext: "Use this page to make appointment enquiries feel clearer, calmer, and easier to start.",
+  },
+  wellness: {
+    serviceDefaults: ["Wellness consultations", "Massage or therapy sessions", "Holistic service options", "Preparation guidance", "Appointment availability", "Personalized care enquiries"],
+    serviceIntro: "Visitors should feel the tone of care, understand session options, and know how to ask about fit and availability.",
+    credibilityDetails: ["The design emphasizes calm guidance over exaggerated outcomes.", "Service information is framed around comfort and preparation.", "Booking prompts stay low-pressure and practical.", sharedProofNote],
+    processDetails: ["Explore current session or service options.", "Ask whether the service is suitable for the need.", "Confirm preparation, timing, and availability.", "Arrange the appointment directly."],
+    faqQuestions: ["Which wellness service should someone ask about?", "How can visitors confirm availability?", "What should they know before booking?"],
+    contactContext: "Use this page to make the first wellness enquiry feel comfortable and informed.",
+  },
+  salon: {
+    serviceDefaults: ["Hair or styling services", "Barbering or grooming", "Nails, lashes, or beauty services", "Special occasion appointments", "Consultation guidance", "Booking enquiries"],
+    serviceIntro: "Style-led businesses need the work, appointment path, and service menu to feel polished from the first screen.",
+    credibilityDetails: ["The page prioritizes visual style and booking clarity.", "Service groups can be replaced with the verified menu.", "Transformation sections are ready for real client-approved photos.", sharedProofNote],
+    processDetails: ["Explore current services and style direction.", "Ask about suitability, availability, or preparation.", "Confirm the appointment details directly.", "Book or message through the preferred contact route."],
+    faqQuestions: ["What beauty or grooming services are available?", "How can clients ask about appointments?", "What should clients confirm before booking?"],
+    contactContext: "Use this page to turn style interest into a simple appointment enquiry.",
+  },
+  trades: {
+    serviceDefaults: ["Project enquiries", "Repairs or installation", "Materials or supply options", "Site or scope review", "Service area confirmation", "Quote requests"],
+    serviceIntro: "Trade and construction customers need capability, scope, service area, and quote expectations made clear early.",
+    credibilityDetails: ["Capability sections replace vague marketing with practical decision support.", "The process shows how customers can request a quote.", "Service area and contact details stay easy to find.", sharedProofNote],
+    processDetails: ["Describe the project, issue, or supply need.", "Review service area, materials, or site requirements.", "Confirm scope, timing, and quote expectations.", "Move forward once details are agreed directly."],
+    faqQuestions: ["What project or repair work can customers ask about?", "How does the quote process start?", "What service area or site details are needed?"],
+    contactContext: "Use this page to move a practical need into a clear scope or quote conversation.",
+  },
+  "real-estate": {
+    serviceDefaults: ["Property consultation", "Portfolio or project review", "Home staging or presentation", "Interior or space planning", "Buying or selling guidance", "Consultation booking"],
+    serviceIntro: "Property-focused businesses need refined imagery, clear consultation paths, and proof-ready portfolio structure.",
+    credibilityDetails: ["The page frames property goals and visual outcomes without inventing results.", "Gallery sections can hold verified listings, interiors, or project work.", "Consultation prompts stay measured and professional.", sharedProofNote],
+    processDetails: ["Share the property or project goal.", "Review the current approach and available services.", "Confirm fit, scope, and next-step requirements.", "Arrange a consultation or project conversation."],
+    faqQuestions: ["What property or design goals can be discussed?", "Can real project images be added?", "How should someone request a consultation?"],
+    contactContext: "Use this page to turn property interest into a focused consultation request.",
+  },
+  memorial: {
+    serviceDefaults: ["Private guidance", "Memorial or tribute options", "Cremation or funeral enquiries", "Family support information", "Remembrance details", "Direct private contact"],
+    serviceIntro: "Families need careful wording, private contact, and clear support options without pressure or unsupported promises.",
+    credibilityDetails: ["The tone stays respectful and calm throughout the page.", "Service cards explain available support gently.", "The contact path is private and easy to find.", sharedProofNote],
+    processDetails: ["Make private contact when ready.", "Discuss current needs and available support.", "Review options with care and patience.", "Confirm arrangements directly with the business."],
+    faqQuestions: ["What support options can families ask about?", "How can someone make private contact?", "What details should be confirmed directly?"],
+    contactContext: "Use this page to offer a quiet, respectful path to guidance and support.",
+  },
+  "product-studio": {
+    serviceDefaults: ["Custom design support", "3D printing", "Product prototyping", "Fabrication or signage", "Material and file review", "Custom quote requests"],
+    serviceIntro: "Product and fabrication customers need capabilities, materials, process, and quote requirements explained clearly.",
+    credibilityDetails: ["Technical capability is organized before the enquiry step.", "The page supports file, prototype, signage, or custom product requests.", "Scope and pricing are left for direct confirmation.", sharedProofNote],
+    processDetails: ["Share the idea, file, drawing, or requirement.", "Review materials, production options, and constraints.", "Confirm scope, timing, and quote details.", "Approve the next production step directly."],
+    faqQuestions: ["What files or ideas can customers bring?", "How are materials and production options confirmed?", "How does a custom quote start?"],
+    contactContext: "Use this page to turn a concept or file into a structured production enquiry.",
+  },
+  artist: {
+    serviceDefaults: ["Featured work", "Live performance or booking", "Collaborations", "Media or portfolio highlights", "Availability enquiries", "Contact for projects"],
+    serviceIntro: "Creative pages need personality, media, booking context, and a simple route for collaboration or performance enquiries.",
+    credibilityDetails: ["The design gives the work a focused stage.", "Booking and collaboration paths are visible without inventing credentials.", "Portfolio media can be replaced with verified images, audio, or video.", sharedProofNote],
+    processDetails: ["Explore the work and creative direction.", "Review current offerings or availability.", "Discuss fit, date, venue, or collaboration needs.", "Confirm the booking or project details directly."],
+    faqQuestions: ["What work or performances can visitors explore?", "How can someone discuss availability?", "What media should be added before launch?"],
+    contactContext: "Use this page to make bookings, collaborations, and portfolio enquiries easier to start.",
+  },
+  florist: {
+    serviceDefaults: ["Bouquets and arrangements", "Wedding florals", "Event florals", "Custom orders", "Delivery or pickup details", "Occasion enquiries"],
+    serviceIntro: "Floral and event customers need occasion fit, visual inspiration, and a clear custom-order path.",
+    credibilityDetails: ["The page makes occasion types and visual direction easy to scan.", "Custom order prompts leave pricing and availability for confirmation.", "Gallery areas are ready for real arrangement photography.", sharedProofNote],
+    processDetails: ["Share the occasion, style, date, and delivery needs.", "Review arrangement options or inspiration.", "Confirm availability, budget, and pickup or delivery details.", "Place or finalize the order directly."],
+    faqQuestions: ["What occasions can customers ask about?", "How do custom floral orders start?", "What details should be confirmed before ordering?"],
+    contactContext: "Use this page to turn occasion inspiration into a clear floral enquiry.",
+  },
+  "pet-care": {
+    serviceDefaults: ["Pet care services", "Grooming enquiries", "Veterinary or wellness guidance", "Owner preparation details", "Availability checks", "Direct contact options"],
+    serviceIntro: "Pet owners need clear care options, preparation guidance, and easy contact without overcomplicating the decision.",
+    credibilityDetails: ["Care categories are written for pet owners, not internal operations.", "Availability and preparation details sit close to contact prompts.", "Proof areas can hold verified staff, facility, or customer material.", sharedProofNote],
+    processDetails: ["Choose the care option or describe the pet's need.", "Ask about suitability, timing, and preparation.", "Confirm availability and any visit requirements.", "Arrange the visit or service directly."],
+    faqQuestions: ["What pet care services can owners ask about?", "How can availability be confirmed?", "What should owners prepare before visiting?"],
+    contactContext: "Use this page to help pet owners move from concern or interest to a clear care enquiry.",
+  },
+  professional: {
+    serviceDefaults: ["Consultations", "Advisory services", "Document or case review", "Ongoing support", "Confidential enquiries", "Next-step guidance"],
+    serviceIntro: "Professional-service visitors need trust, clarity, and a measured path to consultation without exaggerated promises.",
+    credibilityDetails: ["Expertise is framed clearly without unsupported credentials.", "The consultation path is prominent and professional.", "Proof areas are ready for verified credentials, client types, or case material.", sharedProofNote],
+    processDetails: ["Describe the need or situation.", "Review available professional services.", "Confirm fit, confidentiality, timing, and next steps.", "Arrange a consultation through the supplied contact route."],
+    faqQuestions: ["What professional services are available?", "How can someone request a consultation?", "What should be confirmed before moving forward?"],
+    contactContext: "Use this page to convert uncertainty into a professional consultation enquiry.",
+  },
+  "local-service": {
+    serviceDefaults: ["Current services", "Personalized support", "Service area guidance", "Availability checks", "Direct contact options", "Custom enquiries"],
+    serviceIntro: "Visitors need to understand what is offered, where it is available, and how to take the next step.",
+    credibilityDetails: ["The first impression explains the offer clearly.", "Service cards turn scattered details into an easier decision path.", "Contact routes stay visible on mobile and desktop.", sharedProofNote],
+    processDetails: ["Review the available services.", "Confirm fit, scope, and service area.", "Use the supplied contact route to ask questions.", "Agree the next step directly with the business."],
+    faqQuestions: ["What services can customers ask about?", "Where is the service available?", "How can customers confirm the next step?"],
+    contactContext: "Use this page to give customers one clear place to understand and contact the business.",
+  },
+};
+
+export function getIndustryWebsiteContent(id: IndustryDesignId) {
+  return industryWebsiteContent[id] ?? industryWebsiteContent["local-service"];
+}
 
 export function resolveIndustryDesign(value: string): IndustryDesign {
   const lower = value.toLowerCase();

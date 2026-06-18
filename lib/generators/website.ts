@@ -1,6 +1,6 @@
 import type { BusinessInfo } from "@/lib/types";
 import { getCopyAngle } from "@/lib/generators/copy-angles";
-import { resolveIndustryDesign } from "@/lib/generators/industry-designs";
+import { getIndustryWebsiteContent, resolveIndustryDesign } from "@/lib/generators/industry-designs";
 import { colorPair } from "@/lib/generators/palettes";
 import { schemaType, visualProfile } from "@/lib/generators/visual-profiles";
 import { getWebsitePreset } from "@/lib/generators/website-presets";
@@ -25,7 +25,7 @@ return "";
 }
 }
 
-function servicesFrom(value: string, category: string) {
+function servicesFrom(value: string, fallbackServices: string[]) {
 const services = value
 .split(/,|\n|•|\||;/)
 .map((item) => item.trim())
@@ -34,71 +34,7 @@ const services = value
 
 if (services.length) return services;
 
-const lower = category.toLowerCase();
-
-if (/(auto|mechanic|vehicle|car|detailing)/.test(lower)) {
-return [
-"Exterior presentation",
-"Interior care",
-"Maintenance support",
-"Finish enhancement",
-"Booking consultation",
-"Custom service options",
-];
-}
-
-if (/(restaurant|cafe|food|bakery|catering)/.test(lower)) {
-return [
-"Signature menu experience",
-"Dining atmosphere",
-"Ordering information",
-"Catering or group enquiries",
-"Location and hours",
-"Customer contact path",
-];
-}
-
-if (/(salon|barber|beauty|spa|makeup)/.test(lower)) {
-return [
-"Styling services",
-"Beauty appointments",
-"Consultation and care",
-"Special occasion support",
-"Booking guidance",
-"Service packages",
-];
-}
-
-if (/(dental|clinic|medical|health|wellness)/.test(lower)) {
-return [
-"Consultation support",
-"Preventive care",
-"Family services",
-"Appointment guidance",
-"Patient information",
-"Direct contact options",
-];
-}
-
-if (/(3d|printing|prototype|custom product|sign)/.test(lower)) {
-return [
-"Custom design",
-"3D printing",
-"Product prototyping",
-"Personalized items",
-"Business signage",
-"Quote requests",
-];
-}
-
-return [
-`${category || "Professional"} services`,
-"Personalized support",
-"Consultation and guidance",
-"Easy contact options",
-"Custom service options",
-"Customer-focused experience",
-];
+return fallbackServices;
 }
 
 function readableCategory(category: string) {
@@ -146,9 +82,10 @@ const phone = escapeHtml(info.phone);
 const email = escapeHtml(info.email);
 const website = safeUrl(info.websiteUrl);
 const social = safeUrl(info.socialUrl);
-const services = servicesFrom(info.services, info.category);
 const designSource = `${info.category} ${info.services} ${info.rawInfo}`;
 const industryDesign = resolveIndustryDesign(designSource);
+const industryContent = getIndustryWebsiteContent(industryDesign.id);
+const services = servicesFrom(info.services, industryContent.serviceDefaults);
 const [primary, accent] = colorPair(info.brandColors, designSource);
 const profile = visualProfile(designSource);
 const preset = getWebsitePreset(industryDesign.preset);
@@ -183,7 +120,7 @@ const jsonLd = JSON.stringify(schema).replace(/</g, "\u003c");
 
 const serviceCards = services
 .map(
-(service, index) => `<article class="service-card reveal">         <div class="card-index"><span>${String(index + 1).padStart(2, "0")}</span><span class="card-icon">${["◇", "✦", "◈", "↻", "◆", "＋"][index] ?? "✦"}</span></div>         <h3>${escapeHtml(service)}</h3>         <p>${escapeHtml(copy.serviceLine)} Ask about current scope, availability, and the right option for your needs.</p>         <a class="text-link" href="#contact">${escapeHtml(profile.ctaLanguage)} <span>→</span></a>       </article>`,
+(service, index) => `<article class="service-card reveal">         <div class="card-index"><span>${String(index + 1).padStart(2, "0")}</span><span class="card-icon">${["◇", "✦", "◈", "↻", "◆", "＋"][index] ?? "✦"}</span></div>         <h3>${escapeHtml(service)}</h3>         <p>${escapeHtml(industryContent.serviceIntro)} Ask about current scope, availability, and the right option for your needs.</p>         <a class="text-link" href="#contact">${escapeHtml(profile.ctaLanguage)} <span>→</span></a>       </article>`,
 )
 .join("");
 
@@ -193,12 +130,7 @@ const galleryCards = profile.gallery
 )
 .join("");
 
-const credibilityDescriptions = [
-`A ${preset.tone.toLowerCase()} first impression shaped around ${industryDesign.trustCue}.`,
-`Clear sections help visitors understand ${profile.sectionEmphasis[1]} through a ${industryDesign.label.toLowerCase()} design route.`,
-`The contact path supports ${profile.sectionEmphasis[3]} without implying unavailable services.`,
-"Representative content is ready to be replaced with verified photography and proof.",
-];
+const credibilityDescriptions = industryContent.credibilityDetails;
 
 const credibilityCards = copy.credibility
 .map(
@@ -206,12 +138,7 @@ const credibilityCards = copy.credibility
 )
 .join("");
 
-const processDescriptions = [
-`Start with ${profile.sectionEmphasis[0]} and the information currently available.`,
-`Ask about ${profile.sectionEmphasis[1]}, current options, and suitability.`,
-`Use the available contact route to discuss ${profile.sectionEmphasis[2]}.`,
-`Confirm availability, scope, and the next step directly with ${businessNameRaw}.`,
-];
+const processDescriptions = industryContent.processDetails;
 
 const processCards = copy.process
 .map(
@@ -227,7 +154,6 @@ return `<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(description.slice(0, 160))}">
-  <meta name="keywords" content="${businessName}, ${category}, ${location}, services, booking, contact, website concept">
   <meta name="theme-color" content="${primary}">
   <meta name="robots" content="noindex, nofollow">
   <meta property="og:title" content="${escapeHtml(title)}">
@@ -1961,7 +1887,7 @@ footer { color: var(--text); background: var(--page-bg); }
         <div class="eyebrow">Services and offers</div>
         <h2>${escapeHtml(copy.serviceLine)}</h2>
       </div>
-      <p>${escapeHtml(industryDesign.trustCue)} Color path: ${escapeHtml(industryDesign.colorPath)}. Ask about current options and confirm availability directly.</p>
+      <p>${escapeHtml(industryContent.serviceIntro)} Confirm current options, timing, and availability directly with the business.</p>
     </div>
 
     <div class="cards-grid">
@@ -2056,7 +1982,7 @@ footer { color: var(--text); background: var(--page-bg); }
         <div class="eyebrow">Connect</div>
         <h2>Make every contact option <span class="accent-text">easy to find.</span></h2>
       </div>
-      <p>Customers should never hunt for the next step. This section can connect calls, email, social media, booking links, and existing websites.</p>
+      <p>${escapeHtml(industryContent.contactContext)} Calls, email, social media, booking links, and existing websites can all sit here when verified.</p>
     </div>
 
     <div class="social-grid">
@@ -2129,7 +2055,7 @@ footer { color: var(--text); background: var(--page-bg); }
 
     <div class="faq-list reveal">
       <div class="faq-item open">
-        <button class="faq-question" type="button" aria-expanded="true"><span>What ${escapeHtml(profile.sectionEmphasis[0])} options are available?</span><span>+</span></button>
+        <button class="faq-question" type="button" aria-expanded="true"><span>${escapeHtml(industryContent.faqQuestions[0])}</span><span>+</span></button>
         <div class="faq-answer"><div><p>${businessName} is presented as a ${category} business${locationPhrase}. Ask about current options, scope, and availability directly.</p></div></div>
       </div>
 
@@ -2139,7 +2065,7 @@ footer { color: var(--text); background: var(--page-bg); }
       </div>
 
       <div class="faq-item">
-        <button class="faq-question" type="button" aria-expanded="false"><span>How can I confirm ${escapeHtml(profile.sectionEmphasis[1])}?</span><span>+</span></button>
+        <button class="faq-question" type="button" aria-expanded="false"><span>${escapeHtml(industryContent.faqQuestions[1])}</span><span>+</span></button>
         <div class="faq-answer"><div><p>Use the available contact route to ask ${businessName} about current options, pricing, timing, and suitability. No unverified pricing is included.</p></div></div>
       </div>
 
@@ -2149,7 +2075,7 @@ footer { color: var(--text); background: var(--page-bg); }
       </div>
 
       <div class="faq-item">
-        <button class="faq-question" type="button" aria-expanded="false"><span>How do customers get started?</span><span>+</span></button>
+        <button class="faq-question" type="button" aria-expanded="false"><span>${escapeHtml(industryContent.faqQuestions[2])}</span><span>+</span></button>
         <div class="faq-answer"><div><p>${escapeHtml(copy.process[0])}, then use the contact section to call, email, visit social media, or open the existing website when those details are available.</p></div></div>
       </div>
     </div>
@@ -2218,7 +2144,7 @@ footer { color: var(--text); background: var(--page-bg); }
         <span>No fake reviews, awards, or guarantees</span>
         <span>${escapeHtml(preset.safeWordingRules[1])}</span>
         <span>${escapeHtml(preset.tone)}</span>
-        <span>${escapeHtml(industryDesign.label)} route: ${escapeHtml(industryDesign.colorPath)}</span>
+        <span>${escapeHtml(industryDesign.label)} concept direction</span>
       </div>
     </div>
   </div>
