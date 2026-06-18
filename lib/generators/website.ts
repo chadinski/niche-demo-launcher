@@ -140,7 +140,6 @@ const profile = visualProfile(info.category || info.rawInfo);
 const preset = getWebsitePreset(profile.preferredPreset);
 const copy = getCopyAngle(profile.copyAngle);
 const locationPhrase = location ? ` in ${location}` : "";
-const offerLead = escapeHtml(services[0] || categoryRaw);
 const description = `${businessNameRaw} provides ${categoryRaw}${locationRaw ? ` in ${locationRaw}` : ""}. Explore services, contact options, and current availability through this private website concept.`;
 const title = `${businessNameRaw} | ${categoryRaw}${locationRaw ? ` in ${locationRaw}` : ""}`;
 const buttons = contactButtons(phone, email, social, website, profile.ctaLanguage);

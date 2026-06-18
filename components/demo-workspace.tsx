@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Check,
+  CheckCircle2,
   ChevronDown,
   Clipboard,
   Code2,
@@ -16,10 +16,12 @@ import {
   Mail,
   MessageCircle,
   MousePointerClick,
+  Route,
   Rocket,
   Save,
   ScanText,
   Send,
+  ShieldCheck,
   Sparkles,
   Target,
   WandSparkles,
@@ -60,6 +62,7 @@ import type {
   BusinessInfo,
   MessageTone,
   Prospect,
+  QualityAudit,
   SalesMessages,
 } from "@/lib/types";
 import { cn, phoneDigits } from "@/lib/utils";
@@ -84,6 +87,103 @@ const messageTabs: Array<{ key: keyof SalesMessages; label: string }> = [
 ];
 
 type BusyAction = "image" | "parse" | "website" | "message" | "both" | "save" | "deploy" | null;
+
+type ReadinessCheck = {
+  label: string;
+  detail: string;
+  passed: boolean;
+  action: string;
+};
+
+function valueState(value: string) {
+  return value.trim() ? "Verified" : "Missing";
+}
+
+function contactSummary(info: BusinessInfo) {
+  const channels = [
+    info.phone && "phone",
+    info.email && "email",
+    info.socialUrl && "social",
+    info.websiteUrl && "website",
+  ].filter(Boolean);
+
+  return channels.length ? channels.join(", ") : "";
+}
+
+function buildReadinessChecks(
+  info: BusinessInfo,
+  html: string,
+  messages: SalesMessages | null,
+  qualityAudit: QualityAudit | null,
+): ReadinessCheck[] {
+  const hasIdentity = Boolean(info.businessName.trim() && info.category.trim());
+  const hasContact = Boolean(info.phone.trim() || info.email.trim() || info.socialUrl.trim());
+  const hasOffer = Boolean(info.services.trim() || info.category.trim());
+  const hasOpportunity = Boolean(info.painPoints.trim() || info.notes.trim());
+  const generated = Boolean(html);
+  const auditReady = Boolean(qualityAudit?.passed);
+  const hasDemoUrl = Boolean(info.demoUrl.trim());
+  const hasOutreach = Boolean(messages?.whatsapp || messages?.email || messages?.dm);
+
+  return [
+    {
+      label: "Identity captured",
+      detail: hasIdentity ? `${info.businessName} is categorized as ${info.category}.` : "Add business name and category before generating.",
+      passed: hasIdentity,
+      action: "Review business profile",
+    },
+    {
+      label: "Contact route available",
+      detail: hasContact ? `Available channels: ${contactSummary(info)}.` : "Add phone, email, or social profile for a real next step.",
+      passed: hasContact,
+      action: "Add contact route",
+    },
+    {
+      label: "Offer is specific",
+      detail: hasOffer ? "Services or category can guide page sections and outreach." : "Add services, products, or a clear niche.",
+      passed: hasOffer,
+      action: "Clarify offer",
+    },
+    {
+      label: "Opportunity noted",
+      detail: hasOpportunity ? "Pain point or internal context is available for the sales angle." : "Add the observed website or presentation opportunity.",
+      passed: hasOpportunity,
+      action: "Add opportunity",
+    },
+    {
+      label: "Website generated",
+      detail: generated ? "A complete single-file website is ready for review." : "Generate the website concept.",
+      passed: generated,
+      action: "Generate website",
+    },
+    {
+      label: "Quality audit passed",
+      detail: qualityAudit ? `${qualityAudit.score}/100 ${qualityAudit.passed ? "ready with review." : "has warnings to review."}` : "Generate the website to run the audit.",
+      passed: auditReady,
+      action: "Review audit",
+    },
+    {
+      label: "Live URL attached",
+      detail: hasDemoUrl ? "Demo link is ready for the message." : "Deploy or paste the Vercel preview URL.",
+      passed: hasDemoUrl,
+      action: "Add demo link",
+    },
+    {
+      label: "Outreach ready",
+      detail: hasOutreach ? "Channel-specific messages are ready for manual approval." : "Generate WhatsApp, email, and DM messages.",
+      passed: hasOutreach,
+      action: "Generate messages",
+    },
+  ];
+}
+
+function readinessScore(checks: ReadinessCheck[]) {
+  return Math.round((checks.filter((check) => check.passed).length / checks.length) * 100);
+}
+
+function nextBestAction(checks: ReadinessCheck[]) {
+  return checks.find((check) => !check.passed)?.action ?? "Approve and send manually";
+}
 
 export function DemoWorkspace() {
   const { saveProspect, setStatus, updateProspect } = useProspects();
@@ -111,6 +211,22 @@ export function DemoWorkspace() {
   const qualityAudit = useMemo(
     () => (html ? auditWebsite(html, info) : null),
     [html, info],
+  );
+  const readinessChecks = useMemo(
+    () => buildReadinessChecks(info, html, messages, qualityAudit),
+    [info, html, messages, qualityAudit],
+  );
+  const launchReadiness = useMemo(
+    () => readinessScore(readinessChecks),
+    [readinessChecks],
+  );
+  const pendingChecks = useMemo(
+    () => readinessChecks.filter((check) => !check.passed),
+    [readinessChecks],
+  );
+  const recommendedAction = useMemo(
+    () => nextBestAction(readinessChecks),
+    [readinessChecks],
   );
 
   const updateInfo = useCallback(
@@ -466,31 +582,58 @@ export function DemoWorkspace() {
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(280px,.72fr)_minmax(0,1fr)_minmax(280px,.72fr)]">
         <Card className="p-5">
-          <div className="flex items-center justify-between gap-3">
-            <SectionLabel>Lead score</SectionLabel>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <SectionLabel>Launch readiness</SectionLabel>
+              <h2 className="mt-1 text-lg font-extrabold tracking-[-0.035em]">
+                {recommendedAction}
+              </h2>
+            </div>
             <span
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-extrabold",
-                leadScore.temperature === "Hot"
-                  ? "bg-rose-50 text-rose-700"
-                  : leadScore.temperature === "Warm"
+                launchReadiness >= 85
+                  ? "bg-emerald-50 text-emerald-700"
+                  : launchReadiness >= 55
                     ? "bg-amber-50 text-amber-700"
                     : "bg-slate-100 text-slate-600",
               )}
             >
-              {leadScore.temperature}
+              {launchReadiness}%
             </span>
           </div>
-          <div className="mt-4 flex items-end gap-3">
-            <div className="text-5xl font-black tracking-[-0.08em] text-ink-950">{leadScore.score}</div>
-            <div className="pb-2 text-xs font-bold text-[#858b9d]">/ 100</div>
-          </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#eeeef4]">
-            <div className="h-full rounded-full bg-brand-600" style={{ width: `${leadScore.score}%` }} />
+            <div className="h-full rounded-full bg-brand-600" style={{ width: `${launchReadiness}%` }} />
           </div>
-          <p className="mt-4 text-xs leading-5 text-[#747b8f]">{leadScore.recommendedAngle}</p>
+          <div className="mt-4 space-y-2">
+            {readinessChecks.slice(0, 4).map((check) => (
+              <ReadinessRow key={check.label} check={check} />
+            ))}
+          </div>
+          <div className="mt-4 rounded-2xl border border-[#ececf2] bg-[#fafafd] p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[0.65rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Lead score</span>
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[0.68rem] font-extrabold",
+                  leadScore.temperature === "Hot"
+                    ? "bg-rose-50 text-rose-700"
+                    : leadScore.temperature === "Warm"
+                      ? "bg-amber-50 text-amber-700"
+                      : "bg-slate-100 text-slate-600",
+                )}
+              >
+                {leadScore.temperature}
+              </span>
+            </div>
+            <div className="mt-2 flex items-end gap-2">
+              <span className="text-3xl font-black tracking-[-0.08em] text-ink-950">{leadScore.score}</span>
+              <span className="pb-1 text-xs font-bold text-[#858b9d]">/ 100</span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-[#747b8f]">{leadScore.recommendedAngle}</p>
+          </div>
         </Card>
 
         <Card className="p-5">
@@ -508,6 +651,31 @@ export function DemoWorkspace() {
             <Insight label="Suggested package" value={intelligence.suggestedPackage} />
             <Insight label="Price range" value={intelligence.suggestedPriceRange} />
             <Insight label="Likely weakness" value={intelligence.onlineWeakness} />
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-start gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600">
+              <ShieldCheck className="size-4" />
+            </span>
+            <div>
+              <h2 className="font-extrabold tracking-[-0.025em]">Fact safety ledger</h2>
+              <p className="mt-1 text-xs leading-5 text-[#858b9d]">
+                Keep the demo persuasive without turning guesses into visible claims.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-2">
+            <FactPill label="Business name" value={info.businessName || "Add before launch"} state={valueState(info.businessName)} />
+            <FactPill label="Contact route" value={contactSummary(info) || "Add phone, email, or social"} state={contactSummary(info) ? "Verified" : "Missing"} />
+            <FactPill label="Services" value={info.services || info.category || "Clarify the offer"} state={info.services || info.category ? "Verified" : "Missing"} />
+            <FactPill label="Demo URL" value={info.demoUrl || "Needed before outreach"} state={info.demoUrl ? "Verified" : "Missing"} />
+          </div>
+          <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
+            {pendingChecks.length
+              ? `${pendingChecks.length} item${pendingChecks.length === 1 ? "" : "s"} still need attention before this is outreach-ready.`
+              : "All core launch checks are ready. Manual approval is still required before sending."}
           </div>
         </Card>
       </div>
@@ -947,9 +1115,13 @@ export function DemoWorkspace() {
       </div>
 
       <div className="sticky bottom-3 z-20 flex flex-col gap-2 rounded-2xl border border-white/70 bg-white/90 p-3 shadow-[0_18px_60px_rgba(21,26,45,.16)] backdrop-blur-xl sm:flex-row sm:items-center">
-        <div className="hidden flex-1 items-center gap-2 px-2 text-xs text-[#72798c] sm:flex">
-          <Check className="size-4 text-emerald-600" />
-          Manual approval remains required before sending any outreach.
+        <div className="hidden flex-1 items-center gap-3 px-2 text-xs text-[#72798c] sm:flex">
+          <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600">
+            <Route className="size-4" />
+          </span>
+          <span>
+            <strong className="text-ink-950">Next:</strong> {recommendedAction}. Manual approval remains required before sending.
+          </span>
         </div>
         <Button variant="outline" onClick={handleSave} loading={busy === "save"}>
           <Save className="size-4" />
@@ -1000,6 +1172,50 @@ function Insight({ label, value }: { label: string; value: string }) {
     <div className="rounded-2xl border border-[#ececf2] bg-[#fafafd] p-3">
       <div className="text-[0.62rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">{label}</div>
       <div className="mt-2 text-xs leading-5 font-semibold text-[#555d70]">{value}</div>
+    </div>
+  );
+}
+
+function ReadinessRow({ check }: { check: ReadinessCheck }) {
+  return (
+    <div className="flex items-start gap-2 rounded-xl border border-[#ececf2] bg-white p-2.5">
+      <span
+        className={cn(
+          "mt-0.5 grid size-5 shrink-0 place-items-center rounded-full",
+          check.passed ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600",
+        )}
+      >
+        {check.passed ? <CheckCircle2 className="size-3.5" /> : <Sparkles className="size-3.5" />}
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-extrabold text-ink-950">{check.label}</p>
+        <p className="mt-0.5 line-clamp-2 text-[0.72rem] leading-4 text-[#7b8294]">{check.detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function FactPill({
+  label,
+  value,
+  state,
+}: {
+  label: string;
+  value: string;
+  state: "Verified" | "Missing";
+}) {
+  return (
+    <div className="grid gap-2 rounded-xl border border-[#ececf2] bg-[#fafafd] p-3 sm:grid-cols-[92px_minmax(0,1fr)_auto] sm:items-center">
+      <span className="text-[0.65rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">{label}</span>
+      <span className="min-w-0 truncate text-xs font-semibold text-[#555d70]">{value}</span>
+      <span
+        className={cn(
+          "w-fit rounded-full px-2 py-1 text-[0.65rem] font-extrabold",
+          state === "Verified" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
+        )}
+      >
+        {state}
+      </span>
     </div>
   );
 }
