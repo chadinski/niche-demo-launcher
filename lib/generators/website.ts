@@ -1,6 +1,12 @@
 import type { BusinessInfo } from "@/lib/types";
 import { getCopyAngle } from "@/lib/generators/copy-angles";
-import { getIndustryWebsiteContent, resolveIndustryDesign } from "@/lib/generators/industry-designs";
+import {
+getIndustrySectionOrder,
+getIndustrySpotlight,
+getIndustryWebsiteContent,
+resolveIndustryDesign,
+type WebsiteSectionId,
+} from "@/lib/generators/industry-designs";
 import { colorPair } from "@/lib/generators/palettes";
 import { schemaType, visualProfile } from "@/lib/generators/visual-profiles";
 import { getWebsitePreset } from "@/lib/generators/website-presets";
@@ -27,7 +33,7 @@ return "";
 
 function servicesFrom(value: string, fallbackServices: string[]) {
 const services = value
-.split(/,|\n|•|\||;/)
+.split(/,|\n|\u2022|\||;/)
 .map((item) => item.trim())
 .filter(Boolean)
 .slice(0, 6);
@@ -52,9 +58,9 @@ const primary = phoneHref
 : `<a class="btn btn-primary" href="#contact">${cta}</a>`;
 
 const secondary = social
-? `<a class="btn btn-glass" href="${escapeHtml(social)}" target="_blank" rel="noopener">Visit social profile <span>↗</span></a>`
+? `<a class="btn btn-glass" href="${escapeHtml(social)}" target="_blank" rel="noopener">Visit social profile <span>Open</span></a>`
 : website
-? `<a class="btn btn-glass" href="${escapeHtml(website)}" target="_blank" rel="noopener">Existing website <span>↗</span></a>`
+? `<a class="btn btn-glass" href="${escapeHtml(website)}" target="_blank" rel="noopener">Existing website <span>Open</span></a>`
 : `<a class="btn btn-glass" href="#services">Explore services</a>`;
 
 return { primary, secondary, phoneHref };
@@ -85,6 +91,8 @@ const social = safeUrl(info.socialUrl);
 const designSource = `${info.category} ${info.services} ${info.rawInfo}`;
 const industryDesign = resolveIndustryDesign(designSource);
 const industryContent = getIndustryWebsiteContent(industryDesign.id);
+const sectionOrder = getIndustrySectionOrder(industryDesign.id);
+const spotlight = getIndustrySpotlight(industryDesign.id);
 const services = servicesFrom(info.services, industryContent.serviceDefaults);
 const [primary, accent] = colorPair(info.brandColors, designSource);
 const profile = visualProfile(designSource);
@@ -120,7 +128,7 @@ const jsonLd = JSON.stringify(schema).replace(/</g, "\u003c");
 
 const serviceCards = services
 .map(
-(service, index) => `<article class="service-card reveal">         <div class="card-index"><span>${String(index + 1).padStart(2, "0")}</span><span class="card-icon">${["◇", "✦", "◈", "↻", "◆", "＋"][index] ?? "✦"}</span></div>         <h3>${escapeHtml(service)}</h3>         <p>${escapeHtml(industryContent.serviceIntro)} Ask about current scope, availability, and the right option for your needs.</p>         <a class="text-link" href="#contact">${escapeHtml(profile.ctaLanguage)} <span>→</span></a>       </article>`,
+(service, index) => `<article class="service-card reveal">         <div class="card-index"><span>${String(index + 1).padStart(2, "0")}</span><span class="card-icon">${["01", "02", "03", "04", "05", "06"][index] ?? "01"}</span></div>         <h3>${escapeHtml(service)}</h3>         <p>${escapeHtml(industryContent.serviceIntro)} Ask about current scope, availability, and the right option for your needs.</p>         <a class="text-link" href="#contact">${escapeHtml(profile.ctaLanguage)} <span>Next</span></a>       </article>`,
 )
 .join("");
 
@@ -144,6 +152,272 @@ const processCards = copy.process
 .map(
 (heading, index) => `<article class="step reveal${index ? ` delay-${index}` : ""}"><span class="step-no">${String(index + 1).padStart(2, "0")}</span><h3>${escapeHtml(heading)}</h3><p>${escapeHtml(processDescriptions[index])}</p></article>`,
 )
+.join("");
+
+const spotlightCards = spotlight.items
+.map(
+(item, index) => `<article class="reason-card reveal${index ? ` delay-${index}` : ""}"><span class="card-icon">${["01", "02", "03"][index]}</span><h3>${escapeHtml(item)}</h3><p>${escapeHtml(industryContent.serviceIntro)}</p></article>`,
+)
+.join("");
+
+const sectionModules = {
+credibility: `<section class="credibility" aria-label="Why this website concept helps">
+  <div class="container cred-grid">
+    ${credibilityCards}
+  </div>
+</section>`,
+services: `<section class="section" id="services">
+  <div class="container">
+    <div class="section-head reveal">
+      <div>
+        <div class="eyebrow">Services and offers</div>
+        <h2>${escapeHtml(copy.serviceLine)}</h2>
+      </div>
+      <p>${escapeHtml(industryContent.serviceIntro)} Confirm current options, timing, and availability directly with the business.</p>
+    </div>
+
+    <div class="cards-grid">
+      ${serviceCards}
+    </div>
+  </div>
+</section>`,
+spotlight: `<section class="section industry-spotlight" id="industry-focus">
+  <div class="container why-grid">
+    <div>
+      <div class="eyebrow reveal">${escapeHtml(spotlight.eyebrow)}</div>
+      <h2 class="reveal">${escapeHtml(spotlight.title)}</h2>
+      <p class="lead reveal">${escapeHtml(spotlight.body)}</p>
+      <div class="reasons">
+        ${spotlightCards}
+      </div>
+    </div>
+    <div class="image-frame reveal">
+      <img src="${escapeHtml(profile.feature)}" alt="${escapeHtml(profile.alt)}" loading="lazy">
+      <div class="image-label">
+        <strong>${escapeHtml(industryDesign.label)} module</strong>
+        <span>Representative imagery - replace with verified business photography when ready</span>
+      </div>
+    </div>
+  </div>
+</section>`,
+experience: `<section class="section why" id="experience">
+  <div class="container why-grid">
+    <div class="image-frame reveal">
+      <img src="${escapeHtml(profile.feature)}" alt="${escapeHtml(profile.alt)}" loading="lazy">
+      <div class="image-label">
+        <strong>Visual concept direction</strong>
+        <span>Representative imagery - replace with verified business photography when ready</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="eyebrow reveal">${escapeHtml(preset.visualMood)}</div>
+      <h2 class="reveal">${escapeHtml(copy.finalPrompt)}</h2>
+      <p class="lead reveal">${escapeHtml(preset.tone)} ${businessName} can use this structure to clarify ${escapeHtml(profile.sectionEmphasis.join(", "))} without inventing unsupported claims.</p>
+
+      <div class="reasons">
+        <article class="reason-card reveal"><span class="card-icon">01</span><h3>${escapeHtml(profile.sectionEmphasis[0])}</h3><p>${escapeHtml(copy.credibility[0])} with wording grounded in supplied business details.</p></article>
+        <article class="reason-card reveal delay-1"><span class="card-icon">02</span><h3>${escapeHtml(profile.sectionEmphasis[1])}</h3><p>${escapeHtml(copy.credibility[1])} while leaving current options open for confirmation.</p></article>
+        <article class="reason-card reveal"><span class="card-icon">03</span><h3>${escapeHtml(profile.sectionEmphasis[2])}</h3><p>${escapeHtml(preset.preferredLayoutRhythm)}</p></article>
+        <article class="reason-card reveal delay-1"><span class="card-icon">04</span><h3>${escapeHtml(profile.sectionEmphasis[3])}</h3><p>${escapeHtml(preset.ctaStyle)} Confirm availability directly.</p></article>
+      </div>
+    </div>
+  </div>
+</section>`,
+transformation: `<section class="section transformation">
+  <div class="container">
+    <div class="transform-shell reveal">
+      <img src="${escapeHtml(profile.hero)}" alt="${escapeHtml(profile.alt)}" loading="lazy">
+      <div class="transform-copy">
+        <span class="demo-label">Website concept - private review</span>
+        <h2>${escapeHtml(copy.transformation)}</h2>
+        <p>${businessName} can use this structure to connect ${escapeHtml(profile.sectionEmphasis.join(", "))} in one ${escapeHtml(preset.tone.toLowerCase())} customer journey.</p>
+        <div class="benefit-stack">
+          <span class="benefit-pill">${escapeHtml(copy.credibility[0])}</span>
+          <span class="benefit-pill">${escapeHtml(copy.credibility[1])}</span>
+          <span class="benefit-pill">${escapeHtml(copy.credibility[2])}</span>
+        </div>
+      </div>
+      <aside class="transform-note">
+        <strong>${escapeHtml(preset.name)} direction.</strong>
+        <p>Replace representative imagery with verified business photography. Ask about current options before publishing service details.</p>
+      </aside>
+    </div>
+  </div>
+</section>`,
+gallery: `<section class="section gallery" id="gallery">
+  <div class="container">
+    <div class="section-head reveal">
+      <div>
+        <div class="eyebrow">Visual showcase</div>
+        <h2>${escapeHtml(copy.galleryCaptions[0])}: a richer view of the brand world.</h2>
+      </div>
+      <p>${escapeHtml(preset.visualMood)} Representative imagery should be replaced with verified business photography when ready.</p>
+    </div>
+
+    <div class="gallery-grid">
+      ${galleryCards}
+    </div>
+  </div>
+</section>`,
+process: `<section class="section" id="process">
+  <div class="container">
+    <div class="section-head reveal">
+      <div>
+        <div class="eyebrow">${escapeHtml(profile.sectionEmphasis[3])}</div>
+        <h2>Four steps shaped around ${escapeHtml(copy.name)}.</h2>
+      </div>
+      <p>${escapeHtml(preset.ctaStyle)} Current scope and availability should always be confirmed directly.</p>
+    </div>
+
+    <div class="process-grid">
+      ${processCards}
+    </div>
+  </div>
+</section>`,
+connect: `<section class="section section-tight">
+  <div class="container">
+    <div class="section-head reveal">
+      <div>
+        <div class="eyebrow">Connect</div>
+        <h2>Make every contact option <span class="accent-text">easy to find.</span></h2>
+      </div>
+      <p>${escapeHtml(industryContent.contactContext)} Calls, email, social media, booking links, and existing websites can all sit here when verified.</p>
+    </div>
+
+    <div class="social-grid">
+      <article class="social-card reveal">
+        <span class="social-icon">Call</span>
+        <div>
+          <h3>Phone / WhatsApp</h3>
+          <p>${phone || "Add a phone or WhatsApp number when available."}</p>
+          ${phone ? `<a class="text-link" href="tel:${buttons.phoneHref}">Call now <span>Next</span></a>` : `<span class="text-link">Add phone number</span>`}
+        </div>
+      </article>
+
+      <article class="social-card reveal delay-1">
+        <span class="social-icon">@</span>
+        <div>
+          <h3>Email</h3>
+          <p>${email || "Add an email address when available."}</p>
+          ${email ? `<a class="text-link" href="mailto:${email}">Send email <span>Next</span></a>` : `<span class="text-link">Add email address</span>`}
+        </div>
+      </article>
+
+      <article class="social-card placeholder-card reveal delay-2">
+        <span class="social-icon">Link</span>
+        <div>
+          <h3>Social</h3>
+          <p>${social ? escapeHtml(social) : "Add Instagram, Facebook, TikTok, YouTube, or another public profile."}</p>
+          ${social ? `<a class="text-link" href="${escapeHtml(social)}" target="_blank" rel="noopener">Visit social <span>Open</span></a>` : `<span class="text-link">Add social link</span>`}
+        </div>
+      </article>
+
+      <article class="social-card placeholder-card reveal delay-3">
+        <span class="social-icon">Add</span>
+        <div>
+          <h3>Booking / Website</h3>
+          <p>${website ? escapeHtml(website) : "Add booking or existing website link when available."}</p>
+          ${website ? `<a class="text-link" href="${escapeHtml(website)}" target="_blank" rel="noopener">Open link <span>Open</span></a>` : `<span class="text-link">Add booking link</span>`}
+        </div>
+      </article>
+    </div>
+  </div>
+</section>`,
+trust: `<section class="section trust">
+  <div class="container">
+    <div class="section-head reveal">
+      <div>
+        <div class="eyebrow">Trust ready</div>
+        <h2>Built for real proof, not <span class="accent-text">fake claims.</span></h2>
+      </div>
+    </div>
+
+    <p class="notice reveal"><strong>Placeholder examples for demo purposes only</strong> - replace these cards with real customer reviews, project results, certifications, or proof points when available.</p>
+
+    <div class="cards-grid">
+      <article class="quote-card reveal"><div class="quote-mark">&quot;</div><blockquote>Space for a verified customer review about the experience, service quality, or result.</blockquote><span class="placeholder-tag">Placeholder - Not a real review</span></article>
+      <article class="quote-card reveal delay-1"><div class="quote-mark">&quot;</div><blockquote>Space for a verified project story, transformation, case study, or client result.</blockquote><span class="placeholder-tag">Placeholder - Not a real review</span></article>
+      <article class="quote-card reveal delay-2"><div class="quote-mark">&quot;</div><blockquote>Space for a verified trust signal, guarantee, certification, or business milestone.</blockquote><span class="placeholder-tag">Placeholder - Not a real claim</span></article>
+    </div>
+  </div>
+</section>`,
+faq: `<section class="section" id="faq">
+  <div class="container faq-wrap">
+    <div class="faq-intro reveal">
+      <div class="eyebrow">Before you ${escapeHtml(profile.ctaLanguage.toLowerCase())}</div>
+      <h2>Useful answers about ${escapeHtml(profile.sectionEmphasis[0])} and current options.</h2>
+      <p class="lead">${escapeHtml(preset.safeWordingRules[0])} ${escapeHtml(preset.safeWordingRules[1])}</p>
+      ${buttons.primary}
+    </div>
+
+    <div class="faq-list reveal">
+      <div class="faq-item open">
+        <button class="faq-question" type="button" aria-expanded="true"><span>${escapeHtml(industryContent.faqQuestions[0])}</span><span>+</span></button>
+        <div class="faq-answer"><div><p>${businessName} is presented as a ${category} business${locationPhrase}. Ask about current options, scope, and availability directly.</p></div></div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" type="button" aria-expanded="false"><span>Where is the business located?</span><span>+</span></button>
+        <div class="faq-answer"><div><p>${location ? `${businessName} is listed in ${location}.` : "A specific service area was not provided. Add a confirmed location or service area when available."}</p></div></div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" type="button" aria-expanded="false"><span>${escapeHtml(industryContent.faqQuestions[1])}</span><span>+</span></button>
+        <div class="faq-answer"><div><p>Use the available contact route to ask ${businessName} about current options, pricing, timing, and suitability. No unverified pricing is included.</p></div></div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" type="button" aria-expanded="false"><span>Can this website use real photos and reviews?</span><span>+</span></button>
+        <div class="faq-answer"><div><p>Yes. Representative imagery and placeholder trust cards should be replaced with verified business photography, real reviews, actual services, and confirmed proof points.</p></div></div>
+      </div>
+
+      <div class="faq-item">
+        <button class="faq-question" type="button" aria-expanded="false"><span>${escapeHtml(industryContent.faqQuestions[2])}</span><span>+</span></button>
+        <div class="faq-answer"><div><p>${escapeHtml(copy.process[0])}, then use the contact section to call, email, visit social media, or open the existing website when those details are available.</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>`,
+finalCta: `<section class="final-cta" id="contact">
+  <div class="container">
+    <div class="cta-shell reveal">
+      <div class="eyebrow">${escapeHtml(profile.ctaLanguage)}</div>
+      <h2>${escapeHtml(copy.finalPrompt)}</h2>
+      <p>This ${escapeHtml(preset.name)} concept shows how ${businessName} can present ${escapeHtml(profile.sectionEmphasis.join(", "))} with more clarity and purpose.</p>
+      <div class="cta-actions">
+        ${buttons.primary}
+        ${email ? `<a class="btn btn-glass" href="mailto:${email}">Send an email</a>` : ""}
+        ${social ? `<a class="btn btn-glass" href="${escapeHtml(social)}" target="_blank" rel="noopener">Social profile</a>` : ""}
+        ${website ? `<a class="btn btn-glass" href="${escapeHtml(website)}" target="_blank" rel="noopener">Existing website</a>` : ""}
+      </div>
+      <div class="cta-meta">
+        <span>${category}</span>
+        ${location ? `<span>${location}</span>` : `<span>Service area to be confirmed</span>`}
+      </div>
+    </div>
+  </div>
+</section>`,
+};
+
+const mainSections = sectionOrder
+.map((sectionId) => sectionModules[sectionId])
+.filter(Boolean)
+.join("\n\n");
+
+const navItems: Array<{ section: WebsiteSectionId; href: string; label: string }> = [
+{ section: "services", href: "#services", label: industryDesign.navPrimary },
+{ section: "spotlight", href: "#industry-focus", label: "Focus" },
+{ section: "experience", href: "#experience", label: "Experience" },
+{ section: "gallery", href: "#gallery", label: "Gallery" },
+{ section: "process", href: "#process", label: "Next steps" },
+{ section: "faq", href: "#faq", label: "FAQ" },
+];
+
+const activeNavLinks = navItems
+.filter((item) => sectionOrder.includes(item.section))
+.slice(0, 5)
+.map((item) => `<a href="${item.href}">${escapeHtml(item.label)}</a>`)
 .join("");
 
 return `<!DOCTYPE html>
@@ -664,7 +938,7 @@ h3 { margin-bottom: 13px; font-size: 1.16rem; }
 .premium-seal::before,
 .premium-seal::after {
   position: absolute;
-  content: "✦";
+  content: "";
   color: var(--accent);
   font-size: .66rem;
 }
@@ -1820,16 +2094,12 @@ footer { color: var(--text); background: var(--page-bg); }
         <span class="brand-mark">${initials(businessName)}</span>
         <span>
           <span class="brand-name">${businessName}</span>
-          <span class="brand-sub">${category}${location ? ` • ${location}` : ""}</span>
+          <span class="brand-sub">${category}${location ? ` - ${location}` : ""}</span>
         </span>
       </a>
       <button class="menu-btn" id="menuBtn" type="button" aria-label="Open navigation menu" aria-expanded="false"><span></span></button>
       <div class="nav-links" id="navLinks">
-        <a href="#experience">Experience</a>
-        <a href="#services">${escapeHtml(industryDesign.navPrimary)}</a>
-        <a href="#gallery">Gallery</a>
-        <a href="#process">Booking</a>
-        <a href="#faq">FAQ</a>
+        ${activeNavLinks}
         <a class="nav-cta" href="#contact">Contact</a>
       </div>
     </div>
@@ -1844,7 +2114,7 @@ footer { color: var(--text); background: var(--page-bg); }
 
   <div class="container">
     <div class="hero-copy reveal visible">
-      <div class="eyebrow">${category}${location ? ` · ${location}` : ""}</div>
+      <div class="eyebrow">${category}${location ? ` - ${location}` : ""}</div>
       <h1 id="hero-title">${escapeHtml(copy.heroLead)} <span class="accent-text">${businessName}.</span></h1>
       <p class="lead">${escapeHtml(profile.mood)} ${escapeHtml(copy.valueLine)}${location ? ` Serving customers in ${location}.` : ""}</p>
       <div class="hero-actions">
@@ -1874,233 +2144,7 @@ footer { color: var(--text); background: var(--page-bg); }
   </aside>
 </section>
 
-<section class="credibility" aria-label="Why this website concept helps">
-  <div class="container cred-grid">
-    ${credibilityCards}
-  </div>
-</section>
-
-<section class="section" id="services">
-  <div class="container">
-    <div class="section-head reveal">
-      <div>
-        <div class="eyebrow">Services and offers</div>
-        <h2>${escapeHtml(copy.serviceLine)}</h2>
-      </div>
-      <p>${escapeHtml(industryContent.serviceIntro)} Confirm current options, timing, and availability directly with the business.</p>
-    </div>
-
-    <div class="cards-grid">
-      ${serviceCards}
-    </div>
-  </div>
-</section>
-
-<section class="section why" id="experience">
-  <div class="container why-grid">
-    <div class="image-frame reveal">
-      <img src="${escapeHtml(profile.feature)}" alt="${escapeHtml(profile.alt)}" loading="lazy">
-      <div class="image-label">
-        <strong>Visual concept direction</strong>
-        <span>Representative imagery • replace with verified business photography when ready</span>
-      </div>
-    </div>
-
-    <div>
-      <div class="eyebrow reveal">${escapeHtml(preset.visualMood)}</div>
-      <h2 class="reveal">${escapeHtml(copy.finalPrompt)}</h2>
-      <p class="lead reveal">${escapeHtml(preset.tone)} ${businessName} can use this structure to clarify ${escapeHtml(profile.sectionEmphasis.join(", "))} without inventing unsupported claims.</p>
-
-      <div class="reasons">
-        <article class="reason-card reveal"><span class="card-icon">✦</span><h3>${escapeHtml(profile.sectionEmphasis[0])}</h3><p>${escapeHtml(copy.credibility[0])} with wording grounded in supplied business details.</p></article>
-        <article class="reason-card reveal delay-1"><span class="card-icon">↗</span><h3>${escapeHtml(profile.sectionEmphasis[1])}</h3><p>${escapeHtml(copy.credibility[1])} while leaving current options open for confirmation.</p></article>
-        <article class="reason-card reveal"><span class="card-icon">◎</span><h3>${escapeHtml(profile.sectionEmphasis[2])}</h3><p>${escapeHtml(preset.preferredLayoutRhythm)}</p></article>
-        <article class="reason-card reveal delay-1"><span class="card-icon">◆</span><h3>${escapeHtml(profile.sectionEmphasis[3])}</h3><p>${escapeHtml(preset.ctaStyle)} Confirm availability directly.</p></article>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section transformation">
-  <div class="container">
-    <div class="transform-shell reveal">
-      <img src="${escapeHtml(profile.hero)}" alt="${escapeHtml(profile.alt)}" loading="lazy">
-      <div class="transform-copy">
-        <span class="demo-label">Website concept • private review</span>
-        <h2>${escapeHtml(copy.transformation)}</h2>
-        <p>${businessName} can use this structure to connect ${escapeHtml(profile.sectionEmphasis.join(", "))} in one ${escapeHtml(preset.tone.toLowerCase())} customer journey.</p>
-        <div class="benefit-stack">
-          <span class="benefit-pill">${escapeHtml(copy.credibility[0])}</span>
-          <span class="benefit-pill">${escapeHtml(copy.credibility[1])}</span>
-          <span class="benefit-pill">${escapeHtml(copy.credibility[2])}</span>
-        </div>
-      </div>
-      <aside class="transform-note">
-        <strong>${escapeHtml(preset.name)} direction.</strong>
-        <p>Replace representative imagery with verified business photography. Ask about current options before publishing service details.</p>
-      </aside>
-    </div>
-  </div>
-</section>
-
-<section class="section gallery" id="gallery">
-  <div class="container">
-    <div class="section-head reveal">
-      <div>
-        <div class="eyebrow">Visual showcase</div>
-        <h2>${escapeHtml(copy.galleryCaptions[0])}: a richer view of the brand world.</h2>
-      </div>
-      <p>${escapeHtml(preset.visualMood)} Representative imagery should be replaced with verified business photography when ready.</p>
-    </div>
-
-    <div class="gallery-grid">
-      ${galleryCards}
-    </div>
-  </div>
-</section>
-
-<section class="section" id="process">
-  <div class="container">
-    <div class="section-head reveal">
-      <div>
-        <div class="eyebrow">${escapeHtml(profile.sectionEmphasis[3])}</div>
-        <h2>Four steps shaped around ${escapeHtml(copy.name)}.</h2>
-      </div>
-      <p>${escapeHtml(preset.ctaStyle)} Current scope and availability should always be confirmed directly.</p>
-    </div>
-
-    <div class="process-grid">
-      ${processCards}
-    </div>
-  </div>
-</section>
-
-<section class="section section-tight">
-  <div class="container">
-    <div class="section-head reveal">
-      <div>
-        <div class="eyebrow">Connect</div>
-        <h2>Make every contact option <span class="accent-text">easy to find.</span></h2>
-      </div>
-      <p>${escapeHtml(industryContent.contactContext)} Calls, email, social media, booking links, and existing websites can all sit here when verified.</p>
-    </div>
-
-    <div class="social-grid">
-      <article class="social-card reveal">
-        <span class="social-icon">☎</span>
-        <div>
-          <h3>Phone / WhatsApp</h3>
-          <p>${phone || "Add a phone or WhatsApp number when available."}</p>
-          ${phone ? `<a class="text-link" href="tel:${buttons.phoneHref}">Call now <span>→</span></a>` : `<span class="text-link">Add phone number</span>`}
-        </div>
-      </article>
-
-      <article class="social-card reveal delay-1">
-        <span class="social-icon">@</span>
-        <div>
-          <h3>Email</h3>
-          <p>${email || "Add an email address when available."}</p>
-          ${email ? `<a class="text-link" href="mailto:${email}">Send email <span>→</span></a>` : `<span class="text-link">Add email address</span>`}
-        </div>
-      </article>
-
-      <article class="social-card placeholder-card reveal delay-2">
-        <span class="social-icon">↗</span>
-        <div>
-          <h3>Social</h3>
-          <p>${social ? escapeHtml(social) : "Add Instagram, Facebook, TikTok, YouTube, or another public profile."}</p>
-          ${social ? `<a class="text-link" href="${escapeHtml(social)}" target="_blank" rel="noopener">Visit social <span>↗</span></a>` : `<span class="text-link">Add social link</span>`}
-        </div>
-      </article>
-
-      <article class="social-card placeholder-card reveal delay-3">
-        <span class="social-icon">＋</span>
-        <div>
-          <h3>Booking / Website</h3>
-          <p>${website ? escapeHtml(website) : "Add booking or existing website link when available."}</p>
-          ${website ? `<a class="text-link" href="${escapeHtml(website)}" target="_blank" rel="noopener">Open link <span>↗</span></a>` : `<span class="text-link">Add booking link</span>`}
-        </div>
-      </article>
-    </div>
-  </div>
-</section>
-
-<section class="section trust">
-  <div class="container">
-    <div class="section-head reveal">
-      <div>
-        <div class="eyebrow">Trust ready</div>
-        <h2>Built for real proof, not <span class="accent-text">fake claims.</span></h2>
-      </div>
-    </div>
-
-    <p class="notice reveal"><strong>Placeholder examples for demo purposes only</strong> — replace these cards with real customer reviews, project results, certifications, or proof points when available.</p>
-
-    <div class="cards-grid">
-      <article class="quote-card reveal"><div class="quote-mark">“</div><blockquote>Space for a verified customer review about the experience, service quality, or result.</blockquote><span class="placeholder-tag">Placeholder • Not a real review</span></article>
-      <article class="quote-card reveal delay-1"><div class="quote-mark">“</div><blockquote>Space for a verified project story, transformation, case study, or client result.</blockquote><span class="placeholder-tag">Placeholder • Not a real review</span></article>
-      <article class="quote-card reveal delay-2"><div class="quote-mark">“</div><blockquote>Space for a verified trust signal, guarantee, certification, or business milestone.</blockquote><span class="placeholder-tag">Placeholder • Not a real claim</span></article>
-    </div>
-  </div>
-</section>
-
-<section class="section" id="faq">
-  <div class="container faq-wrap">
-    <div class="faq-intro reveal">
-      <div class="eyebrow">Before you ${escapeHtml(profile.ctaLanguage.toLowerCase())}</div>
-      <h2>Useful answers about ${escapeHtml(profile.sectionEmphasis[0])} and current options.</h2>
-      <p class="lead">${escapeHtml(preset.safeWordingRules[0])} ${escapeHtml(preset.safeWordingRules[1])}</p>
-      ${buttons.primary}
-    </div>
-
-    <div class="faq-list reveal">
-      <div class="faq-item open">
-        <button class="faq-question" type="button" aria-expanded="true"><span>${escapeHtml(industryContent.faqQuestions[0])}</span><span>+</span></button>
-        <div class="faq-answer"><div><p>${businessName} is presented as a ${category} business${locationPhrase}. Ask about current options, scope, and availability directly.</p></div></div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question" type="button" aria-expanded="false"><span>Where is the business located?</span><span>+</span></button>
-        <div class="faq-answer"><div><p>${location ? `${businessName} is listed in ${location}.` : "A specific service area was not provided. Add a confirmed location or service area when available."}</p></div></div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question" type="button" aria-expanded="false"><span>${escapeHtml(industryContent.faqQuestions[1])}</span><span>+</span></button>
-        <div class="faq-answer"><div><p>Use the available contact route to ask ${businessName} about current options, pricing, timing, and suitability. No unverified pricing is included.</p></div></div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question" type="button" aria-expanded="false"><span>Can this website use real photos and reviews?</span><span>+</span></button>
-        <div class="faq-answer"><div><p>Yes. Representative imagery and placeholder trust cards should be replaced with verified business photography, real reviews, actual services, and confirmed proof points.</p></div></div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-question" type="button" aria-expanded="false"><span>${escapeHtml(industryContent.faqQuestions[2])}</span><span>+</span></button>
-        <div class="faq-answer"><div><p>${escapeHtml(copy.process[0])}, then use the contact section to call, email, visit social media, or open the existing website when those details are available.</p></div></div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="final-cta" id="contact">
-  <div class="container">
-    <div class="cta-shell reveal">
-      <div class="eyebrow">${escapeHtml(profile.ctaLanguage)}</div>
-      <h2>${escapeHtml(copy.finalPrompt)}</h2>
-      <p>This ${escapeHtml(preset.name)} concept shows how ${businessName} can present ${escapeHtml(profile.sectionEmphasis.join(", "))} with more clarity and purpose.</p>
-      <div class="cta-actions">
-        ${buttons.primary}
-        ${email ? `<a class="btn btn-glass" href="mailto:${email}">Send an email</a>` : ""}
-        ${social ? `<a class="btn btn-glass" href="${escapeHtml(social)}" target="_blank" rel="noopener">Social profile</a>` : ""}
-        ${website ? `<a class="btn btn-glass" href="${escapeHtml(website)}" target="_blank" rel="noopener">Existing website</a>` : ""}
-      </div>
-      <div class="cta-meta">
-        <span>${category}</span>
-        ${location ? `<span>${location}</span>` : `<span>Service area to be confirmed</span>`}
-      </div>
-    </div>
-  </div>
-</section>
+${mainSections}
   </main>
 
   <footer>
@@ -2111,7 +2155,7 @@ footer { color: var(--text); background: var(--page-bg); }
             <span class="brand-mark">${initials(businessName)}</span>
             <span>
               <span class="brand-name">${businessName}</span>
-              <span class="brand-sub">${category}${location ? ` • ${location}` : ""}</span>
+              <span class="brand-sub">${category}${location ? ` - ${location}` : ""}</span>
             </span>
           </a>
           <p style="margin-top:20px">${escapeHtml(preset.name)} private concept for review. Replace representative content with verified business details before publishing as an official website.</p>
@@ -2120,11 +2164,7 @@ footer { color: var(--text); background: var(--page-bg); }
     <div>
       <span class="footer-title">Navigate</span>
       <div class="footer-links">
-        <a href="#experience">Experience</a>
-        <a href="#services">Services</a>
-        <a href="#gallery">Gallery</a>
-        <a href="#process">Booking</a>
-        <a href="#faq">FAQ</a>
+        ${activeNavLinks}
       </div>
     </div>
 
@@ -2150,7 +2190,7 @@ footer { color: var(--text); background: var(--page-bg); }
   </div>
 
   <div class="footer-bottom">
-    <span>© ${new Date().getFullYear()} ${businessName}. All rights reserved.</span>
+    <span>(c) ${new Date().getFullYear()} ${businessName}. All rights reserved.</span>
     <span>Website concept created for presentation purposes.</span>
   </div>
 </div>

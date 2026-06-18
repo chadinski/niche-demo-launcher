@@ -18,6 +18,19 @@ export type IndustryDesignId =
   | "professional"
   | "local-service";
 
+export type WebsiteSectionId =
+  | "credibility"
+  | "services"
+  | "experience"
+  | "transformation"
+  | "gallery"
+  | "process"
+  | "spotlight"
+  | "connect"
+  | "trust"
+  | "faq"
+  | "finalCta";
+
 export interface IndustryDesign {
   id: IndustryDesignId;
   label: string;
@@ -40,6 +53,13 @@ export interface IndustryWebsiteContent {
   processDetails: [string, string, string, string];
   faqQuestions: [string, string, string];
   contactContext: string;
+}
+
+export interface IndustrySpotlight {
+  eyebrow: string;
+  title: string;
+  body: string;
+  items: [string, string, string];
 }
 
 export const industryDesigns: IndustryDesign[] = [
@@ -383,6 +403,138 @@ export const industryWebsiteContent: Record<IndustryDesignId, IndustryWebsiteCon
 
 export function getIndustryWebsiteContent(id: IndustryDesignId) {
   return industryWebsiteContent[id] ?? industryWebsiteContent["local-service"];
+}
+
+const defaultSectionOrder: WebsiteSectionId[] = [
+  "credibility",
+  "services",
+  "spotlight",
+  "experience",
+  "process",
+  "gallery",
+  "connect",
+  "trust",
+  "faq",
+  "finalCta",
+];
+
+export const industrySectionOrders: Record<IndustryDesignId, WebsiteSectionId[]> = {
+  restaurant: ["services", "gallery", "spotlight", "credibility", "experience", "process", "connect", "trust", "faq", "finalCta"],
+  "auto-detailing": ["credibility", "gallery", "services", "spotlight", "transformation", "process", "connect", "trust", "faq", "finalCta"],
+  "auto-repair": ["services", "spotlight", "process", "credibility", "experience", "connect", "trust", "faq", "finalCta"],
+  clinic: ["credibility", "spotlight", "services", "process", "experience", "connect", "trust", "faq", "finalCta"],
+  wellness: ["credibility", "experience", "services", "spotlight", "process", "gallery", "connect", "trust", "faq", "finalCta"],
+  salon: ["gallery", "services", "spotlight", "credibility", "experience", "process", "connect", "trust", "faq", "finalCta"],
+  trades: ["services", "spotlight", "process", "gallery", "credibility", "connect", "trust", "faq", "finalCta"],
+  "real-estate": ["gallery", "transformation", "services", "spotlight", "process", "credibility", "connect", "trust", "faq", "finalCta"],
+  memorial: ["credibility", "services", "spotlight", "process", "connect", "experience", "trust", "faq", "finalCta"],
+  "product-studio": ["services", "spotlight", "process", "gallery", "transformation", "credibility", "connect", "trust", "faq", "finalCta"],
+  artist: ["gallery", "spotlight", "services", "process", "credibility", "connect", "trust", "faq", "finalCta"],
+  florist: ["gallery", "services", "spotlight", "process", "connect", "credibility", "trust", "faq", "finalCta"],
+  "pet-care": ["credibility", "services", "spotlight", "process", "connect", "gallery", "trust", "faq", "finalCta"],
+  professional: ["credibility", "services", "spotlight", "process", "experience", "connect", "trust", "faq", "finalCta"],
+  "local-service": defaultSectionOrder,
+};
+
+export const industrySpotlights: Record<IndustryDesignId, IndustrySpotlight> = {
+  restaurant: {
+    eyebrow: "Visit planning",
+    title: "Make the menu, atmosphere, and visit path easy to picture.",
+    body: "A restaurant demo should move quickly from appetite to action: what guests can enjoy, what the space feels like, and how to visit, order, or ask about groups.",
+    items: ["Menu or offer clarity", "Atmosphere-led gallery", "Hours, location, and booking path"],
+  },
+  "auto-detailing": {
+    eyebrow: "Finish decision",
+    title: "Help vehicle owners choose the right level of care.",
+    body: "Detailing pages work best when they show finish quality, explain service levels, and keep estimates honest until the vehicle condition is known.",
+    items: ["Finish-focused visuals", "Package and scope guidance", "Quote request without fixed-price claims"],
+  },
+  "auto-repair": {
+    eyebrow: "Service confidence",
+    title: "Put diagnostics, repair scope, and contact first.",
+    body: "Repair customers usually need practical answers fast. This structure prioritizes what can be checked, how estimates begin, and how to reach the shop.",
+    items: ["Problem-first service list", "Estimate expectations", "Fast phone or WhatsApp route"],
+  },
+  clinic: {
+    eyebrow: "Patient path",
+    title: "Make care options feel clear before someone books.",
+    body: "Clinic pages should reduce uncertainty with calm service groupings, appointment guidance, and careful wording that does not imply unverified outcomes.",
+    items: ["Care categories", "Appointment preparation", "Verified proof placeholders"],
+  },
+  wellness: {
+    eyebrow: "Comfort path",
+    title: "Make the first enquiry feel calm and informed.",
+    body: "Wellness visitors need reassurance, session clarity, and a gentle booking path without exaggerated promises.",
+    items: ["Session fit", "Preparation details", "Low-pressure availability check"],
+  },
+  salon: {
+    eyebrow: "Appointment path",
+    title: "Let style, services, and booking work together.",
+    body: "Beauty and grooming demos should lead with visual taste, then make service options and appointment next steps simple to understand.",
+    items: ["Style-led visual proof", "Service menu clarity", "Appointment enquiry route"],
+  },
+  trades: {
+    eyebrow: "Scope and quote",
+    title: "Turn project uncertainty into a clearer quote conversation.",
+    body: "Trade pages should explain capabilities, service area, and the information needed before a quote, without pretending every project has the same price.",
+    items: ["Capability groups", "Site or scope requirements", "Quote-ready contact path"],
+  },
+  "real-estate": {
+    eyebrow: "Property decision",
+    title: "Show the visual standard before asking for a consultation.",
+    body: "Property and interiors pages need portfolio rhythm, project goals, and a measured consultation path more than generic service blocks.",
+    items: ["Portfolio-first proof", "Goal-led services", "Consultation path"],
+  },
+  memorial: {
+    eyebrow: "Private support",
+    title: "Keep guidance respectful, calm, and easy to request.",
+    body: "Memorial and funeral care pages need careful pacing, private contact, and clear options without pressure or unsupported reassurance.",
+    items: ["Gentle service guidance", "Private enquiry route", "Respectful proof placeholders"],
+  },
+  "product-studio": {
+    eyebrow: "Idea to quote",
+    title: "Help customers understand what to bring before production starts.",
+    body: "Product studios need capability modules, material or file guidance, and a custom quote path that makes complex work feel approachable.",
+    items: ["File or concept intake", "Materials and constraints", "Production quote path"],
+  },
+  artist: {
+    eyebrow: "Booking signal",
+    title: "Put the work, availability, and collaboration path on stage.",
+    body: "Creative sites should feel more like a portfolio journey than a local service page, with media first and booking context close behind.",
+    items: ["Featured work", "Booking or collaboration", "Media-ready proof area"],
+  },
+  florist: {
+    eyebrow: "Occasion path",
+    title: "Connect visual inspiration to a custom order enquiry.",
+    body: "Floral and event visitors need to see style quickly, understand occasion fit, and know what details to share before ordering.",
+    items: ["Occasion type", "Style and delivery details", "Custom order enquiry"],
+  },
+  "pet-care": {
+    eyebrow: "Owner guidance",
+    title: "Help pet owners understand care, preparation, and availability.",
+    body: "Pet care pages should be warm and practical, giving owners enough guidance to ask the right next question.",
+    items: ["Care categories", "Preparation details", "Availability check"],
+  },
+  professional: {
+    eyebrow: "Consultation path",
+    title: "Make expertise clear without overclaiming.",
+    body: "Professional-service pages should explain the enquiry path, confidentiality expectations, and service fit before asking for a consultation.",
+    items: ["Expertise areas", "Fit and confidentiality", "Consultation request"],
+  },
+  "local-service": {
+    eyebrow: "Decision path",
+    title: "Give visitors one clear way to understand and contact the business.",
+    body: "Local service pages should connect the offer, service area, proof placeholders, and contact route without making unsupported claims.",
+    items: ["Service clarity", "Area and availability", "Direct contact route"],
+  },
+};
+
+export function getIndustrySectionOrder(id: IndustryDesignId) {
+  return industrySectionOrders[id] ?? defaultSectionOrder;
+}
+
+export function getIndustrySpotlight(id: IndustryDesignId) {
+  return industrySpotlights[id] ?? industrySpotlights["local-service"];
 }
 
 export function resolveIndustryDesign(value: string): IndustryDesign {
