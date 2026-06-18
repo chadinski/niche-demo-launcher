@@ -37,15 +37,20 @@ export function statusLabel(status: OutreachStatus) {
 
 export function formatDate(value: string | null) {
   if (!value) return "Not scheduled";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Invalid date";
   return new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export function formatRelativeDate(value: string, referenceTime: string) {
-  const diff = new Date(referenceTime).getTime() - new Date(value).getTime();
+  const current = new Date(value).getTime();
+  const reference = new Date(referenceTime).getTime();
+  if (Number.isNaN(current) || Number.isNaN(reference)) return "Recently";
+  const diff = reference - current;
   const hours = Math.max(1, Math.floor(diff / 3_600_000));
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
@@ -54,4 +59,16 @@ export function formatRelativeDate(value: string, referenceTime: string) {
 
 export function phoneDigits(value: string) {
   return value.replace(/\D/g, "");
+}
+
+export function externalHref(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : "";
+  } catch {
+    return "";
+  }
 }

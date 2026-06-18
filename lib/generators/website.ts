@@ -429,15 +429,18 @@ return `<!DOCTYPE html>
   <title>${escapeHtml(title)}</title>
   <meta name="description" content="${escapeHtml(description.slice(0, 160))}">
   <meta name="theme-color" content="${primary}">
+  <meta name="format-detection" content="telephone=no">
   <meta name="robots" content="noindex, nofollow">
   <meta property="og:title" content="${escapeHtml(title)}">
   <meta property="og:description" content="${escapeHtml(description.slice(0, 160))}">
   <meta property="og:type" content="website">
   <meta property="og:image" content="${escapeHtml(profile.hero)}">
+  <meta property="og:image:alt" content="${escapeHtml(profile.alt)}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${escapeHtml(title)}">
   <meta name="twitter:description" content="${escapeHtml(description.slice(0, 160))}">
   <meta name="twitter:image" content="${escapeHtml(profile.hero)}">
+  <meta name="twitter:image:alt" content="${escapeHtml(profile.alt)}">
   <link rel="preconnect" href="https://images.unsplash.com">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23111114'/%3E%3Cpath d='M16 40c8-16 24-16 32 0M20 44h24' fill='none' stroke='%23ffffff' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='25' r='6' fill='%23ffffff'/%3E%3C/svg%3E">
   <script type="application/ld+json">${jsonLd}</script>
@@ -2202,33 +2205,45 @@ ${mainSections}
       const menuBtn = document.getElementById("menuBtn");
       const navLinks = document.getElementById("navLinks");
 
-      const updateNav = () => nav.classList.toggle("scrolled", window.scrollY > 20);
-      updateNav();
-      window.addEventListener("scroll", updateNav, { passive: true });
+      if (nav) {
+        const updateNav = () => nav.classList.toggle("scrolled", window.scrollY > 20);
+        updateNav();
+        window.addEventListener("scroll", updateNav, { passive: true });
+      }
 
-      menuBtn.addEventListener("click", () => {
-        const open = navLinks.classList.toggle("open");
-        menuBtn.classList.toggle("active", open);
-        menuBtn.setAttribute("aria-expanded", String(open));
-        menuBtn.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
-      });
-
-      navLinks.querySelectorAll("a").forEach((link) => {
-        link.addEventListener("click", () => {
+      if (menuBtn && navLinks) {
+        const closeMenu = () => {
           navLinks.classList.remove("open");
           menuBtn.classList.remove("active");
           menuBtn.setAttribute("aria-expanded", "false");
+          menuBtn.setAttribute("aria-label", "Open navigation menu");
+        };
+
+        menuBtn.addEventListener("click", () => {
+          const open = navLinks.classList.toggle("open");
+          menuBtn.classList.toggle("active", open);
+          menuBtn.setAttribute("aria-expanded", String(open));
+          menuBtn.setAttribute("aria-label", open ? "Close navigation menu" : "Open navigation menu");
         });
-      });
+
+        navLinks.querySelectorAll("a").forEach((link) => {
+          link.addEventListener("click", closeMenu);
+        });
+
+        window.addEventListener("keydown", (event) => {
+          if (event.key === "Escape") closeMenu();
+        });
+      }
 
       document.querySelectorAll(".faq-question").forEach((button) => {
         button.addEventListener("click", () => {
           const item = button.closest(".faq-item");
+          if (!item) return;
           const isOpen = item.classList.contains("open");
 
           document.querySelectorAll(".faq-item").forEach((other) => {
             other.classList.remove("open");
-            other.querySelector(".faq-question").setAttribute("aria-expanded", "false");
+            other.querySelector(".faq-question")?.setAttribute("aria-expanded", "false");
           });
 
           if (!isOpen) {

@@ -158,6 +158,67 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
         }
       />
 
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)]">
+        <Card className="surface-grid relative overflow-hidden border-brand-200 bg-ink-950 p-6 text-white shadow-[0_28px_90px_rgba(21,26,45,.22)] sm:p-7">
+          <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_65%_35%,rgba(168,85,247,.34),transparent_17rem)]" />
+          <div className="relative max-w-3xl">
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-[0.68rem] font-bold tracking-[0.13em] text-brand-100 uppercase">
+              <Sparkles className="size-3.5" />
+              Seraphim workflow
+            </span>
+            <h2 className="mt-8 max-w-2xl text-[clamp(2rem,5vw,4.5rem)] leading-[0.9] font-black tracking-[-0.075em]">
+              Build the demo. Shape the message. Keep the send manual.
+            </h2>
+            <p className="mt-5 max-w-xl text-sm leading-6 text-white/62">
+              A focused workspace for one-person agency speed: capture the business, generate a polished private concept, attach the live URL, then approve outreach with context.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link href="/create" className={buttonClass("primary", "min-h-12 px-5")}>
+                Start a site
+                <ArrowUpRight className="size-4" />
+              </Link>
+              <Link href="/prospects" className={buttonClass("outline", "min-h-12 border-white/15 bg-white/10 px-5 text-white hover:bg-white hover:text-ink-950")}>
+                Review pipeline
+              </Link>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[0.68rem] font-bold tracking-[0.14em] text-brand-600 uppercase">
+                Today&apos;s priority
+              </p>
+              <h2 className="mt-2 text-2xl font-extrabold tracking-[-0.045em]">
+                {todayActions.length ? `${todayActions.length} action${todayActions.length === 1 ? "" : "s"} ready` : "No urgent actions"}
+              </h2>
+            </div>
+            <span className="grid size-11 place-items-center rounded-2xl bg-brand-50 text-brand-600">
+              <CalendarClock className="size-5" />
+            </span>
+          </div>
+          <div className="mt-8 grid gap-3">
+            <div className="rounded-2xl border border-[#ececf2] bg-[#fafafd] p-4">
+              <div className="text-[0.66rem] font-bold tracking-[0.12em] text-[#969bad] uppercase">
+                Open pipeline
+              </div>
+              <div className="mt-2 text-2xl font-black tracking-[-0.05em] text-ink-950">
+                {moneyLabel(pipelineValue)}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-[#ececf2] bg-[#fafafd] p-4">
+              <div className="text-[0.66rem] font-bold tracking-[0.12em] text-[#969bad] uppercase">
+                Closed revenue
+              </div>
+              <div className="mt-2 text-2xl font-black tracking-[-0.05em] text-ink-950">
+                {moneyLabel(closedRevenue)}
+              </div>
+            </div>
+          </div>
+        </Card>
+      </section>
+
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5" aria-label="Performance overview">
         {metrics.map((metric) => {
           const Icon = metric.icon;

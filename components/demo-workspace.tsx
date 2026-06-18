@@ -985,7 +985,8 @@ export function DemoWorkspace() {
                       <iframe
                         title="Generated website preview"
                         srcDoc={html}
-                        sandbox=""
+                        sandbox="allow-scripts"
+                        referrerPolicy="no-referrer"
                         className="h-[620px] w-full bg-white"
                       />
                     </div>

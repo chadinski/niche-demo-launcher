@@ -9,12 +9,25 @@ type DeployInput = {
   html: string;
 };
 
+const GITHUB_OWNER_PATTERN = /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i;
+
 function requiredEnv() {
   const missing: string[] = [];
   if (!process.env.GITHUB_TOKEN) missing.push("GITHUB_TOKEN");
   if (!process.env.GITHUB_OWNER) missing.push("GITHUB_OWNER");
+  if (process.env.GITHUB_OWNER && !GITHUB_OWNER_PATTERN.test(process.env.GITHUB_OWNER)) {
+    missing.push("GITHUB_OWNER_VALID_NAME");
+  }
   if (!process.env.VERCEL_TOKEN) missing.push("VERCEL_TOKEN");
   return missing;
+}
+
+function githubOwner() {
+  const owner = process.env.GITHUB_OWNER;
+  if (!owner || !GITHUB_OWNER_PATTERN.test(owner)) {
+    throw new Error("GitHub owner is missing or invalid.");
+  }
+  return owner;
 }
 
 export async function getAutomationStatus() {
@@ -48,9 +61,9 @@ async function githubRequest(path: string, init: RequestInit = {}) {
 }
 
 async function ensureRepo(repo: string) {
-  const owner = process.env.GITHUB_OWNER;
+  const owner = githubOwner();
   try {
-    await githubRequest(`/repos/${owner}/${repo}`);
+    await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (!/not found/i.test(message)) throw error;
@@ -67,18 +80,20 @@ async function ensureRepo(repo: string) {
 }
 
 async function upsertIndexHtml(repo: string, html: string) {
-  const owner = process.env.GITHUB_OWNER;
+  const owner = githubOwner();
   let sha: string | undefined;
 
   try {
-    const existing = await githubRequest(`/repos/${owner}/${repo}/contents/index.html`);
+    const existing = await githubRequest(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/index.html`,
+    );
     sha = existing?.sha;
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (!/not found/i.test(message)) throw error;
   }
 
-  await githubRequest(`/repos/${owner}/${repo}/contents/index.html`, {
+  await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/index.html`, {
     method: "PUT",
     body: JSON.stringify({
       message: "Publish generated website",
@@ -111,7 +126,12 @@ async function deployToVercel(name: string, html: string) {
     throw new Error(typeof body.error?.message === "string" ? body.error.message : "Vercel deployment failed");
   }
 
-  return `https://${body.url}`;
+  const deploymentUrl = typeof body.url === "string" ? body.url : "";
+  if (!/^[a-z0-9.-]+$/i.test(deploymentUrl)) {
+    throw new Error("Vercel returned an invalid deployment URL.");
+  }
+
+  return `https://${deploymentUrl}`;
 }
 
 export async function deployGeneratedWebsite(input: DeployInput): Promise<DeploymentResult> {
@@ -146,7 +166,7 @@ export async function deployGeneratedWebsite(input: DeployInput): Promise<Deploy
       status: "deployed",
       message: "Website deployed successfully.",
       url,
-      repoUrl: `https://github.com/${process.env.GITHUB_OWNER}/${repo}`,
+      repoUrl: `https://github.com/${githubOwner()}/${repo}`,
     };
   } catch (error) {
     return {

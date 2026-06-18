@@ -4,6 +4,12 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { OutreachStatus, Prospect } from "@/lib/types";
 
+function withoutUndefined<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined),
+  ) as Partial<T>;
+}
+
 export async function listProspects() {
   const supabase = await createClient();
   if (!supabase) return { configured: false, data: [] as Prospect[] };
@@ -57,7 +63,7 @@ export async function patchProspect(
 
   const { error } = await supabase
     .from("prospects")
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update(withoutUndefined({ ...patch, updated_at: new Date().toISOString() }))
     .eq("id", id)
     .eq("user_id", user.id);
 
