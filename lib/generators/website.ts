@@ -1,5 +1,6 @@
 import type { BusinessInfo } from "@/lib/types";
 import { getCopyAngle } from "@/lib/generators/copy-angles";
+import { resolveIndustryDesign } from "@/lib/generators/industry-designs";
 import { colorPair } from "@/lib/generators/palettes";
 import { schemaType, visualProfile } from "@/lib/generators/visual-profiles";
 import { getWebsitePreset } from "@/lib/generators/website-presets";
@@ -26,7 +27,7 @@ return "";
 
 function servicesFrom(value: string, category: string) {
 const services = value
-.split(/,|\n|•|||;/)
+.split(/,|\n|•|\||;/)
 .map((item) => item.trim())
 .filter(Boolean)
 .slice(0, 6);
@@ -123,6 +124,17 @@ const secondary = social
 return { primary, secondary, phoneHref };
 }
 
+function initials(value: string) {
+return value
+.replace(/&[^;]+;/g, "")
+.split(/\s+/)
+.filter(Boolean)
+.slice(0, 2)
+.map((word) => word.charAt(0))
+.join("")
+.toUpperCase() || "N";
+}
+
 export function generateWebsiteHTML(info: BusinessInfo) {
 const businessNameRaw = info.businessName || "Your Business";
 const categoryRaw = readableCategory(info.category);
@@ -135,10 +147,12 @@ const email = escapeHtml(info.email);
 const website = safeUrl(info.websiteUrl);
 const social = safeUrl(info.socialUrl);
 const services = servicesFrom(info.services, info.category);
-const [primary, accent] = colorPair(info.brandColors, info.category);
-const profile = visualProfile(info.category || info.rawInfo);
-const preset = getWebsitePreset(profile.preferredPreset);
-const copy = getCopyAngle(profile.copyAngle);
+const designSource = `${info.category} ${info.services} ${info.rawInfo}`;
+const industryDesign = resolveIndustryDesign(designSource);
+const [primary, accent] = colorPair(info.brandColors, designSource);
+const profile = visualProfile(designSource);
+const preset = getWebsitePreset(industryDesign.preset);
+const copy = getCopyAngle(industryDesign.copyAngle);
 const locationPhrase = location ? ` in ${location}` : "";
 const description = `${businessNameRaw} provides ${categoryRaw}${locationRaw ? ` in ${locationRaw}` : ""}. Explore services, contact options, and current availability through this private website concept.`;
 const title = `${businessNameRaw} | ${categoryRaw}${locationRaw ? ` in ${locationRaw}` : ""}`;
@@ -180,8 +194,8 @@ const galleryCards = profile.gallery
 .join("");
 
 const credibilityDescriptions = [
-`A ${preset.tone.toLowerCase()} first impression shaped around ${profile.sectionEmphasis[0]}.`,
-`Clear sections help visitors understand ${profile.sectionEmphasis[1]} and ask informed questions.`,
+`A ${preset.tone.toLowerCase()} first impression shaped around ${industryDesign.trustCue}.`,
+`Clear sections help visitors understand ${profile.sectionEmphasis[1]} through a ${industryDesign.label.toLowerCase()} design route.`,
 `The contact path supports ${profile.sectionEmphasis[3]} without implying unavailable services.`,
 "Representative content is ready to be replaced with verified photography and proof.",
 ];
@@ -1782,6 +1796,72 @@ footer { color: var(--text); background: var(--page-bg); }
 .theme-3d-studio .credibility,
 .theme-industrial .credibility { order: 7; }
 
+.industry-restaurant .service-card {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--primary) 18%, var(--card-bg)), var(--card-bg)),
+    radial-gradient(circle at 92% 12%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 11rem);
+}
+.industry-restaurant .gallery-caption strong::before {
+  content: "Taste note";
+  display: block;
+  margin-bottom: 4px;
+  color: color-mix(in srgb, var(--accent) 72%, white);
+  font-family: var(--body-font);
+  font-size: .62rem;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.industry-restaurant .premium-seal { border-radius: 999px 999px 20px 20px; }
+
+.industry-clinic .service-card,
+.industry-wellness .service-card {
+  border-radius: 32px;
+  background: color-mix(in srgb, var(--surface) 90%, white);
+}
+.industry-clinic .btn-primary,
+.industry-wellness .btn-primary { box-shadow: 0 16px 42px color-mix(in srgb, var(--primary) 18%, transparent); }
+.industry-clinic .quote-card,
+.industry-wellness .quote-card { border-radius: 28px; }
+
+.industry-trades .service-card,
+.industry-auto-repair .service-card,
+.industry-product-studio .service-card {
+  border-left: 4px solid var(--accent);
+}
+.industry-trades .card-index,
+.industry-auto-repair .card-index,
+.industry-product-studio .card-index {
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 36%, var(--theme-border));
+  padding-bottom: 14px;
+}
+.industry-product-studio .hero-float,
+.industry-artist .hero-float {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent), 0 34px 100px rgba(0,0,0,.46);
+}
+
+.industry-salon .image-frame,
+.industry-florist .image-frame,
+.industry-real-estate .image-frame {
+  border-radius: 36px;
+}
+.industry-salon .accent-text,
+.industry-florist .accent-text {
+  background-image: linear-gradient(115deg, var(--primary), color-mix(in srgb, var(--accent) 54%, white));
+}
+
+.industry-memorial .service-card,
+.industry-memorial .quote-card,
+.industry-professional .service-card {
+  box-shadow: none;
+}
+.industry-memorial .btn:hover { transform: none; }
+
+.industry-pet-care .service-card {
+  border-radius: 24px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 8%, var(--card-bg)), var(--card-bg));
+}
+
 @media (max-width: 900px) {
   .hero-split .hero { min-height: 900px; }
   .hero-split .hero-bg {
@@ -1807,11 +1887,11 @@ footer { color: var(--text); background: var(--page-bg); }
 }
   </style>
 </head>
-<body class="${preset.themeClass} mode-${preset.themeMode} type-${preset.typographyMood} card-${preset.cardStyle} hero-${preset.heroTreatment} intensity-${preset.colorIntensity} button-${preset.buttonStyle} rhythm-${preset.sectionRhythm}">
+<body class="${preset.themeClass} ${industryDesign.cssClass} mode-${preset.themeMode} type-${preset.typographyMood} card-${preset.cardStyle} hero-${preset.heroTreatment} intensity-${preset.colorIntensity} button-${preset.buttonStyle} rhythm-${preset.sectionRhythm}" data-industry-design="${escapeHtml(industryDesign.id)}">
   <nav class="nav" id="nav" aria-label="Main navigation">
     <div class="container nav-wrap">
       <a class="brand" href="#top" aria-label="${businessName} home">
-        <span class="brand-mark">${businessName.replace(/&[^;]+;/g, "").charAt(0) || "N"}</span>
+        <span class="brand-mark">${initials(businessName)}</span>
         <span>
           <span class="brand-name">${businessName}</span>
           <span class="brand-sub">${category}${location ? ` • ${location}` : ""}</span>
@@ -1820,7 +1900,7 @@ footer { color: var(--text); background: var(--page-bg); }
       <button class="menu-btn" id="menuBtn" type="button" aria-label="Open navigation menu" aria-expanded="false"><span></span></button>
       <div class="nav-links" id="navLinks">
         <a href="#experience">Experience</a>
-        <a href="#services">Services</a>
+        <a href="#services">${escapeHtml(industryDesign.navPrimary)}</a>
         <a href="#gallery">Gallery</a>
         <a href="#process">Booking</a>
         <a href="#faq">FAQ</a>
@@ -1854,6 +1934,7 @@ footer { color: var(--text); background: var(--page-bg); }
         <span class="badge accent">${category}</span>
         <span class="badge">${escapeHtml(profile.sectionEmphasis[0])}</span>
         <span class="badge">${escapeHtml(profile.sectionEmphasis[1])}</span>
+        <span class="badge">${escapeHtml(industryDesign.label)}</span>
         <span class="badge accent">${escapeHtml(preset.name)}</span>
       </div>
     </div>
@@ -1862,7 +1943,7 @@ footer { color: var(--text); background: var(--page-bg); }
   <div class="premium-seal" aria-hidden="true">Private<br>Concept</div>
 
   <aside class="hero-float" aria-label="Website concept highlights">
-    <div class="hero-float-title">${escapeHtml(preset.headlineStyle)}</div>
+    <div class="hero-float-title">${escapeHtml(industryDesign.composition)}</div>
     ${profile.sectionEmphasis.map((item, index) => `<div class="mini-stat"><strong>${String(index + 1).padStart(2, "0")}</strong><span>${escapeHtml(item)}</span></div>`).join("")}
   </aside>
 </section>
@@ -1880,7 +1961,7 @@ footer { color: var(--text); background: var(--page-bg); }
         <div class="eyebrow">Services and offers</div>
         <h2>${escapeHtml(copy.serviceLine)}</h2>
       </div>
-      <p>${escapeHtml(preset.sectionEmphasis.join(", "))}. Ask about current options and confirm availability directly.</p>
+      <p>${escapeHtml(industryDesign.trustCue)} Color path: ${escapeHtml(industryDesign.colorPath)}. Ask about current options and confirm availability directly.</p>
     </div>
 
     <div class="cards-grid">
@@ -2101,7 +2182,7 @@ footer { color: var(--text); background: var(--page-bg); }
       <div class="footer-grid">
         <div class="footer-brand">
           <a class="brand" href="#top">
-            <span class="brand-mark">${businessName.replace(/&[^;]+;/g, "").charAt(0) || "N"}</span>
+            <span class="brand-mark">${initials(businessName)}</span>
             <span>
               <span class="brand-name">${businessName}</span>
               <span class="brand-sub">${category}${location ? ` • ${location}` : ""}</span>
@@ -2137,6 +2218,7 @@ footer { color: var(--text); background: var(--page-bg); }
         <span>No fake reviews, awards, or guarantees</span>
         <span>${escapeHtml(preset.safeWordingRules[1])}</span>
         <span>${escapeHtml(preset.tone)}</span>
+        <span>${escapeHtml(industryDesign.label)} route: ${escapeHtml(industryDesign.colorPath)}</span>
       </div>
     </div>
   </div>
