@@ -54,6 +54,10 @@ import {
   createHeaderCrop,
   extractImageColors,
 } from "@/lib/image-extraction";
+import {
+  analyzeBusinessScreenshot,
+  type BusinessUnderstanding,
+} from "@/lib/industry-theme-engine";
 import { generateBusinessIntelligence } from "@/lib/automation/business-intelligence";
 import { nextFollowUpDate, statusAfterMilestone } from "@/lib/automation/follow-ups";
 import { scoreLead } from "@/lib/automation/lead-scoring";
@@ -200,6 +204,8 @@ export function DemoWorkspace() {
   const [imagePreview, setImagePreview] = useState("");
   const [ocrProgress, setOcrProgress] = useState(0);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [businessUnderstanding, setBusinessUnderstanding] = useState<BusinessUnderstanding | null>(null);
+  const [businessReport, setBusinessReport] = useState("");
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const names = useMemo(() => generatedNames(info), [info]);
@@ -248,14 +254,32 @@ export function DemoWorkspace() {
     toast.success(success);
   };
 
+  const applyBusinessUnderstanding = useCallback(
+    (sourceInfo: BusinessInfo, imageName = imageFile?.name) => {
+      const understanding = analyzeBusinessScreenshot({
+        rawOcrText: sourceInfo.rawInfo,
+        parsedInfo: sourceInfo,
+        brandColors: sourceInfo.brandColors,
+        imageName,
+      });
+      const nextInfo = { ...sourceInfo, ...understanding.enrichedInfo };
+      setBusinessUnderstanding(understanding);
+      setBusinessReport(understanding.reportMarkdown);
+      setInfo(nextInfo);
+      return { understanding, nextInfo };
+    },
+    [imageFile?.name],
+  );
+
   const handleParse = () =>
     runAction(
       "parse",
       () => {
         const parsed = parseBusinessInfo(info.rawInfo);
-        setInfo((current) => ({ ...current, ...parsed }));
+        const nextInfo = { ...info, ...parsed, rawInfo: info.rawInfo };
+        applyBusinessUnderstanding(nextInfo);
       },
-      "Business details extracted",
+      "Business intelligence extracted",
     );
 
   const removeImage = () => {
@@ -321,21 +345,18 @@ export function DemoWorkspace() {
       }
 
       const parsed = parseBusinessInfo(extractedText);
-      setInfo((current) => {
-        const populated = Object.fromEntries(
-          Object.entries(parsed).filter(([, value]) => Boolean(value)),
-        ) as Partial<BusinessInfo>;
-
-        return {
-          ...current,
-          ...populated,
-          rawInfo: extractedText,
-          brandColors:
-            parsed.brandColors || sampledColors || current.brandColors,
-        };
-      });
+      const populated = Object.fromEntries(
+        Object.entries(parsed).filter(([, value]) => Boolean(value)),
+      ) as Partial<BusinessInfo>;
+      const nextInfo = {
+        ...info,
+        ...populated,
+        rawInfo: extractedText,
+        brandColors: parsed.brandColors || sampledColors || info.brandColors,
+      };
+      applyBusinessUnderstanding(nextInfo, file.name);
       setOcrProgress(1);
-      toast.success("Screenshot text extracted and business profile populated");
+      toast.success("Screenshot analyzed and business intelligence report created");
     } catch {
       setOcrProgress(0);
       toast.error("The screenshot could not be read. Try a clearer or tighter crop.");
@@ -348,10 +369,11 @@ export function DemoWorkspace() {
     runAction(
       "website",
       () => {
-        setHtml(generateWebsiteHTML(info));
+        const { nextInfo } = applyBusinessUnderstanding(info);
+        setHtml(generateWebsiteHTML(nextInfo));
         setOutputTab("preview");
       },
-      "Production-ready website generated",
+      "Business intelligence report and website generated",
     );
 
   const handleGenerateMessages = () =>
@@ -365,11 +387,12 @@ export function DemoWorkspace() {
     runAction(
       "both",
       () => {
-        setHtml(generateWebsiteHTML(info));
-        setMessages(generateSalesMessages(info, tone, DEFAULT_SETTINGS));
+        const { nextInfo } = applyBusinessUnderstanding(info);
+        setHtml(generateWebsiteHTML(nextInfo));
+        setMessages(generateSalesMessages(nextInfo, tone, DEFAULT_SETTINGS));
         setOutputTab("preview");
       },
-      "Website and outreach kit generated",
+      "Business intelligence, website, and outreach kit generated",
     );
 
   const buildProspect = (): Prospect => {
@@ -462,6 +485,21 @@ export function DemoWorkspace() {
     anchor.click();
     URL.revokeObjectURL(href);
     toast.success("index.html downloaded");
+  };
+
+  const downloadBusinessReport = () => {
+    if (!businessReport) {
+      toast.error("Run extraction or generate a website first");
+      return;
+    }
+    const blob = new Blob([businessReport], { type: "text/markdown;charset=utf-8" });
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = href;
+    anchor.download = "business-intelligence-report.md";
+    anchor.click();
+    URL.revokeObjectURL(href);
+    toast.success("business-intelligence-report.md downloaded");
   };
 
   const openWhatsApp = () => {
@@ -641,16 +679,50 @@ export function DemoWorkspace() {
             <span className="grid size-9 place-items-center rounded-xl bg-brand-50 text-brand-600">
               <Target className="size-4" />
             </span>
-            <div>
+            <div className="min-w-0 flex-1">
               <h2 className="font-extrabold tracking-[-0.025em]">Business intelligence</h2>
               <p className="mt-1 text-xs leading-5 text-[#858b9d]">{intelligence.summary}</p>
             </div>
+            <Button variant="outline" onClick={downloadBusinessReport} disabled={!businessReport}>
+              <Download className="size-4" />
+              Report
+            </Button>
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-4">
             <Insight label="Best CTA" value={intelligence.bestCta} />
             <Insight label="Suggested package" value={intelligence.suggestedPackage} />
             <Insight label="Price range" value={intelligence.suggestedPriceRange} />
             <Insight label="Likely weakness" value={intelligence.onlineWeakness} />
+          </div>
+          <div className="mt-4 grid gap-3 rounded-2xl border border-[#eef0f5] bg-[#fafafd] p-3 md:grid-cols-4">
+            <Insight
+              label="Detected name"
+              value={
+                businessUnderstanding
+                  ? `${businessUnderstanding.selectedBusinessName || "Your Business Name"} (${businessUnderstanding.businessNameConfidence}/100)`
+                  : "Run extraction first"
+              }
+            />
+            <Insight
+              label="Industry"
+              value={
+                businessUnderstanding
+                  ? `${businessUnderstanding.industry.primaryIndustry} (${businessUnderstanding.industry.confidence}/100)`
+                  : "Not classified yet"
+              }
+            />
+            <Insight
+              label="Website category"
+              value={businessUnderstanding?.industry.category.label || "Not assigned yet"}
+            />
+            <Insight
+              label="Theme"
+              value={
+                businessUnderstanding
+                  ? `${businessUnderstanding.theme.variation} / ${businessUnderstanding.theme.palette.join(", ")}`
+                  : "Waiting for category"
+              }
+            />
           </div>
         </Card>
 
