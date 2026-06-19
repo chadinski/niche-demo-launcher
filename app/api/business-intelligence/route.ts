@@ -53,6 +53,14 @@ const themeVariations: ThemeVariation[] = [
   "corporate",
 ];
 
+const defaultGeminiFallbackModels = [
+  "gemini-2.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-3.1-flash-lite-preview",
+  "gemini-flash-lite-latest",
+  "gemini-2.5-flash",
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -101,6 +109,47 @@ function parseLooseJson(text: string) {
     if (!match) throw new Error("Gemini did not return parseable JSON.");
     return JSON.parse(match[0]) as unknown;
   }
+}
+
+function uniqueValues(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function geminiModelsToTry() {
+  return uniqueValues([
+    process.env.GEMINI_MODEL || "gemini-2.5-flash-lite",
+    ...(process.env.GEMINI_FALLBACK_MODELS || "").split(","),
+    ...defaultGeminiFallbackModels,
+  ]);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryAfterMs(headers: Headers, message: string) {
+  const retryAfter = headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) return Math.min(10_000, Math.max(1_000, seconds * 1000));
+  }
+
+  const retryIn = message.match(/retry in ([\d.]+)s/i);
+  if (retryIn) return Math.min(10_000, Math.max(1_000, Number(retryIn[1]) * 1000));
+
+  return null;
+}
+
+function shouldSwitchGeminiModel(status: number, message: string) {
+  if (status === 429 && !/requests per minute|tokens per minute|\brpm\b|\btpm\b/i.test(message)) return true;
+  if (/quota exceeded|rate-limits|high demand|overloaded|resource exhausted|limit: 0/i.test(message)) return true;
+  return false;
+}
+
+function shouldRetryGeminiModel(status: number, message: string) {
+  if ([500, 502, 503, 504].includes(status)) return true;
+  if (/requests per minute|tokens per minute|\brpm\b|\btpm\b|try again|temporarily/i.test(message)) return true;
+  return false;
 }
 
 function completeBusinessInfo(value: unknown, fallback: OpenAIBusinessInfo): OpenAIBusinessInfo {
@@ -314,9 +363,7 @@ async function generateWithGemini(input: {
 
   if (!apiKey) return null;
 
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
   const imagePart = hasImage(input.imageDataUrl) ? dataUrlToGeminiPart(input.imageDataUrl) : null;
-  const thinkingConfig = geminiThinkingConfig(model);
   const parts = [
     {
       text: `${BUSINESS_INTELLIGENCE_PROMPT}
@@ -333,62 +380,84 @@ ${userContext(input)}`,
     },
     ...(imagePart ? [imagePart] : []),
   ];
+  const errors: string[] = [];
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
+  for (const model of geminiModelsToTry()) {
+    const thinkingConfig = geminiThinkingConfig(model);
+    const body = JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 5000,
+        temperature: 0.1,
+        ...(thinkingConfig ? { thinkingConfig } : {}),
       },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          maxOutputTokens: 5000,
-          temperature: 0.1,
-          ...(thinkingConfig ? { thinkingConfig } : {}),
+    });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          body,
         },
-      }),
-    },
+      );
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        const message =
+          payload?.error?.message ||
+          payload?.error ||
+          "Gemini business intelligence request failed.";
+        errors.push(`${model}: ${message}`);
+
+        if (shouldSwitchGeminiModel(response.status, String(message))) break;
+        if (attempt === 0 && shouldRetryGeminiModel(response.status, String(message))) {
+          await sleep(retryAfterMs(response.headers, String(message)) ?? 1200);
+          continue;
+        }
+        break;
+      }
+
+      const text = payload?.candidates?.[0]?.content?.parts
+        ?.map((part: { text?: string }) => part.text || "")
+        .join("")
+        .trim();
+
+      if (!text) {
+        errors.push(`${model}: Gemini did not return structured business intelligence.`);
+        break;
+      }
+
+      const parsedJson = parseLooseJson(text);
+      const parsed = openAIBusinessUnderstandingSchema.safeParse(parsedJson);
+
+      if (!parsed.success) {
+        const repaired = repairGeminiUnderstanding(parsedJson, input);
+
+        return {
+          understanding: sanitizeOpenAIUnderstanding(repaired),
+          model,
+          provider: "gemini",
+        };
+      }
+
+      return {
+        understanding: sanitizeOpenAIUnderstanding(parsed.data),
+        model,
+        provider: "gemini",
+      };
+    }
+  }
+
+  throw new Error(
+    `Gemini extraction could not complete after trying fallback models. Last errors: ${errors.slice(-3).join(" | ")}`,
   );
-
-  const payload = await response.json();
-
-  if (!response.ok) {
-    const message =
-      payload?.error?.message ||
-      payload?.error ||
-      "Gemini business intelligence request failed.";
-    throw new Error(message);
-  }
-
-  const text = payload?.candidates?.[0]?.content?.parts
-    ?.map((part: { text?: string }) => part.text || "")
-    .join("")
-    .trim();
-
-  if (!text) throw new Error("Gemini did not return structured business intelligence.");
-
-  const parsedJson = parseLooseJson(text);
-  const parsed = openAIBusinessUnderstandingSchema.safeParse(parsedJson);
-
-  if (!parsed.success) {
-    const repaired = repairGeminiUnderstanding(parsedJson, input);
-
-    return {
-      understanding: sanitizeOpenAIUnderstanding(repaired),
-      model,
-      provider: "gemini",
-    };
-  }
-
-  return {
-    understanding: sanitizeOpenAIUnderstanding(parsed.data),
-    model,
-    provider: "gemini",
-  };
 }
 
 async function generateWithOpenAI(input: {

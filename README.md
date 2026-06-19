@@ -57,6 +57,7 @@ OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.4
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-3.1-flash-lite-preview,gemini-flash-lite-latest,gemini-2.5-flash
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
@@ -64,7 +65,7 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 ## AI Extraction
 
-Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use. Gemini is preferred when both are present.
+Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use. Gemini is preferred when both are present. `GEMINI_FALLBACK_MODELS` lets the server try alternate Gemini models when the primary model is rate-limited or temporarily overloaded.
 
 Generated concept sites:
 

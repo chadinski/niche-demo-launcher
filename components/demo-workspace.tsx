@@ -929,126 +929,6 @@ export function DemoWorkspace() {
         </Card>
       </div>
 
-      {businessUnderstanding ? (
-        <Card className="p-5 sm:p-6">
-          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-            <div className="flex items-start gap-3">
-              <span
-                className={cn(
-                  "grid size-10 shrink-0 place-items-center rounded-xl",
-                  extractionReviewed ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600",
-                )}
-              >
-                {extractionReviewed ? <CheckCircle2 className="size-5" /> : <AlertTriangle className="size-5" />}
-              </span>
-              <div>
-                <SectionLabel>Extraction review</SectionLabel>
-                <h2 className="mt-1 text-xl font-extrabold tracking-[-0.035em]">
-                  {extractionReviewed ? "Approved for generation" : "Review before website generation"}
-                </h2>
-                <p className="mt-1 max-w-3xl text-xs leading-5 text-[#7f8597]">
-                  Confirm the extracted identity, industry, category, contact routes, and offer. Generation is blocked until this review is approved.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (imageFile) void importBusinessImage(imageFile);
-                  else handleParse();
-                }}
-                loading={busy === "image" || busy === "parse"}
-              >
-                <ScanText className="size-4" />
-                Fix Extraction
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  document.getElementById("business-category-field")?.focus();
-                  setExtractionReviewed(false);
-                  toast.info("Edit the business category, then approve the extraction review again.");
-                }}
-              >
-                <SlidersHorizontal className="size-4" />
-                Change Category
-              </Button>
-              <Button onClick={() => setExtractionReviewed(true)}>
-                <CheckCircle2 className="size-4" />
-                Approve Review
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 lg:grid-cols-3">
-            {extractionReviewItems.map((item) => (
-              <ConfidenceReviewRow key={item.label} {...item} />
-            ))}
-          </div>
-
-          {businessUnderstanding.businessNameCandidates.length ? (
-            <div className="mt-4 rounded-2xl border border-[#ececf2] bg-[#fafafd] p-4">
-              <div className="text-[0.65rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Alternate name candidates</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {businessUnderstanding.businessNameCandidates.slice(0, 5).map((candidate) => (
-                  <button
-                    key={candidate.value}
-                    type="button"
-                    className="rounded-full border border-[#e1e3eb] bg-white px-3 py-1.5 text-xs font-bold text-[#60687a] hover:border-brand-200 hover:text-brand-700"
-                    onClick={() => updateInfo("businessName", candidate.value)}
-                  >
-                    {candidate.value} ({candidate.score}/100)
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {extractionWarnings.length ? (
-            <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4">
-              <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900">
-                <AlertTriangle className="size-4" />
-                Needs-review warnings
-              </div>
-              <ul className="mt-2 space-y-1 text-xs leading-5 text-amber-800">
-                {extractionWarnings.map((warning) => (
-                  <li key={warning}>- {warning}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          <div className="mt-4 rounded-2xl border border-[#ececf2] bg-white p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="text-[0.65rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Regenerate direction</div>
-                <p className="mt-1 text-xs leading-5 text-[#7f8597]">
-                  Pick the next design direction before regenerating. This changes the generated site language and design cues without changing verified facts.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {generationModes.map((mode) => (
-                  <button
-                    key={mode.key}
-                    type="button"
-                    className={cn(
-                      "rounded-xl border px-3 py-2 text-xs font-extrabold",
-                      generationMode === mode.key
-                        ? "border-brand-300 bg-brand-50 text-brand-700"
-                        : "border-[#e4e6ee] bg-white text-[#747b8f] hover:border-brand-200",
-                    )}
-                    onClick={() => setGenerationMode(mode.key)}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Card>
-      ) : null}
-
       <div className="grid items-start gap-5 2xl:grid-cols-[minmax(380px,.75fr)_minmax(0,1.25fr)]">
         <div className="space-y-5">
           <Card className="p-5 sm:p-6">
@@ -1247,6 +1127,113 @@ export function DemoWorkspace() {
               </Button>
             </div>
           </Card>
+
+          {businessUnderstanding ? (
+            <Card className="p-5 sm:p-6">
+              <div className="flex items-start justify-between gap-3">
+                <SectionHeader
+                  icon={extractionReviewed ? <CheckCircle2 className="size-4" /> : <AlertTriangle className="size-4" />}
+                  title={extractionReviewed ? "Extraction approved" : "Extraction review"}
+                  description="Quick-check the fields that drive the generated site."
+                />
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full px-2.5 py-1 text-[0.65rem] font-extrabold",
+                    extractionReviewed ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
+                  )}
+                >
+                  {extractionReviewed ? "Approved" : "Needs review"}
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {extractionReviewItems.slice(0, 4).map((item) => (
+                  <ConfidenceReviewRow key={item.label} compact {...item} />
+                ))}
+              </div>
+
+              {extractionWarnings.length ? (
+                <details className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <summary className="cursor-pointer font-extrabold">Warnings ({extractionWarnings.length})</summary>
+                  <ul className="mt-2 space-y-1 leading-5">
+                    {extractionWarnings.map((warning) => (
+                      <li key={warning}>- {warning}</li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+
+              <details className="mt-3 rounded-xl border border-[#ececf2] bg-[#fafafd] px-3 py-2 text-xs text-[#687083]">
+                <summary className="cursor-pointer font-extrabold text-[#4b5565]">Advanced review controls</summary>
+                {businessUnderstanding.businessNameCandidates.length ? (
+                  <div className="mt-3">
+                    <div className="text-[0.62rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Name candidates</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {businessUnderstanding.businessNameCandidates.slice(0, 4).map((candidate) => (
+                        <button
+                          key={candidate.value}
+                          type="button"
+                          className="rounded-full border border-[#e1e3eb] bg-white px-2.5 py-1 text-[0.7rem] font-bold text-[#60687a] hover:border-brand-200 hover:text-brand-700"
+                          onClick={() => updateInfo("businessName", candidate.value)}
+                        >
+                          {candidate.value} ({candidate.score})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                <div className="mt-3">
+                  <div className="text-[0.62rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Regenerate direction</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {generationModes.map((mode) => (
+                      <button
+                        key={mode.key}
+                        type="button"
+                        className={cn(
+                          "rounded-lg border px-2.5 py-1.5 text-[0.7rem] font-extrabold",
+                          generationMode === mode.key
+                            ? "border-brand-300 bg-brand-50 text-brand-700"
+                            : "border-[#e4e6ee] bg-white text-[#747b8f] hover:border-brand-200",
+                        )}
+                        onClick={() => setGenerationMode(mode.key)}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </details>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (imageFile) void importBusinessImage(imageFile);
+                    else handleParse();
+                  }}
+                  loading={busy === "image" || busy === "parse"}
+                >
+                  <ScanText className="size-4" />
+                  Fix
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    document.getElementById("business-category-field")?.focus();
+                    setExtractionReviewed(false);
+                    toast.info("Edit the category, then approve review again.");
+                  }}
+                >
+                  <SlidersHorizontal className="size-4" />
+                  Category
+                </Button>
+                <Button onClick={() => setExtractionReviewed(true)}>
+                  <CheckCircle2 className="size-4" />
+                  Approve
+                </Button>
+              </div>
+            </Card>
+          ) : null}
         </div>
 
         <div className="min-w-0 space-y-5 2xl:sticky 2xl:top-8">
@@ -1595,18 +1582,20 @@ function ConfidenceReviewRow({
   value,
   confidence,
   detail,
+  compact = false,
 }: {
   label: string;
   value: string;
   confidence: number;
   detail: string;
+  compact?: boolean;
 }) {
   const tone = confidenceTone(confidence);
 
   return (
     <div
       className={cn(
-        "rounded-2xl border p-4",
+        compact ? "rounded-xl border p-3" : "rounded-2xl border p-4",
         tone === "strong"
           ? "border-emerald-100 bg-emerald-50/70"
           : tone === "review"
@@ -1617,7 +1606,7 @@ function ConfidenceReviewRow({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[0.65rem] font-bold tracking-[0.12em] text-[#8c94a6] uppercase">{label}</div>
-          <div className="mt-1 truncate text-sm font-extrabold text-ink-950">{value}</div>
+          <div className={cn("mt-1 truncate font-extrabold text-ink-950", compact ? "text-xs" : "text-sm")}>{value}</div>
         </div>
         <span
           className={cn(
@@ -1632,7 +1621,7 @@ function ConfidenceReviewRow({
           {confidenceLabel(confidence)} {confidence}/100
         </span>
       </div>
-      <p className="mt-2 line-clamp-3 text-xs leading-5 text-[#687083]">{detail}</p>
+      <p className={cn("mt-2 text-xs leading-5 text-[#687083]", compact ? "line-clamp-2" : "line-clamp-3")}>{detail}</p>
     </div>
   );
 }
