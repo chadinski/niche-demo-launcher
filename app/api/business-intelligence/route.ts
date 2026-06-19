@@ -4,9 +4,17 @@ import { zodTextFormat } from "openai/helpers/zod";
 
 import {
   openAIBusinessIntelligenceRequestSchema,
+  type OpenAIBusinessInfo,
+  type OpenAIBusinessUnderstanding,
   openAIBusinessUnderstandingSchema,
   sanitizeOpenAIUnderstanding,
 } from "@/lib/openai-business-intelligence";
+import {
+  analyzeBusinessScreenshot,
+  generalWebsiteCategories,
+  type ThemeVariation,
+} from "@/lib/industry-theme-engine";
+import type { BusinessInfo } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -35,6 +43,228 @@ You must:
 
 Do not create testimonials, awards, ratings, prices, credentials, years in business, guarantees, addresses, or claims unless visible or supplied.`;
 
+const themeVariations: ThemeVariation[] = [
+  "premium",
+  "modern",
+  "local-community",
+  "luxury",
+  "bold-high-energy",
+  "soft-elegant",
+  "corporate",
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function asString(value: unknown, fallback = "") {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
+function asStringArray(value: unknown, fallback: string[] = []) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (isRecord(item)) return asString(item.value || item.label || item.name || item.text);
+        return "";
+      })
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(/\n|,|;|\|/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return fallback;
+}
+
+function confidence(value: unknown, fallback: number) {
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
+function parseLooseJson(text: string) {
+  const trimmed = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
+
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("Gemini did not return parseable JSON.");
+    return JSON.parse(match[0]) as unknown;
+  }
+}
+
+function completeBusinessInfo(value: unknown, fallback: OpenAIBusinessInfo): OpenAIBusinessInfo {
+  const source = isRecord(value) ? value : {};
+
+  return {
+    businessName: asString(source.businessName || source.name, fallback.businessName),
+    category: asString(source.category || source.industry, fallback.category),
+    location: asString(source.location || source.address, fallback.location),
+    phone: asString(source.phone || source.phoneNumber, fallback.phone),
+    email: asString(source.email, fallback.email),
+    websiteUrl: asString(source.websiteUrl || source.website || source.url, fallback.websiteUrl),
+    socialUrl: asString(source.socialUrl || source.social || source.instagram || source.facebook, fallback.socialUrl),
+    services: asString(source.services || source.products, fallback.services),
+    brandColors: asString(source.brandColors || source.colors, fallback.brandColors),
+    notes: asString(source.notes, fallback.notes),
+    painPoints: asString(source.painPoints, fallback.painPoints),
+  };
+}
+
+function normalizeCategory(value: unknown, fallback: OpenAIBusinessUnderstanding["industry"]["category"]) {
+  const rawCategory = isRecord(value) ? value : {};
+  const rawId = asString(rawCategory.id || rawCategory.categoryId).toLowerCase();
+  const rawLabel = asString(rawCategory.label || rawCategory.name || value).toLowerCase();
+  const match =
+    generalWebsiteCategories.find((category) => category.id === rawId) ||
+    generalWebsiteCategories.find((category) => category.label.toLowerCase() === rawLabel) ||
+    generalWebsiteCategories.find((category) => rawLabel.includes(category.label.toLowerCase()));
+
+  return match || fallback;
+}
+
+function normalizeCandidates(value: unknown, fallback: OpenAIBusinessUnderstanding["businessNameCandidates"]) {
+  if (!Array.isArray(value)) return fallback;
+
+  const candidates = value
+    .map((candidate, index) => {
+      if (typeof candidate === "string") {
+        return { value: candidate.trim(), score: Math.max(10, 80 - index * 10), evidence: ["Gemini supplied this as a business-name candidate."] };
+      }
+      if (!isRecord(candidate)) return null;
+
+      const candidateValue = asString(candidate.value || candidate.name || candidate.businessName || candidate.text);
+      if (!candidateValue) return null;
+
+      return {
+        value: candidateValue,
+        score: confidence(candidate.score || candidate.confidence, Math.max(10, 80 - index * 10)),
+        evidence: asStringArray(candidate.evidence || candidate.reason || candidate.reasons, ["Gemini supplied this candidate."]),
+      };
+    })
+    .filter((candidate): candidate is OpenAIBusinessUnderstanding["businessNameCandidates"][number] => Boolean(candidate));
+
+  return candidates.length ? candidates.slice(0, 8) : fallback;
+}
+
+function repairGeminiUnderstanding(value: unknown, input: {
+  rawOcrText: string;
+  imageName: string;
+  brandColors: string;
+  currentInfo: unknown;
+}): OpenAIBusinessUnderstanding {
+  const currentInfo = isRecord(input.currentInfo) ? input.currentInfo as Partial<BusinessInfo> : {};
+  const fallback = analyzeBusinessScreenshot({
+    rawOcrText: input.rawOcrText,
+    parsedInfo: currentInfo,
+    brandColors: input.brandColors,
+    imageName: input.imageName,
+  });
+  const fallbackInfo = completeBusinessInfo(fallback.enrichedInfo, {
+    businessName: fallback.selectedBusinessName || "Your Business Name",
+    category: fallback.industry.primaryIndustry,
+    location: fallback.contact.location,
+    phone: fallback.contact.phone,
+    email: fallback.contact.email,
+    websiteUrl: fallback.contact.website,
+    socialUrl: fallback.contact.social,
+    services: fallback.services.join(", "),
+    brandColors: fallback.theme.palette.join(", "),
+    notes: "",
+    painPoints: "",
+  });
+  const source = isRecord(value) ? value : {};
+  const sourceIndustry = isRecord(source.industry) ? source.industry : {};
+  const sourceTheme = isRecord(source.theme) ? source.theme : {};
+  const sourceContact = isRecord(source.contact) ? source.contact : {};
+  const category = normalizeCategory(sourceIndustry.category || source.category, fallback.industry.category);
+  const variation = asString(sourceTheme.variation, fallback.theme.variation) as ThemeVariation;
+  const safeVariation = themeVariations.includes(variation) ? variation : fallback.theme.variation;
+  const selectedBusinessName = asString(
+    source.selectedBusinessName || source.businessName || source.name || fallback.selectedBusinessName,
+    fallback.selectedBusinessName || "Your Business Name",
+  ) || "Your Business Name";
+  const services = asStringArray(source.services || source.products, fallback.services);
+  const contact = {
+    phone: asString(sourceContact.phone || source.phone, fallback.contact.phone),
+    email: asString(sourceContact.email || source.email, fallback.contact.email),
+    website: asString(sourceContact.website || source.website || source.websiteUrl, fallback.contact.website),
+    social: asString(sourceContact.social || source.social || source.socialUrl, fallback.contact.social),
+    location: asString(sourceContact.location || source.location || source.address, fallback.contact.location),
+  };
+  const repaired: OpenAIBusinessUnderstanding = {
+    rawOcrText: asString(source.rawOcrText, input.rawOcrText),
+    cleanedText: asString(source.cleanedText || source.cleanedExtractedText, fallback.cleanedText),
+    visualClues: asStringArray(source.visualClues || source.visualContext || source.visualEvidence, fallback.visualClues),
+    businessNameCandidates: normalizeCandidates(source.businessNameCandidates || source.nameCandidates, fallback.businessNameCandidates),
+    selectedBusinessName,
+    businessNameConfidence: confidence(source.businessNameConfidence || source.nameConfidence, fallback.businessNameConfidence),
+    businessNameReason: asString(source.businessNameReason || source.nameReason, fallback.businessNameReason),
+    industry: {
+      primaryIndustry: asString(sourceIndustry.primaryIndustry || sourceIndustry.industry || source.primaryIndustry, fallback.industry.primaryIndustry),
+      secondaryIndustry: asString(sourceIndustry.secondaryIndustry, fallback.industry.secondaryIndustry),
+      confidence: confidence(sourceIndustry.confidence || source.industryConfidence, fallback.industry.confidence),
+      category,
+      categoryConfidence: confidence(sourceIndustry.categoryConfidence || source.categoryConfidence, fallback.industry.categoryConfidence),
+      explanation: asString(sourceIndustry.explanation || source.industryExplanation, fallback.industry.explanation),
+      triggeredKeywords: asStringArray(sourceIndustry.triggeredKeywords || sourceIndustry.keywords || source.triggeredKeywords, fallback.industry.triggeredKeywords),
+    },
+    theme: {
+      variation: safeVariation,
+      mood: asString(sourceTheme.mood, fallback.theme.mood),
+      palette: asStringArray(sourceTheme.palette || sourceTheme.colors || source.palette, fallback.theme.palette),
+      typography: asString(sourceTheme.typography, fallback.theme.typography),
+      animation: asString(sourceTheme.animation || sourceTheme.animationStyle, fallback.theme.animation),
+      sectionPriorities: asStringArray(sourceTheme.sectionPriorities || source.recommendedSections, fallback.theme.sectionPriorities),
+      cta: asString(sourceTheme.cta || source.cta || source.recommendedCta, fallback.theme.cta),
+      imageStyle: asString(sourceTheme.imageStyle, fallback.theme.imageStyle),
+      trustElements: asStringArray(sourceTheme.trustElements, fallback.theme.trustElements),
+      layoutStyle: asString(sourceTheme.layoutStyle, fallback.theme.layoutStyle),
+      notes: [
+        ...asStringArray(sourceTheme.notes, fallback.theme.notes),
+        "Gemini response was normalized to the business intelligence schema before website generation.",
+      ].slice(0, 8),
+    },
+    services,
+    contact,
+    seoKeywords: asStringArray(source.seoKeywords || source.keywords, fallback.seoKeywords),
+    missingInformation: [
+      ...asStringArray(source.missingInformation || source.missingInfo, fallback.missingInformation),
+      "Gemini response required schema repair; review extracted fields before mass production.",
+    ].slice(0, 12),
+    assumptions: asStringArray(source.assumptions, fallback.assumptions),
+    enrichedInfo: completeBusinessInfo(source.enrichedInfo || source.businessInfo, {
+      ...fallbackInfo,
+      businessName: selectedBusinessName,
+      category: asString(sourceIndustry.primaryIndustry, fallbackInfo.category),
+      location: contact.location,
+      phone: contact.phone,
+      email: contact.email,
+      websiteUrl: contact.website,
+      socialUrl: contact.social,
+      services: services.join(", "),
+    }),
+    reportMarkdown: asString(source.reportMarkdown, fallback.reportMarkdown),
+  };
+
+  const parsed = openAIBusinessUnderstandingSchema.safeParse(repaired);
+  if (!parsed.success) {
+    throw new Error("Gemini returned JSON that could not be repaired into the business intelligence schema.");
+  }
+
+  return parsed.data;
+}
+
 function hasImage(value: string) {
   return /^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(value);
 }
@@ -50,6 +280,12 @@ function dataUrlToGeminiPart(value: string) {
       data: match[2],
     },
   };
+}
+
+function geminiThinkingConfig(model: string) {
+  if (model.startsWith("gemini-2.5")) return { thinkingBudget: 0 };
+  if (model.startsWith("gemini-3")) return { thinkingLevel: "minimal" };
+  return undefined;
 }
 
 function userContext(input: {
@@ -78,13 +314,20 @@ async function generateWithGemini(input: {
 
   if (!apiKey) return null;
 
-  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
   const imagePart = hasImage(input.imageDataUrl) ? dataUrlToGeminiPart(input.imageDataUrl) : null;
+  const thinkingConfig = geminiThinkingConfig(model);
   const parts = [
     {
       text: `${BUSINESS_INTELLIGENCE_PROMPT}
 
-Return only valid JSON matching the required business understanding shape. Do not wrap it in Markdown.
+Return only valid JSON matching this exact top-level shape. Do not wrap it in Markdown.
+Required top-level keys:
+rawOcrText, cleanedText, visualClues, businessNameCandidates, selectedBusinessName,
+businessNameConfidence, businessNameReason, industry, theme, services, contact,
+seoKeywords, missingInformation, assumptions, enrichedInfo, reportMarkdown.
+Use arrays for all list fields. Use numbers from 0-100 for confidence fields.
+Use empty strings for unknown contact/enrichedInfo fields instead of omitting them.
 
 ${userContext(input)}`,
     },
@@ -103,7 +346,9 @@ ${userContext(input)}`,
         contents: [{ parts }],
         generationConfig: {
           responseMimeType: "application/json",
+          maxOutputTokens: 5000,
           temperature: 0.1,
+          ...(thinkingConfig ? { thinkingConfig } : {}),
         },
       }),
     },
@@ -126,11 +371,17 @@ ${userContext(input)}`,
 
   if (!text) throw new Error("Gemini did not return structured business intelligence.");
 
-  const parsedJson = JSON.parse(text) as unknown;
+  const parsedJson = parseLooseJson(text);
   const parsed = openAIBusinessUnderstandingSchema.safeParse(parsedJson);
 
   if (!parsed.success) {
-    throw new Error("Gemini returned JSON that did not match the business intelligence schema.");
+    const repaired = repairGeminiUnderstanding(parsedJson, input);
+
+    return {
+      understanding: sanitizeOpenAIUnderstanding(repaired),
+      model,
+      provider: "gemini",
+    };
   }
 
   return {
