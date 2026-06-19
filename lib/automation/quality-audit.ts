@@ -27,6 +27,7 @@ export function auditWebsite(html: string, input: BusinessInfo | Prospect): Qual
     item("Correct category", includesAny(html, [category]), category ? "Business category appears in the site." : "Category is missing from the profile."),
     item("Strong hero", includesAny(html, ["<section class=\"hero", "hero"]), "Hero section should be present and visually prominent."),
     item("Industry-specific system", includesAny(html, ["data-industry-design", "industry-spotlight", "industry-focus"]), "Generated site should use a category-specific section system."),
+    item("Blueprint variation", includesAny(html, ["data-website-blueprint", "signature-system", "hero-proof"]), "Generated site should use a distinct industry blueprint, not the generic shell only."),
     item("Services section", includesAny(html, ["id=\"services\"", "service-card", "services"]), "Services/products should be visible."),
     item("Contact section", includesAny(html, ["id=\"contact\"", "contact"]), "Contact section should be available."),
     item("FAQ section", includesAny(html, ["faq", "questions"]), "FAQ or objection-handling content should be present."),

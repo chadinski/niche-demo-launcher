@@ -5,6 +5,7 @@ getIndustrySectionOrder,
 getIndustrySpotlight,
 getIndustryWebsiteContent,
 resolveIndustryDesign,
+type IndustryDesignId,
 type WebsiteSectionId,
 } from "@/lib/generators/industry-designs";
 import { colorPair } from "@/lib/generators/palettes";
@@ -77,6 +78,267 @@ return value
 .toUpperCase() || "N";
 }
 
+type HeroPattern =
+| "tasting-room"
+| "garage-bay"
+| "care-suite"
+| "beauty-editorial"
+| "project-yard"
+| "property-gallery"
+| "memorial-letter"
+| "product-lab"
+| "stage-portfolio"
+| "professional-brief"
+| "local-command";
+
+interface WebsiteBlueprint {
+heroPattern: HeroPattern;
+heroKicker: string;
+heroPromise: string;
+heroPanelTitle: string;
+heroProof: [string, string, string];
+signatureEyebrow: string;
+signatureTitle: string;
+signatureBody: string;
+signatureCards: [string, string, string];
+serviceFrame: [string, string, string, string, string, string];
+trustSlots: [string, string, string];
+ctaTitle: string;
+ctaBody: string;
+}
+
+const websiteBlueprints: Record<IndustryDesignId, WebsiteBlueprint> = {
+restaurant: {
+heroPattern: "tasting-room",
+heroKicker: "Menu, mood, and visit path",
+heroPromise: "Make the food, atmosphere, hours, and ordering route feel obvious before a guest has to search.",
+heroPanelTitle: "Guest decision path",
+heroProof: ["Menu moments", "Opening details", "Order or reserve"],
+signatureEyebrow: "Hospitality system",
+signatureTitle: "A restaurant page should feel like a place someone can already imagine visiting.",
+signatureBody: "This layout gives the menu, atmosphere, visit details, and group enquiry path their own rhythm instead of treating the restaurant like a generic service business.",
+signatureCards: ["Menu-led offer blocks", "Warm gallery pacing", "Reservation or order CTA"],
+serviceFrame: ["Taste direction", "Guest experience", "Ordering route", "Group planning", "Visit details", "Direct enquiry"],
+trustSlots: ["Menu photos, specials, or customer-approved food photography", "Hours, location, delivery, reservation, or catering details", "Verified reviews, press, chef story, or community proof"],
+ctaTitle: "Turn appetite into a visit, order, reservation, or catering enquiry.",
+ctaBody: "Keep the CTA close to menu context, hours, location, and the fastest verified contact route.",
+},
+"auto-detailing": {
+heroPattern: "garage-bay",
+heroKicker: "Finish quality and care levels",
+heroPromise: "Show the finish, explain the packages, and make quote requests feel premium without guessing vehicle condition.",
+heroPanelTitle: "Detailing quote path",
+heroProof: ["Finish focus", "Package scope", "Vehicle intake"],
+signatureEyebrow: "Vehicle care system",
+signatureTitle: "A detailing site needs gloss, proof, and package clarity before price talk.",
+signatureBody: "The page separates maintenance, correction, and protection work so the owner can see the level of care and ask for the right quote.",
+signatureCards: ["High-gloss visual proof", "Package comparison blocks", "Condition-based quote CTA"],
+serviceFrame: ["Finish outcome", "Interior comfort", "Correction scope", "Protection option", "Maintenance plan", "Custom quote"],
+trustSlots: ["Before/after photos with customer approval", "Product, process, or care guidance verified by the shop", "Real reviews or repeat-client vehicle care proof"],
+ctaTitle: "Help vehicle owners choose the right care level.",
+ctaBody: "The strongest next step is a quote request grounded in vehicle condition and desired finish.",
+},
+"auto-repair": {
+heroPattern: "garage-bay",
+heroKicker: "Diagnostics, repairs, and fast contact",
+heroPromise: "Put the practical repair path first: what can be checked, what details to send, and how to request help.",
+heroPanelTitle: "Repair intake path",
+heroProof: ["Problem intake", "Diagnostics", "Estimate request"],
+signatureEyebrow: "Shop workflow",
+signatureTitle: "A mechanic page should reduce panic and make the next call easy.",
+signatureBody: "This structure leads with common repair needs, diagnostic expectations, and mobile-first contact so drivers are not trapped in decorative content.",
+signatureCards: ["Issue-first services", "Estimate expectations", "Urgent contact rail"],
+serviceFrame: ["Vehicle symptom", "Safety check", "Maintenance item", "Technical diagnosis", "Estimate detail", "Booking route"],
+trustSlots: ["Verified shop photos, equipment, or technician introductions", "Service-area, hours, and emergency availability details", "Real repair reviews or documented project stories"],
+ctaTitle: "Move from vehicle issue to direct repair enquiry.",
+ctaBody: "Use the CTA to collect the symptom, vehicle details, and preferred contact route.",
+},
+clinic: {
+heroPattern: "care-suite",
+heroKicker: "Care options and appointment confidence",
+heroPromise: "Make services, preparation details, and appointment routes calm, accurate, and easy to review.",
+heroPanelTitle: "Patient decision path",
+heroProof: ["Care options", "Appointment prep", "Contact clarity"],
+signatureEyebrow: "Care navigation",
+signatureTitle: "A healthcare page should feel calm before it asks someone to book.",
+signatureBody: "The structure keeps claims careful, makes care categories easy to scan, and reserves proof areas for real credentials and patient information.",
+signatureCards: ["Calm service groups", "Patient-friendly preparation", "Credential-ready proof slots"],
+serviceFrame: ["Care category", "Patient need", "Preparation note", "Appointment path", "Comfort detail", "Direct contact"],
+trustSlots: ["Verified practitioner credentials or clinic information", "Patient preparation, insurance, or appointment policy details", "Real reviews or patient guidance approved for publication"],
+ctaTitle: "Make the appointment enquiry feel clear and low-stress.",
+ctaBody: "Use direct booking or contact language while avoiding medical outcomes that were not verified.",
+},
+wellness: {
+heroPattern: "care-suite",
+heroKicker: "Comfort, fit, and gentle booking",
+heroPromise: "Help visitors understand the session style, preparation, and whether the service is right for them.",
+heroPanelTitle: "Wellness enquiry path",
+heroProof: ["Session fit", "Comfort cues", "Availability check"],
+signatureEyebrow: "Wellness flow",
+signatureTitle: "A wellness page should lower the pressure and clarify fit.",
+signatureBody: "The layout emphasizes calm service selection, preparation guidance, and a soft enquiry route rather than loud conversion pressure.",
+signatureCards: ["Session menu", "Preparation guidance", "Gentle booking CTA"],
+serviceFrame: ["Session type", "Personal fit", "Comfort note", "Preparation", "Availability", "Private enquiry"],
+trustSlots: ["Verified studio, practitioner, or space photography", "Session preparation and booking policies", "Real testimonials or wellness credentials when available"],
+ctaTitle: "Invite a calm first enquiry.",
+ctaBody: "The best CTA helps visitors ask about fit, availability, and preparation without pressure.",
+},
+salon: {
+heroPattern: "beauty-editorial",
+heroKicker: "Style, services, and appointment flow",
+heroPromise: "Make the visual standard, service menu, and booking path feel polished from the first screen.",
+heroPanelTitle: "Appointment decision path",
+heroProof: ["Style direction", "Service menu", "Booking route"],
+signatureEyebrow: "Beauty editorial system",
+signatureTitle: "A beauty site needs taste before it needs a long explanation.",
+signatureBody: "This structure brings style, transformations, appointment expectations, and occasion-ready services into a more premium editorial sequence.",
+signatureCards: ["Style-forward hero", "Service menu cards", "Transformation-ready gallery"],
+serviceFrame: ["Look or service", "Client goal", "Prep note", "Appointment fit", "Occasion detail", "Booking prompt"],
+trustSlots: ["Verified style photos or client-approved transformations", "Booking, deposit, preparation, or care instructions", "Real reviews, stylist credentials, or social proof"],
+ctaTitle: "Turn style interest into a booked appointment enquiry.",
+ctaBody: "Keep the CTA close to service fit, preparation, and verified contact details.",
+},
+trades: {
+heroPattern: "project-yard",
+heroKicker: "Scope, service area, and quote path",
+heroPromise: "Translate practical work into capability blocks, service-area clarity, and a quote request that asks for the right details.",
+heroPanelTitle: "Project intake path",
+heroProof: ["Scope details", "Service area", "Quote request"],
+signatureEyebrow: "Trade capability system",
+signatureTitle: "A trade site should look dependable and make scope easier to explain.",
+signatureBody: "The layout prioritizes capability, materials or site needs, process, and quote expectations so the customer knows what information to send.",
+signatureCards: ["Capability grid", "Process and materials", "Quote-ready contact"],
+serviceFrame: ["Project need", "Repair or install", "Material context", "Site requirement", "Service area", "Quote detail"],
+trustSlots: ["Verified project photos, licenses, insurance, or team details", "Service area, materials, and timing expectations", "Real reviews, before/after work, or supplier proof"],
+ctaTitle: "Turn a practical need into a better quote conversation.",
+ctaBody: "Prompt the customer to share site, scope, timing, and contact information.",
+},
+"real-estate": {
+heroPattern: "property-gallery",
+heroKicker: "Property goals and portfolio proof",
+heroPromise: "Lead with visual confidence, then guide visitors toward consultation, staging, design, or property support.",
+heroPanelTitle: "Property consultation path",
+heroProof: ["Visual standard", "Goal clarity", "Consultation"],
+signatureEyebrow: "Property presentation",
+signatureTitle: "A property page should feel curated, visual, and consultation-ready.",
+signatureBody: "This sequence gives portfolio imagery, transformation goals, services, and consultation prompts a more editorial rhythm.",
+signatureCards: ["Portfolio-first gallery", "Goal-led service blocks", "Measured consultation CTA"],
+serviceFrame: ["Property goal", "Visual direction", "Project scope", "Listing or space", "Consultation fit", "Next step"],
+trustSlots: ["Verified listings, interiors, projects, or staging work", "Credentials, brokerage, service area, or process information", "Real reviews, case studies, or property outcomes when verified"],
+ctaTitle: "Move from property interest to a focused consultation.",
+ctaBody: "Use the CTA to collect property goals, timeline, location, and preferred contact route.",
+},
+memorial: {
+heroPattern: "memorial-letter",
+heroKicker: "Private guidance and respectful support",
+heroPromise: "Keep the page calm, careful, and human while making private contact easy to find.",
+heroPanelTitle: "Private support path",
+heroProof: ["Support options", "Private contact", "Remembrance"],
+signatureEyebrow: "Dignified guidance",
+signatureTitle: "A memorial page should never feel like a generic sales page.",
+signatureBody: "The structure slows the pace, removes pressure, and makes support options, remembrance details, and private contact feel respectful.",
+signatureCards: ["Quiet service guidance", "Family-first process", "Private contact CTA"],
+serviceFrame: ["Support need", "Arrangement option", "Family guidance", "Remembrance detail", "Private discussion", "Direct support"],
+trustSlots: ["Verified location, staff, chapel, or service information", "Careful guidance on arrangements, events, or memorial options", "Real family reviews only when approved and appropriate"],
+ctaTitle: "Offer a quiet path to private guidance.",
+ctaBody: "Keep the next step gentle, direct, and free of pressure.",
+},
+"product-studio": {
+heroPattern: "product-lab",
+heroKicker: "Files, materials, prototypes, and quotes",
+heroPromise: "Make complex production feel clear: what customers can bring, how options are reviewed, and how a quote begins.",
+heroPanelTitle: "Idea-to-production path",
+heroProof: ["File intake", "Material fit", "Custom quote"],
+signatureEyebrow: "Production system",
+signatureTitle: "A 3D printing or product studio site should feel technical and exciting.",
+signatureBody: "The page organizes capabilities, file requirements, materials, and quote logic so custom work feels approachable instead of vague.",
+signatureCards: ["Capability modules", "File and material guidance", "Quote-ready production path"],
+serviceFrame: ["Concept or file", "Material need", "Prototype path", "Production detail", "Constraint review", "Custom quote"],
+trustSlots: ["Verified product photos, machine photos, or fabrication examples", "Accepted file types, material options, and production constraints", "Real project stories, turnaround policies, or customer proof"],
+ctaTitle: "Turn an idea, file, or sketch into a production enquiry.",
+ctaBody: "Ask for file, material, use case, quantity, timeline, and contact details.",
+},
+artist: {
+heroPattern: "stage-portfolio",
+heroKicker: "Work, personality, and booking signal",
+heroPromise: "Make the creative identity memorable, then move visitors toward bookings, collaborations, or portfolio exploration.",
+heroPanelTitle: "Creative booking path",
+heroProof: ["Featured work", "Availability", "Collaboration"],
+signatureEyebrow: "Portfolio stage",
+signatureTitle: "A creative site should feel like a body of work, not a brochure.",
+signatureBody: "The page puts media, story, booking context, and social proof into a cinematic sequence that gives the artist room to feel distinct.",
+signatureCards: ["Media-first gallery", "Booking context", "Collaboration CTA"],
+serviceFrame: ["Featured work", "Performance offer", "Creative service", "Media proof", "Availability", "Booking route"],
+trustSlots: ["Verified portfolio media, press, events, or client work", "Booking details, technical requirements, or collaboration fit", "Real testimonials, audience proof, or social links"],
+ctaTitle: "Give the work a stage and make booking easier.",
+ctaBody: "Use the CTA to start a booking, collaboration, event, or project conversation.",
+},
+florist: {
+heroPattern: "beauty-editorial",
+heroKicker: "Occasion, style, and custom order",
+heroPromise: "Let customers see the floral mood quickly, then guide them to share occasion, date, budget, and delivery needs.",
+heroPanelTitle: "Occasion enquiry path",
+heroProof: ["Occasion fit", "Visual style", "Order details"],
+signatureEyebrow: "Floral occasion system",
+signatureTitle: "A floral page should connect beauty to an easy custom order.",
+signatureBody: "This layout pairs visual inspiration with practical occasion details so enquiries arrive with enough context to quote or confirm.",
+signatureCards: ["Occasion-led cards", "Gallery-led inspiration", "Custom order CTA"],
+serviceFrame: ["Occasion type", "Arrangement style", "Date detail", "Pickup or delivery", "Budget context", "Custom order"],
+trustSlots: ["Verified arrangement or event photography", "Delivery, pickup, deposit, and availability information", "Real reviews, event proof, or florist story"],
+ctaTitle: "Turn occasion inspiration into a clear floral enquiry.",
+ctaBody: "Ask for occasion, date, style, delivery or pickup needs, and preferred contact route.",
+},
+"pet-care": {
+heroPattern: "care-suite",
+heroKicker: "Care, preparation, and availability",
+heroPromise: "Help owners understand services, visit preparation, and how to ask about the right care option.",
+heroPanelTitle: "Owner enquiry path",
+heroProof: ["Care options", "Preparation", "Availability"],
+signatureEyebrow: "Pet owner guidance",
+signatureTitle: "A pet-care page should feel warm, practical, and easy to act on.",
+signatureBody: "The structure keeps care categories, preparation details, and contact routes clear so owners can ask the right question quickly.",
+signatureCards: ["Care category cards", "Owner preparation", "Availability CTA"],
+serviceFrame: ["Care need", "Pet fit", "Preparation", "Visit detail", "Availability", "Direct contact"],
+trustSlots: ["Verified staff, facility, pet-care, or product photos", "Policies, preparation, service area, or appointment requirements", "Real reviews, credentials, or owner guidance"],
+ctaTitle: "Help owners move from concern to a clear care enquiry.",
+ctaBody: "Prompt them to share pet details, care need, timing, and contact preference.",
+},
+professional: {
+heroPattern: "professional-brief",
+heroKicker: "Expertise, discretion, and consultation path",
+heroPromise: "Present professional services with structure, authority, and a measured path to enquiry.",
+heroPanelTitle: "Consultation path",
+heroProof: ["Expertise areas", "Fit review", "Consultation"],
+signatureEyebrow: "Professional trust system",
+signatureTitle: "A professional-services page should feel credible before it feels flashy.",
+signatureBody: "The layout uses authority sections, process clarity, confidentiality cues, and consultation framing without inventing credentials or results.",
+signatureCards: ["Expertise blocks", "Process clarity", "Confidential consultation CTA"],
+serviceFrame: ["Need or matter", "Expertise area", "Document or case", "Ongoing support", "Confidential fit", "Consultation route"],
+trustSlots: ["Verified credentials, licenses, team, or professional memberships", "Process, confidentiality, consultation, or document requirements", "Real case studies, client types, or reviews when approved"],
+ctaTitle: "Turn uncertainty into a professional consultation request.",
+ctaBody: "Use the CTA to collect the need, timeline, confidentiality expectations, and preferred contact route.",
+},
+"local-service": {
+heroPattern: "local-command",
+heroKicker: "Offer, service area, and contact route",
+heroPromise: "Make scattered business information easier to understand, approve, and act on.",
+heroPanelTitle: "Local decision path",
+heroProof: ["Service clarity", "Area context", "Contact route"],
+signatureEyebrow: "Local service system",
+signatureTitle: "A local business demo should make the offer immediately useful.",
+signatureBody: "The page organizes the offer, service area, proof placeholders, and direct contact routes so it can be used for outreach fast.",
+signatureCards: ["Clear service groups", "Local contact path", "Proof-ready sections"],
+serviceFrame: ["Service option", "Customer need", "Service area", "Availability", "Proof slot", "Next step"],
+trustSlots: ["Verified work photos, owner story, or location details", "Service area, hours, and availability information", "Real reviews, credentials, or project proof"],
+ctaTitle: "Give customers one clear place to understand and contact the business.",
+ctaBody: "Use the CTA to confirm fit, service area, availability, and next step.",
+},
+};
+
+function getWebsiteBlueprint(id: IndustryDesignId) {
+return websiteBlueprints[id] ?? websiteBlueprints["local-service"];
+}
+
 export function generateWebsiteHTML(info: BusinessInfo) {
 const businessNameRaw = info.businessName || "Your Business";
 const categoryRaw = readableCategory(info.category);
@@ -98,6 +360,7 @@ const [primary, accent] = colorPair(info.brandColors, designSource);
 const profile = visualProfile(designSource);
 const preset = getWebsitePreset(industryDesign.preset);
 const copy = getCopyAngle(industryDesign.copyAngle);
+const blueprint = getWebsiteBlueprint(industryDesign.id);
 const locationPhrase = location ? ` in ${location}` : "";
 const description = `${businessNameRaw} provides ${categoryRaw}${locationRaw ? ` in ${locationRaw}` : ""}. Explore services, contact options, and current availability through this private website concept.`;
 const title = `${businessNameRaw} | ${categoryRaw}${locationRaw ? ` in ${locationRaw}` : ""}`;
@@ -128,7 +391,7 @@ const jsonLd = JSON.stringify(schema).replace(/</g, "\u003c");
 
 const serviceCards = services
 .map(
-(service, index) => `<article class="service-card reveal">         <div class="card-index"><span>${String(index + 1).padStart(2, "0")}</span><span class="card-icon">${["01", "02", "03", "04", "05", "06"][index] ?? "01"}</span></div>         <h3>${escapeHtml(service)}</h3>         <p>${escapeHtml(industryContent.serviceIntro)} Ask about current scope, availability, and the right option for your needs.</p>         <a class="text-link" href="#contact">${escapeHtml(profile.ctaLanguage)} <span>Next</span></a>       </article>`,
+(service, index) => `<article class="service-card reveal">         <div class="card-index"><span>${String(index + 1).padStart(2, "0")}</span><span class="card-icon">${escapeHtml(blueprint.serviceFrame[index] ?? "Offer")}</span></div>         <h3>${escapeHtml(service)}</h3>         <p><strong>${escapeHtml(blueprint.serviceFrame[index] ?? "Offer detail")}:</strong> ${escapeHtml(industryContent.serviceIntro)} Confirm current scope, timing, pricing, and fit directly before publication.</p>         <a class="text-link" href="#contact">${escapeHtml(profile.ctaLanguage)} <span>Next</span></a>       </article>`,
 )
 .join("");
 
@@ -160,17 +423,41 @@ const spotlightCards = spotlight.items
 )
 .join("");
 
+const heroProofCards = blueprint.heroProof
+.map((item, index) => `<article><span>${String(index + 1).padStart(2, "0")}</span><strong>${escapeHtml(item)}</strong></article>`)
+.join("");
+
+const signatureCards = blueprint.signatureCards
+.map((item, index) => `<article class="signature-card reveal${index ? ` delay-${index}` : ""}"><span>${String(index + 1).padStart(2, "0")}</span><h3>${escapeHtml(item)}</h3><p>${escapeHtml(blueprint.trustSlots[index])}</p></article>`)
+.join("");
+
+const trustCards = blueprint.trustSlots
+.map((item, index) => `<article class="quote-card proof-card reveal${index ? ` delay-${index}` : ""}"><span class="proof-label">${escapeHtml(blueprint.heroProof[index])}</span><h3>${escapeHtml(item)}</h3><p>${escapeHtml(industryContent.credibilityDetails[index])}</p><span class="placeholder-tag">Verified proof needed</span></article>`)
+.join("");
+
 const sectionModules = {
 credibility: `<section class="credibility" aria-label="Why this website concept helps">
   <div class="container cred-grid">
     ${credibilityCards}
   </div>
 </section>`,
+signature: `<section class="section signature-section" id="signature-system">
+  <div class="container signature-shell reveal">
+    <div>
+      <div class="eyebrow">${escapeHtml(blueprint.signatureEyebrow)}</div>
+      <h2>${escapeHtml(blueprint.signatureTitle)}</h2>
+      <p class="lead">${escapeHtml(blueprint.signatureBody)} ${escapeHtml(blueprint.heroPromise)}</p>
+    </div>
+    <div class="signature-grid">
+      ${signatureCards}
+    </div>
+  </div>
+</section>`,
 services: `<section class="section" id="services">
   <div class="container">
     <div class="section-head reveal">
       <div>
-        <div class="eyebrow">Services and offers</div>
+        <div class="eyebrow">${escapeHtml(blueprint.heroKicker)}</div>
         <h2>${escapeHtml(copy.serviceLine)}</h2>
       </div>
       <p>${escapeHtml(industryContent.serviceIntro)} Confirm current options, timing, and availability directly with the business.</p>
@@ -334,16 +621,15 @@ trust: `<section class="section trust">
     <div class="section-head reveal">
       <div>
         <div class="eyebrow">Trust ready</div>
-        <h2>Built for real proof, not <span class="accent-text">fake claims.</span></h2>
+        <h2>Proof slots shaped for ${escapeHtml(industryDesign.label)}, not generic filler.</h2>
       </div>
+      <p>${escapeHtml(industryDesign.trustCue)} These cards are prompts for real evidence, not published claims.</p>
     </div>
 
     <p class="notice reveal"><strong>Placeholder examples for demo purposes only</strong> - replace these cards with real customer reviews, project results, certifications, or proof points when available.</p>
 
     <div class="cards-grid">
-      <article class="quote-card reveal"><div class="quote-mark">&quot;</div><blockquote>Space for a verified customer review about the experience, service quality, or result.</blockquote><span class="placeholder-tag">Placeholder - Not a real review</span></article>
-      <article class="quote-card reveal delay-1"><div class="quote-mark">&quot;</div><blockquote>Space for a verified project story, transformation, case study, or client result.</blockquote><span class="placeholder-tag">Placeholder - Not a real review</span></article>
-      <article class="quote-card reveal delay-2"><div class="quote-mark">&quot;</div><blockquote>Space for a verified trust signal, guarantee, certification, or business milestone.</blockquote><span class="placeholder-tag">Placeholder - Not a real claim</span></article>
+      ${trustCards}
     </div>
   </div>
 </section>`,
@@ -388,8 +674,8 @@ finalCta: `<section class="final-cta" id="contact">
   <div class="container">
     <div class="cta-shell reveal">
       <div class="eyebrow">${escapeHtml(profile.ctaLanguage)}</div>
-      <h2>${escapeHtml(copy.finalPrompt)}</h2>
-      <p>This ${escapeHtml(preset.name)} concept shows how ${businessName} can present ${escapeHtml(profile.sectionEmphasis.join(", "))} with more clarity and purpose.</p>
+      <h2>${escapeHtml(blueprint.ctaTitle)}</h2>
+      <p>${escapeHtml(blueprint.ctaBody)} This ${escapeHtml(preset.name)} concept shows how ${businessName} can present ${escapeHtml(profile.sectionEmphasis.join(", "))} with more clarity and purpose.</p>
       <div class="cta-actions">
         ${buttons.primary}
         ${email ? `<a class="btn btn-glass" href="mailto:${email}">Send an email</a>` : ""}
@@ -405,8 +691,7 @@ finalCta: `<section class="final-cta" id="contact">
 </section>`,
 };
 
-const mainSections = sectionOrder
-.map((sectionId) => sectionModules[sectionId])
+const mainSections = [sectionModules.signature, ...sectionOrder.map((sectionId) => sectionModules[sectionId])]
 .filter(Boolean)
 .join("\n\n");
 
@@ -865,6 +1150,39 @@ h3 { margin-bottom: 13px; font-size: 1.16rem; }
   border-color: color-mix(in srgb, var(--accent) 35%, rgba(255,255,255,.16));
 }
 
+.hero-proof {
+  display: grid;
+  max-width: 680px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.hero-proof article {
+  padding: 14px 15px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, rgba(255,255,255,.14));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.hero-proof span {
+  display: block;
+  margin-bottom: 8px;
+  color: color-mix(in srgb, var(--accent) 74%, white);
+  font-family: Georgia, serif;
+  font-size: .84rem;
+}
+
+.hero-proof strong {
+  display: block;
+  color: var(--hero-text);
+  font-size: .72rem;
+  line-height: 1.35;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
 .hero-float {
   position: absolute;
   right: max(3vw, calc((100vw - 1180px) / 2));
@@ -900,6 +1218,12 @@ h3 { margin-bottom: 13px; font-size: 1.16rem; }
 
 .mini-stat:nth-child(4),
 .mini-stat:nth-child(5) { border-bottom: 0; }
+
+.mini-stat.wide {
+  grid-column: 1 / -1;
+  border-right: 0;
+  border-bottom: 0;
+}
 
 .mini-stat strong {
   display: block;
@@ -1024,6 +1348,58 @@ h3 { margin-bottom: 13px; font-size: 1.16rem; }
   font-size: .83rem;
 }
 
+.signature-section {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 22%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 20rem),
+    linear-gradient(180deg, var(--surface), var(--surface-alt));
+}
+
+.signature-shell {
+  display: grid;
+  grid-template-columns: .9fr 1.1fr;
+  gap: 40px;
+  align-items: stretch;
+}
+
+.signature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.signature-card {
+  min-height: 290px;
+  padding: 26px;
+  border: 1px solid var(--theme-border);
+  border-radius: var(--card-radius);
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--primary) 14%, var(--card-bg)), var(--card-bg)),
+    radial-gradient(circle at 84% 14%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 9rem);
+  box-shadow: var(--theme-shadow);
+}
+
+.signature-card span {
+  display: block;
+  margin-bottom: 58px;
+  color: color-mix(in srgb, var(--accent) 72%, white);
+  font-family: Georgia, serif;
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.signature-card h3 {
+  font-family: var(--display-font);
+  font-size: 1.22rem;
+  font-weight: 500;
+}
+
+.signature-card p {
+  margin: 0;
+  color: var(--theme-muted);
+  font-size: .82rem;
+}
+
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1088,6 +1464,20 @@ h3 { margin-bottom: 13px; font-size: 1.16rem; }
   border-radius: 50%;
   background: color-mix(in srgb, var(--accent) 7%, transparent);
   font-size: 1rem;
+}
+
+.service-card .card-icon {
+  width: auto;
+  min-width: 92px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-family: var(--body-font);
+  font-size: .61rem;
+  font-weight: 850;
+  letter-spacing: .09em;
+  line-height: 1.2;
+  text-align: center;
+  text-transform: uppercase;
 }
 
 .service-card h3 {
@@ -1532,6 +1922,31 @@ h3 { margin-bottom: 13px; font-size: 1.16rem; }
   line-height: 1.55;
 }
 
+.proof-card h3 {
+  margin-bottom: 18px;
+  font-family: var(--display-font);
+  font-size: 1.36rem;
+  font-weight: 500;
+}
+
+.proof-card p {
+  color: var(--theme-muted);
+  font-size: .85rem;
+}
+
+.proof-label {
+  display: inline-flex;
+  margin-bottom: 28px;
+  padding: 7px 10px;
+  color: color-mix(in srgb, var(--accent) 72%, white);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--theme-border));
+  border-radius: 999px;
+  font-size: .64rem;
+  font-weight: 850;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
 .placeholder-tag {
   color: color-mix(in srgb, var(--accent) 70%, white);
   font-size: .65rem;
@@ -1708,6 +2123,7 @@ footer {
   .hero-float { display: none; }
   .premium-seal { top: auto; right: 5%; bottom: 84px; }
   .cards-grid { grid-template-columns: 1fr 1fr; }
+  .signature-shell { grid-template-columns: 1fr; }
   .why-grid { grid-template-columns: 1fr; }
   .image-frame { min-height: 540px; }
   .image-frame img { min-height: 540px; }
@@ -1761,6 +2177,8 @@ footer {
 
   .premium-seal { display: none; }
   .cred-grid { grid-template-columns: 1fr 1fr; }
+  .hero-proof,
+  .signature-grid { grid-template-columns: 1fr; }
   .playbook-grid { grid-template-columns: 1fr; }
   .cred-card:nth-child(2) { border-right: 0; }
   .cred-card:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
@@ -1787,6 +2205,7 @@ footer {
   .hero-actions .btn,
   .cta-actions .btn { width: 100%; }
   .hero-contact { display: grid; gap: 10px; }
+  .hero-proof { margin-top: 22px; }
   .badges { margin-top: 28px; }
   .cred-grid,
   .cards-grid,
@@ -1853,15 +2272,16 @@ body {
 main { display: flex; flex-direction: column; }
 .hero { order: 1; color: var(--hero-text); }
 .credibility { order: 2; }
-#services { order: 3; }
-#experience { order: 4; }
-.transformation { order: 5; }
-#gallery { order: 6; }
-#process { order: 7; }
-.section-tight { order: 8; }
-.trust { order: 9; }
-#faq { order: 10; }
-.final-cta { order: 11; }
+#signature-system { order: 3; }
+#services { order: 4; }
+#experience { order: 5; }
+.transformation { order: 6; }
+#gallery { order: 7; }
+#process { order: 8; }
+.section-tight { order: 9; }
+.trust { order: 10; }
+#faq { order: 11; }
+.final-cta { order: 12; }
 .section { padding: var(--section-spacing) 0; }
 .section-tight { padding: calc(var(--section-spacing) - 26px) 0; }
 .hero { min-height: var(--hero-min-height); }
@@ -2007,6 +2427,92 @@ footer { color: var(--text); background: var(--page-bg); }
 .theme-clean-local .hero,
 .theme-soft-wellness .hero { min-height: 790px; }
 
+.blueprint-tasting-room .hero-copy { max-width: 760px; }
+.blueprint-tasting-room .hero-float { border-radius: 28px 28px 120px 28px; }
+.blueprint-tasting-room .signature-card:nth-child(1) { transform: translateY(26px); }
+.blueprint-tasting-room .gallery-card:nth-child(1) { grid-column: span 8; }
+
+.blueprint-garage-bay .hero-bg { filter: contrast(1.05) saturate(.92); }
+.blueprint-garage-bay .hero-proof article,
+.blueprint-garage-bay .signature-card,
+.blueprint-project-yard .signature-card,
+.blueprint-product-lab .signature-card {
+  border-radius: 10px;
+}
+.blueprint-garage-bay .hero-float,
+.blueprint-product-lab .hero-float {
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 18%, var(--surface)), color-mix(in srgb, var(--surface) 88%, black)),
+    repeating-linear-gradient(90deg, transparent 0 18px, color-mix(in srgb, var(--accent) 8%, transparent) 18px 19px);
+}
+
+.blueprint-care-suite .hero { min-height: 820px; }
+.blueprint-care-suite .hero-proof article,
+.blueprint-care-suite .signature-card {
+  border-radius: 34px;
+  background: color-mix(in srgb, var(--surface) 88%, white);
+}
+.blueprint-care-suite .hero-float { border-radius: 34px; }
+
+.blueprint-beauty-editorial .hero-copy { max-width: 720px; }
+.blueprint-beauty-editorial .hero-proof article,
+.blueprint-property-gallery .hero-proof article {
+  border-radius: 999px;
+}
+.blueprint-beauty-editorial .signature-card:nth-child(2),
+.blueprint-property-gallery .signature-card:nth-child(2) { transform: translateY(-24px); }
+
+.blueprint-memorial-letter .hero {
+  min-height: 820px;
+  align-items: end;
+}
+.blueprint-memorial-letter .hero-copy { max-width: 760px; }
+.blueprint-memorial-letter .hero-proof article,
+.blueprint-memorial-letter .signature-card {
+  border-radius: 6px 28px 28px 6px;
+  box-shadow: none;
+}
+.blueprint-memorial-letter .hero-float {
+  border-radius: 6px 28px 28px 6px;
+  box-shadow: none;
+}
+.blueprint-memorial-letter .light-streak,
+.blueprint-memorial-letter .sparkle { display: none; }
+
+.blueprint-stage-portfolio .hero { min-height: 1040px; }
+.blueprint-stage-portfolio .hero-copy { max-width: 900px; }
+.blueprint-stage-portfolio h1 { font-size: clamp(4rem, 8.4vw, 8.8rem); }
+.blueprint-stage-portfolio .hero-proof { max-width: 780px; }
+.blueprint-stage-portfolio .signature-shell { grid-template-columns: 1.1fr .9fr; }
+.blueprint-stage-portfolio .signature-card { min-height: 340px; }
+
+.blueprint-product-lab .hero-proof article {
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent),
+    color-mix(in srgb, var(--surface) 72%, transparent);
+}
+.blueprint-product-lab .signature-grid { gap: 1px; background: var(--theme-border); }
+.blueprint-product-lab .signature-card {
+  border: 0;
+  box-shadow: none;
+}
+
+.blueprint-professional-brief.hero-split .hero-bg,
+.blueprint-professional-brief .hero-proof article,
+.blueprint-professional-brief .signature-card {
+  border-radius: 14px;
+}
+.blueprint-professional-brief .signature-shell {
+  border-top: 1px solid var(--theme-border);
+  border-bottom: 1px solid var(--theme-border);
+  padding-block: 38px;
+}
+
+.blueprint-local-command .hero-proof article,
+.blueprint-local-command .signature-card { border-radius: 20px; }
+
 .theme-restaurant #services { order: 2; }
 .theme-restaurant #gallery { order: 3; }
 .theme-restaurant #experience { order: 4; }
@@ -2128,7 +2634,7 @@ footer { color: var(--text); background: var(--page-bg); }
 }
   </style>
 </head>
-<body class="${preset.themeClass} ${industryDesign.cssClass} mode-${preset.themeMode} type-${preset.typographyMood} card-${preset.cardStyle} hero-${preset.heroTreatment} intensity-${preset.colorIntensity} button-${preset.buttonStyle} rhythm-${preset.sectionRhythm}" data-industry-design="${escapeHtml(industryDesign.id)}">
+<body class="${preset.themeClass} ${industryDesign.cssClass} blueprint-${blueprint.heroPattern} mode-${preset.themeMode} type-${preset.typographyMood} card-${preset.cardStyle} hero-${preset.heroTreatment} intensity-${preset.colorIntensity} button-${preset.buttonStyle} rhythm-${preset.sectionRhythm}" data-industry-design="${escapeHtml(industryDesign.id)}" data-website-blueprint="${escapeHtml(blueprint.heroPattern)}">
   <nav class="nav" id="nav" aria-label="Main navigation">
     <div class="container nav-wrap">
       <a class="brand" href="#top" aria-label="${businessName} home">
@@ -2155,12 +2661,15 @@ footer { color: var(--text); background: var(--page-bg); }
 
   <div class="container">
     <div class="hero-copy reveal visible">
-      <div class="eyebrow">${category}${location ? ` - ${location}` : ""}</div>
+      <div class="eyebrow">${escapeHtml(blueprint.heroKicker)}${location ? ` - ${location}` : ""}</div>
       <h1 id="hero-title">${escapeHtml(copy.heroLead)} <span class="accent-text">${businessName}.</span></h1>
-      <p class="lead">${escapeHtml(profile.mood)} ${escapeHtml(copy.valueLine)}${location ? ` Serving customers in ${location}.` : ""}</p>
+      <p class="lead">${escapeHtml(blueprint.heroPromise)} ${escapeHtml(profile.mood)}${location ? ` Serving customers in ${location}.` : ""}</p>
       <div class="hero-actions">
         ${buttons.primary}
         ${buttons.secondary}
+      </div>
+      <div class="hero-proof" aria-label="Industry-specific website priorities">
+        ${heroProofCards}
       </div>
       <div class="hero-contact">
         ${phone ? `<a href="tel:${buttons.phoneHref}"><i class="dot"></i>${phone}</a>` : ""}
@@ -2180,8 +2689,9 @@ footer { color: var(--text); background: var(--page-bg); }
   <div class="premium-seal" aria-hidden="true">Private<br>Concept</div>
 
   <aside class="hero-float" aria-label="Website concept highlights">
-    <div class="hero-float-title">${escapeHtml(industryDesign.composition)}</div>
-    ${profile.sectionEmphasis.map((item, index) => `<div class="mini-stat"><strong>${String(index + 1).padStart(2, "0")}</strong><span>${escapeHtml(item)}</span></div>`).join("")}
+    <div class="hero-float-title">${escapeHtml(blueprint.heroPanelTitle)}</div>
+    ${blueprint.signatureCards.map((item, index) => `<div class="mini-stat"><strong>${String(index + 1).padStart(2, "0")}</strong><span>${escapeHtml(item)}</span></div>`).join("")}
+    <div class="mini-stat wide"><strong>${escapeHtml(industryDesign.navPrimary)}</strong><span>${escapeHtml(industryDesign.trustCue)}</span></div>
   </aside>
 </section>
 
