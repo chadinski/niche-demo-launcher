@@ -26,9 +26,12 @@ export function auditWebsite(html: string, input: BusinessInfo | Prospect): Qual
     item("No fake claims", !/(rated #1|award-winning|guaranteed|5-star|trusted by \d|years of experience)/i.test(html), "Avoid unsupported reviews, awards, guarantees, and statistics."),
     item("Correct category", includesAny(html, [category]), category ? "Business category appears in the site." : "Category is missing from the profile."),
     item("Strong hero", includesAny(html, ["<section class=\"hero", "hero"]), "Hero section should be present and visually prominent."),
+    item("Industry-specific system", includesAny(html, ["data-industry-design", "industry-spotlight", "industry-focus"]), "Generated site should use a category-specific section system."),
     item("Services section", includesAny(html, ["id=\"services\"", "service-card", "services"]), "Services/products should be visible."),
     item("Contact section", includesAny(html, ["id=\"contact\"", "contact"]), "Contact section should be available."),
     item("FAQ section", includesAny(html, ["faq", "questions"]), "FAQ or objection-handling content should be present."),
+    item("Concept disclosure", includesAny(html, ["private concept", "concept/demo", "private review"]), "Generated demos should clearly be review concepts before outreach."),
+    item("Representative imagery labeled", includesAny(html, ["representative imagery", "replace with verified business photography"]), "Placeholder imagery should be labeled honestly."),
     item("Visual polish", html.length > 25000 && includesAny(html, ["gallery", "reveal", "shadow", "border-radius"]), "Generated file should include rich structure and refined CSS."),
   ];
 
@@ -42,7 +45,7 @@ export function auditWebsite(html: string, input: BusinessInfo | Prospect): Qual
 
   return {
     score,
-    passed: score >= 82,
+    passed: score >= 85,
     items,
     warnings,
   };

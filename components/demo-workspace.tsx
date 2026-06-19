@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   Clipboard,
@@ -22,6 +23,7 @@ import {
   ScanText,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Target,
   WandSparkles,
@@ -85,6 +87,14 @@ const messageTabs: Array<{ key: keyof SalesMessages; label: string }> = [
 ];
 
 type BusyAction = "image" | "parse" | "website" | "message" | "both" | "save" | "deploy" | null;
+type GenerationMode = "standard" | "more-luxury" | "more-local" | "more-bold";
+
+const generationModes: Array<{ key: GenerationMode; label: string; directive: string }> = [
+  { key: "standard", label: "Balanced", directive: "" },
+  { key: "more-luxury", label: "More luxury", directive: "Generation direction: make the next website feel more luxury, editorial, premium, spacious, and refined while keeping facts accurate." },
+  { key: "more-local", label: "More local", directive: "Generation direction: make the next website feel warmer, more local/community-rooted, practical, approachable, and easy to contact." },
+  { key: "more-bold", label: "More bold", directive: "Generation direction: make the next website feel bolder, higher-energy, more modern, more visually dramatic, and more action-led." },
+];
 
 type ReadinessCheck = {
   label: string;
@@ -183,6 +193,34 @@ function nextBestAction(checks: ReadinessCheck[]) {
   return checks.find((check) => !check.passed)?.action ?? "Approve and send manually";
 }
 
+function confidenceTone(score: number) {
+  if (score >= 78) return "strong";
+  if (score >= 55) return "review";
+  return "weak";
+}
+
+function confidenceLabel(score: number) {
+  if (score >= 78) return "Strong";
+  if (score >= 55) return "Review";
+  return "Needs review";
+}
+
+function generationDirective(mode: GenerationMode, understanding: BusinessUnderstanding | null) {
+  const modeDirective = generationModes.find((item) => item.key === mode)?.directive ?? "";
+  const themeDirective = understanding
+    ? [
+        `Business intelligence theme: ${understanding.industry.category.label}.`,
+        `Industry: ${understanding.industry.primaryIndustry}.`,
+        `Theme variation: ${understanding.theme.variation}.`,
+        `Recommended CTA: ${understanding.theme.cta}.`,
+        `Section priorities: ${understanding.theme.sectionPriorities.join(", ")}.`,
+        `Trust elements: ${understanding.theme.trustElements.join(", ")}.`,
+      ].join(" ")
+    : "";
+
+  return [themeDirective, modeDirective].filter(Boolean).join("\n");
+}
+
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -210,6 +248,8 @@ export function DemoWorkspace() {
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [businessUnderstanding, setBusinessUnderstanding] = useState<BusinessUnderstanding | null>(null);
   const [businessReport, setBusinessReport] = useState("");
+  const [extractionReviewed, setExtractionReviewed] = useState(false);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>("standard");
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const names = useMemo(() => generatedNames(info), [info]);
@@ -238,16 +278,76 @@ export function DemoWorkspace() {
     () => nextBestAction(readinessChecks),
     [readinessChecks],
   );
+  const extractionReviewItems = useMemo(() => {
+    if (!businessUnderstanding) return [];
+    const hasContact = Boolean(info.phone || info.email || info.socialUrl || info.websiteUrl);
+    const hasServices = Boolean(info.services.trim());
+    const hasLocation = Boolean(info.location.trim());
+
+    return [
+      {
+        label: "Business name",
+        value: info.businessName || businessUnderstanding.selectedBusinessName || "Your Business Name",
+        confidence: businessUnderstanding.businessNameConfidence,
+        detail: businessUnderstanding.businessNameReason,
+      },
+      {
+        label: "Industry",
+        value: businessUnderstanding.industry.primaryIndustry,
+        confidence: businessUnderstanding.industry.confidence,
+        detail: businessUnderstanding.industry.explanation,
+      },
+      {
+        label: "Website category",
+        value: businessUnderstanding.industry.category.label,
+        confidence: businessUnderstanding.industry.categoryConfidence,
+        detail: `Triggered by: ${businessUnderstanding.industry.triggeredKeywords.join(", ") || "broad business context"}.`,
+      },
+      {
+        label: "Services / products",
+        value: info.services || "Needs service confirmation",
+        confidence: hasServices ? 74 : 35,
+        detail: hasServices ? "Services are available for section planning." : "Add or confirm services before outreach.",
+      },
+      {
+        label: "Contact route",
+        value: contactSummary(info) || "Missing contact route",
+        confidence: hasContact ? 82 : 28,
+        detail: hasContact ? "At least one contact channel is available." : "Add phone, email, website, or social before outreach.",
+      },
+      {
+        label: "Location",
+        value: info.location || "Location not confirmed",
+        confidence: hasLocation ? 72 : 34,
+        detail: hasLocation ? "Location/service area is available." : "Location can remain omitted, but should be reviewed.",
+      },
+    ];
+  }, [businessUnderstanding, info]);
+  const extractionWarnings = useMemo(
+    () =>
+      businessUnderstanding
+        ? [...businessUnderstanding.missingInformation, ...businessUnderstanding.assumptions]
+            .filter(Boolean)
+            .slice(0, 6)
+        : [],
+    [businessUnderstanding],
+  );
 
   const updateInfo = useCallback(
     (key: keyof BusinessInfo, value: string) => {
       const nextInfo = { ...info, [key]: value };
       setInfo(nextInfo);
+      if (
+        businessUnderstanding &&
+        ["businessName", "category", "location", "phone", "email", "websiteUrl", "socialUrl", "services", "brandColors"].includes(key)
+      ) {
+        setExtractionReviewed(false);
+      }
       if (key === "demoUrl" && messages) {
         setMessages(generateSalesMessages(nextInfo, tone, DEFAULT_SETTINGS));
       }
     },
-    [info, messages, tone],
+    [businessUnderstanding, info, messages, tone],
   );
 
   const runAction = async (action: BusyAction, work: () => void | Promise<void>, success: string) => {
@@ -277,6 +377,7 @@ export function DemoWorkspace() {
       };
       setBusinessUnderstanding(understanding);
       setBusinessReport(understanding.reportMarkdown);
+      setExtractionReviewed(false);
       setInfo(nextInfo);
       return nextInfo;
     },
@@ -330,7 +431,7 @@ export function DemoWorkspace() {
       async () => {
         await analyzeBusinessWithOpenAI(info);
       },
-      "OpenAI business intelligence extracted",
+      "AI business intelligence extracted - review before generating",
     );
 
   const removeImage = () => {
@@ -339,6 +440,7 @@ export function DemoWorkspace() {
     setImagePreview("");
     setImageDataUrl("");
     setOcrProgress(0);
+    setExtractionReviewed(false);
     if (imageInputRef.current) imageInputRef.current.value = "";
   };
 
@@ -371,28 +473,56 @@ export function DemoWorkspace() {
         imageDataUrl: dataUrl,
       });
       setOcrProgress(1);
-      toast.success("OpenAI vision analyzed the screenshot and populated the profile");
+      toast.success("AI vision analyzed the screenshot - review the extracted facts");
     } catch (error) {
       setOcrProgress(0);
       toast.error(
         error instanceof Error
           ? error.message
-          : "OpenAI screenshot extraction failed. Check OPENAI_API_KEY and try again.",
+          : "AI screenshot extraction failed. Check the provider key and try again.",
       );
     } finally {
       setBusy(null);
     }
   };
 
+  const buildGenerationInfo = useCallback(() => {
+    const directive = generationDirective(generationMode, businessUnderstanding);
+
+    return {
+      ...info,
+      rawInfo: [info.rawInfo, directive].filter(Boolean).join("\n\n"),
+      notes: [info.notes, directive].filter(Boolean).join("\n\n"),
+    };
+  }, [businessUnderstanding, generationMode, info]);
+
+  const requireGenerationReady = useCallback(() => {
+    if (businessUnderstanding && !extractionReviewed) {
+      throw new Error("Review and approve the extracted facts before generating the website.");
+    }
+    if (!info.businessName.trim() || !info.category.trim()) {
+      throw new Error("Add or extract the business name and category before generating.");
+    }
+  }, [businessUnderstanding, extractionReviewed, info.businessName, info.category]);
+
   const handleGenerateWebsite = () =>
     runAction(
       "website",
-      async () => {
-        const nextInfo = await analyzeBusinessWithOpenAI(info);
-        setHtml(generateWebsiteHTML(nextInfo));
+      () => {
+        requireGenerationReady();
+        const nextInfo = buildGenerationInfo();
+        const nextHtml = generateWebsiteHTML(nextInfo);
+        const nextAudit = auditWebsite(nextHtml, nextInfo);
+        setHtml(nextHtml);
         setOutputTab("preview");
+        const prospect = buildProspect({ info: nextInfo, html: nextHtml, qualityAudit: nextAudit });
+        saveProspect(prospect);
+        setProspectId(prospect.id);
+        if (!nextAudit.passed) {
+          toast.warning(`Quality audit needs review: ${nextAudit.score}/100`);
+        }
       },
-      "OpenAI business intelligence report and website generated",
+      "Website generated from reviewed business intelligence",
     );
 
   const handleGenerateMessages = () =>
@@ -405,64 +535,92 @@ export function DemoWorkspace() {
   const handleGenerateBoth = () =>
     runAction(
       "both",
-      async () => {
-        const nextInfo = await analyzeBusinessWithOpenAI(info);
-        setHtml(generateWebsiteHTML(nextInfo));
-        setMessages(generateSalesMessages(nextInfo, tone, DEFAULT_SETTINGS));
+      () => {
+        requireGenerationReady();
+        const nextInfo = buildGenerationInfo();
+        const nextHtml = generateWebsiteHTML(nextInfo);
+        const nextMessages = generateSalesMessages(nextInfo, tone, DEFAULT_SETTINGS);
+        const nextAudit = auditWebsite(nextHtml, nextInfo);
+        setHtml(nextHtml);
+        setMessages(nextMessages);
         setOutputTab("preview");
+        const prospect = buildProspect({ info: nextInfo, html: nextHtml, messages: nextMessages, qualityAudit: nextAudit });
+        saveProspect(prospect);
+        setProspectId(prospect.id);
+        if (!nextAudit.passed) {
+          toast.warning(`Quality audit needs review: ${nextAudit.score}/100`);
+        }
       },
-      "OpenAI business intelligence, website, and outreach kit generated",
+      "Website and outreach kit generated from reviewed intelligence",
     );
 
-  const buildProspect = (): Prospect => {
+  const buildProspect = (overrides: {
+    info?: BusinessInfo;
+    html?: string;
+    messages?: SalesMessages | null;
+    qualityAudit?: QualityAudit | null;
+  } = {}): Prospect => {
     const now = new Date().toISOString();
+    const prospectInfo = overrides.info ?? info;
+    const prospectHtml = overrides.html ?? html;
+    const prospectMessages = overrides.messages ?? messages;
+    const prospectAudit = overrides.qualityAudit ?? qualityAudit;
+    const canPersistScreenshot = Boolean(imageDataUrl && imageDataUrl.length <= 750_000);
     return {
       id: prospectId ?? crypto.randomUUID(),
-      business_name: info.businessName || "Untitled prospect",
-      category: info.category,
-      location: info.location,
-      phone: info.phone,
-      email: info.email,
-      website_url: info.websiteUrl,
-      social_url: info.socialUrl,
-      source: imageFile ? `Image import: ${imageFile.name}` : info.rawInfo ? "Pasted business info" : "Manual entry",
-      pasted_raw_info: info.rawInfo,
+      business_name: prospectInfo.businessName || "Untitled prospect",
+      category: prospectInfo.category,
+      location: prospectInfo.location,
+      phone: prospectInfo.phone,
+      email: prospectInfo.email,
+      website_url: prospectInfo.websiteUrl,
+      social_url: prospectInfo.socialUrl,
+      source: imageFile ? `Image import: ${imageFile.name}` : prospectInfo.rawInfo ? "Pasted business info" : "Manual entry",
+      pasted_raw_info: prospectInfo.rawInfo,
       extracted_summary: [
-        info.businessName,
-        info.category,
-        info.location,
-        info.services && `Services: ${info.services}`,
+        prospectInfo.businessName,
+        prospectInfo.category,
+        prospectInfo.location,
+        prospectInfo.services && `Services: ${prospectInfo.services}`,
       ]
         .filter(Boolean)
         .join(". "),
-      package_price: info.packagePrice,
-      deal_value: info.packagePrice,
+      package_price: prospectInfo.packagePrice,
+      deal_value: prospectInfo.packagePrice,
       lead_score: leadScore.score,
       lead_temperature: leadScore.temperature,
       lead_score_explanation: leadScore.explanation.join(" "),
       recommended_sales_angle: leadScore.recommendedAngle,
-      business_intelligence: intelligence,
-      website_quality_audit: qualityAudit,
-      generated_website_html: html,
-      demo_url: info.demoUrl,
-      whatsapp_message: messages?.whatsapp ?? "",
-      email_subject: messages?.emailSubject ?? "",
-      email_message: messages?.email ?? "",
-      dm_message: messages?.dm ?? "",
-      facebook_message: messages?.facebook ?? "",
-      follow_up_1_message: messages?.followUp ?? "",
-      follow_up_2_message: messages?.followUp2 ?? "",
-      final_check_in_message: messages?.finalFollowUp ?? "",
+      business_intelligence: {
+        ...intelligence,
+        extractionReportMarkdown: businessReport,
+        screenshotName: imageFile?.name ?? "",
+        screenshotDataUrl: canPersistScreenshot ? imageDataUrl : "",
+        screenshotSaved: canPersistScreenshot,
+        generationMode,
+        extractionReviewed,
+      },
+      website_quality_audit: prospectAudit,
+      generated_website_html: prospectHtml,
+      demo_url: prospectInfo.demoUrl,
+      whatsapp_message: prospectMessages?.whatsapp ?? "",
+      email_subject: prospectMessages?.emailSubject ?? "",
+      email_message: prospectMessages?.email ?? "",
+      dm_message: prospectMessages?.dm ?? "",
+      facebook_message: prospectMessages?.facebook ?? "",
+      follow_up_1_message: prospectMessages?.followUp ?? "",
+      follow_up_2_message: prospectMessages?.followUp2 ?? "",
+      final_check_in_message: prospectMessages?.finalFollowUp ?? "",
       outreach_status: statusAfterMilestone({
-        generated_website_html: html,
-        demo_url: info.demoUrl,
-        whatsapp_message: messages?.whatsapp ?? "",
-        email_message: messages?.email ?? "",
-        dm_message: messages?.dm ?? "",
-        extracted_summary: info.businessName || info.category || info.location,
+        generated_website_html: prospectHtml,
+        demo_url: prospectInfo.demoUrl,
+        whatsapp_message: prospectMessages?.whatsapp ?? "",
+        email_message: prospectMessages?.email ?? "",
+        dm_message: prospectMessages?.dm ?? "",
+        extracted_summary: prospectInfo.businessName || prospectInfo.category || prospectInfo.location,
         outreach_status: "new",
       } as Prospect),
-      notes: info.notes,
+      notes: prospectInfo.notes,
       follow_up_count: 0,
       created_at: now,
       updated_at: now,
@@ -607,7 +765,7 @@ export function DemoWorkspace() {
               <Save className="size-4" />
               Save Prospect
             </Button>
-            <Button onClick={handleGenerateBoth} loading={busy === "both"}>
+            <Button onClick={handleGenerateBoth} loading={busy === "both"} disabled={Boolean(businessUnderstanding && !extractionReviewed)}>
               <WandSparkles className="size-4" />
               Generate Website + Message
             </Button>
@@ -771,6 +929,126 @@ export function DemoWorkspace() {
         </Card>
       </div>
 
+      {businessUnderstanding ? (
+        <Card className="p-5 sm:p-6">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+            <div className="flex items-start gap-3">
+              <span
+                className={cn(
+                  "grid size-10 shrink-0 place-items-center rounded-xl",
+                  extractionReviewed ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600",
+                )}
+              >
+                {extractionReviewed ? <CheckCircle2 className="size-5" /> : <AlertTriangle className="size-5" />}
+              </span>
+              <div>
+                <SectionLabel>Extraction review</SectionLabel>
+                <h2 className="mt-1 text-xl font-extrabold tracking-[-0.035em]">
+                  {extractionReviewed ? "Approved for generation" : "Review before website generation"}
+                </h2>
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-[#7f8597]">
+                  Confirm the extracted identity, industry, category, contact routes, and offer. Generation is blocked until this review is approved.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (imageFile) void importBusinessImage(imageFile);
+                  else handleParse();
+                }}
+                loading={busy === "image" || busy === "parse"}
+              >
+                <ScanText className="size-4" />
+                Fix Extraction
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  document.getElementById("business-category-field")?.focus();
+                  setExtractionReviewed(false);
+                  toast.info("Edit the business category, then approve the extraction review again.");
+                }}
+              >
+                <SlidersHorizontal className="size-4" />
+                Change Category
+              </Button>
+              <Button onClick={() => setExtractionReviewed(true)}>
+                <CheckCircle2 className="size-4" />
+                Approve Review
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-3 lg:grid-cols-3">
+            {extractionReviewItems.map((item) => (
+              <ConfidenceReviewRow key={item.label} {...item} />
+            ))}
+          </div>
+
+          {businessUnderstanding.businessNameCandidates.length ? (
+            <div className="mt-4 rounded-2xl border border-[#ececf2] bg-[#fafafd] p-4">
+              <div className="text-[0.65rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Alternate name candidates</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {businessUnderstanding.businessNameCandidates.slice(0, 5).map((candidate) => (
+                  <button
+                    key={candidate.value}
+                    type="button"
+                    className="rounded-full border border-[#e1e3eb] bg-white px-3 py-1.5 text-xs font-bold text-[#60687a] hover:border-brand-200 hover:text-brand-700"
+                    onClick={() => updateInfo("businessName", candidate.value)}
+                  >
+                    {candidate.value} ({candidate.score}/100)
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {extractionWarnings.length ? (
+            <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900">
+                <AlertTriangle className="size-4" />
+                Needs-review warnings
+              </div>
+              <ul className="mt-2 space-y-1 text-xs leading-5 text-amber-800">
+                {extractionWarnings.map((warning) => (
+                  <li key={warning}>- {warning}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="mt-4 rounded-2xl border border-[#ececf2] bg-white p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-[0.65rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Regenerate direction</div>
+                <p className="mt-1 text-xs leading-5 text-[#7f8597]">
+                  Pick the next design direction before regenerating. This changes the generated site language and design cues without changing verified facts.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {generationModes.map((mode) => (
+                  <button
+                    key={mode.key}
+                    type="button"
+                    className={cn(
+                      "rounded-xl border px-3 py-2 text-xs font-extrabold",
+                      generationMode === mode.key
+                        ? "border-brand-300 bg-brand-50 text-brand-700"
+                        : "border-[#e4e6ee] bg-white text-[#747b8f] hover:border-brand-200",
+                    )}
+                    onClick={() => setGenerationMode(mode.key)}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
       <div className="grid items-start gap-5 2xl:grid-cols-[minmax(380px,.75fr)_minmax(0,1.25fr)]">
         <div className="space-y-5">
           <Card className="p-5 sm:p-6">
@@ -823,9 +1101,9 @@ export function DemoWorkspace() {
                       </p>
                       <p className="mt-1 text-[0.7rem] text-[#7d8496]">
                         {busy === "image"
-                          ? `OpenAI analyzing screenshot - ${Math.round(ocrProgress * 100)}%`
+                          ? `AI analyzing screenshot - ${Math.round(ocrProgress * 100)}%`
                           : ocrProgress === 1
-                            ? "OpenAI analysis complete - review the populated fields below"
+                            ? "AI analysis complete - review the populated fields below"
                             : "Screenshot ready - analyze again or try a clearer crop"}
                       </p>
                     </div>
@@ -886,7 +1164,7 @@ export function DemoWorkspace() {
                   Upload a business screenshot or photo
                 </span>
                 <span className="mt-1 max-w-sm text-xs leading-5 text-[#7f8597]">
-                  Click or drag an image here. OpenAI vision analyzes it and fills the profile automatically.
+                  Click or drag an image here. AI vision analyzes it and fills the profile for review.
                 </span>
                 <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[0.68rem] font-bold text-[#697084] shadow-sm">
                   <FileImage className="size-3.5 text-brand-600" />
@@ -929,7 +1207,7 @@ export function DemoWorkspace() {
             />
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <Field label="Business name" value={info.businessName} onChange={(value) => updateInfo("businessName", value)} />
-              <Field label="Business category" value={info.category} onChange={(value) => updateInfo("category", value)} />
+              <Field id="business-category-field" label="Business category" value={info.category} onChange={(value) => updateInfo("category", value)} />
               <Field label="Location" value={info.location} onChange={(value) => updateInfo("location", value)} />
               <Field label="Phone / WhatsApp" value={info.phone} onChange={(value) => updateInfo("phone", value)} />
               <Field label="Email" type="email" value={info.email} onChange={(value) => updateInfo("email", value)} />
@@ -952,10 +1230,10 @@ export function DemoWorkspace() {
             <SectionHeader
               icon={<MousePointerClick className="size-4" />}
               title="Generate"
-              description="Mock generation works without an API key."
+              description="Generate only after extracted facts are reviewed and approved."
             />
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              <Button variant="outline" onClick={handleGenerateWebsite} loading={busy === "website"}>
+              <Button variant="outline" onClick={handleGenerateWebsite} loading={busy === "website"} disabled={Boolean(businessUnderstanding && !extractionReviewed)}>
                 <Globe2 className="size-4" />
                 Generate Website
               </Button>
@@ -963,7 +1241,7 @@ export function DemoWorkspace() {
                 <MessageCircle className="size-4" />
                 Generate Sales Message
               </Button>
-              <Button className="sm:col-span-2" onClick={handleGenerateBoth} loading={busy === "both"}>
+              <Button className="sm:col-span-2" onClick={handleGenerateBoth} loading={busy === "both"} disabled={Boolean(businessUnderstanding && !extractionReviewed)}>
                 <WandSparkles className="size-4" />
                 Generate Website + Message
               </Button>
@@ -1089,7 +1367,7 @@ export function DemoWorkspace() {
                   <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#7a8194]">
                     Add the business details, then generate a complete single-file website with production-minded metadata.
                   </p>
-                  <Button className="mt-5" onClick={handleGenerateWebsite} loading={busy === "website"}>
+                  <Button className="mt-5" onClick={handleGenerateWebsite} loading={busy === "website"} disabled={Boolean(businessUnderstanding && !extractionReviewed)}>
                     <Sparkles className="size-4" />
                     Generate Website
                   </Button>
@@ -1219,7 +1497,7 @@ export function DemoWorkspace() {
           <Save className="size-4" />
           Save Prospect
         </Button>
-        <Button onClick={handleGenerateBoth} loading={busy === "both"}>
+        <Button onClick={handleGenerateBoth} loading={busy === "both"} disabled={Boolean(businessUnderstanding && !extractionReviewed)}>
           <WandSparkles className="size-4" />
           Generate Website + Message
         </Button>
@@ -1312,13 +1590,62 @@ function FactPill({
   );
 }
 
+function ConfidenceReviewRow({
+  label,
+  value,
+  confidence,
+  detail,
+}: {
+  label: string;
+  value: string;
+  confidence: number;
+  detail: string;
+}) {
+  const tone = confidenceTone(confidence);
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border p-4",
+        tone === "strong"
+          ? "border-emerald-100 bg-emerald-50/70"
+          : tone === "review"
+            ? "border-amber-100 bg-amber-50/70"
+            : "border-rose-100 bg-rose-50/70",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[0.65rem] font-bold tracking-[0.12em] text-[#8c94a6] uppercase">{label}</div>
+          <div className="mt-1 truncate text-sm font-extrabold text-ink-950">{value}</div>
+        </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2.5 py-1 text-[0.65rem] font-extrabold",
+            tone === "strong"
+              ? "bg-emerald-100 text-emerald-700"
+              : tone === "review"
+                ? "bg-amber-100 text-amber-700"
+                : "bg-rose-100 text-rose-700",
+          )}
+        >
+          {confidenceLabel(confidence)} {confidence}/100
+        </span>
+      </div>
+      <p className="mt-2 line-clamp-3 text-xs leading-5 text-[#687083]">{detail}</p>
+    </div>
+  );
+}
+
 function Field({
+  id,
   label,
   value,
   type = "text",
   placeholder,
   onChange,
 }: {
+  id?: string;
   label: string;
   value: string;
   type?: string;
@@ -1329,6 +1656,7 @@ function Field({
     <label>
       <span className="field-label">{label}</span>
       <input
+        id={id}
         className="field-input"
         type={type}
         value={value}

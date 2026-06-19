@@ -186,9 +186,14 @@ spotlight: `<section class="section industry-spotlight" id="industry-focus">
     <div>
       <div class="eyebrow reveal">${escapeHtml(spotlight.eyebrow)}</div>
       <h2 class="reveal">${escapeHtml(spotlight.title)}</h2>
-      <p class="lead reveal">${escapeHtml(spotlight.body)}</p>
+      <p class="lead reveal">${escapeHtml(spotlight.body)} ${escapeHtml(industryDesign.composition)}</p>
       <div class="reasons">
         ${spotlightCards}
+      </div>
+      <div class="playbook-grid reveal">
+        <article><span>Design path</span><strong>${escapeHtml(industryDesign.colorPath)}</strong></article>
+        <article><span>Trust cue</span><strong>${escapeHtml(industryDesign.trustCue)}</strong></article>
+        <article><span>Primary action</span><strong>${escapeHtml(profile.ctaLanguage)}</strong></article>
       </div>
     </div>
     <div class="image-frame reveal">
@@ -1194,6 +1199,38 @@ h3 { margin-bottom: 13px; font-size: 1.16rem; }
   font-size: .82rem;
 }
 
+.playbook-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.playbook-grid article {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  box-shadow: 0 18px 45px rgba(0,0,0,.12);
+}
+
+.playbook-grid span {
+  display: block;
+  margin-bottom: 8px;
+  color: color-mix(in srgb, var(--accent) 70%, white);
+  font-size: .66rem;
+  font-weight: 850;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.playbook-grid strong {
+  display: block;
+  color: var(--white);
+  font-size: .82rem;
+  line-height: 1.45;
+}
+
 .transformation { overflow: hidden; }
 
 .transform-shell {
@@ -1724,6 +1761,7 @@ footer {
 
   .premium-seal { display: none; }
   .cred-grid { grid-template-columns: 1fr 1fr; }
+  .playbook-grid { grid-template-columns: 1fr; }
   .cred-card:nth-child(2) { border-right: 0; }
   .cred-card:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
   .transform-copy { right: 6%; left: 6%; }

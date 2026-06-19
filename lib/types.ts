@@ -70,6 +70,12 @@ export interface BusinessIntelligence {
   suggestedPriceRange: string;
   outreachAngle: string;
   objections: string[];
+  extractionReportMarkdown?: string;
+  screenshotName?: string;
+  screenshotDataUrl?: string;
+  screenshotSaved?: boolean;
+  generationMode?: string;
+  extractionReviewed?: boolean;
 }
 
 export interface QualityAuditItem {
