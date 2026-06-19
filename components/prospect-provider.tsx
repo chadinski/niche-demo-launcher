@@ -9,7 +9,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { MOCK_PROSPECTS } from "@/lib/mock-data";
 import type { LeadTemperature, OutreachStatus, Prospect } from "@/lib/types";
 import {
   listProspects,
@@ -78,7 +77,7 @@ interface ProspectContextValue {
 const ProspectContext = createContext<ProspectContextValue | null>(null);
 
 export function ProspectProvider({ children }: { children: ReactNode }) {
-  const [prospects, setProspects] = useState<Prospect[]>(MOCK_PROSPECTS);
+  const [prospects, setProspects] = useState<Prospect[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {

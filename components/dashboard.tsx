@@ -5,7 +5,6 @@ import {
   ArrowUpRight,
   CalendarClock,
   CheckCheck,
-  CircleDollarSign,
   Clock3,
   Code2,
   MailCheck,
@@ -15,7 +14,6 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import { MOCK_ACTIVITY } from "@/lib/mock-data";
 import { formatRelativeDate } from "@/lib/utils";
 import { isFollowUpDue } from "@/lib/automation/follow-ups";
 import { useProspects } from "@/components/prospect-provider";
@@ -30,18 +28,8 @@ const statIcons = {
   sent: MailCheck,
   replies: RefreshCcw,
   followups: CalendarClock,
-  won: CircleDollarSign,
   lost: CheckCheck,
 };
-
-function moneyValue(value: string) {
-  const numeric = Number(value.replace(/[^0-9.]/g, ""));
-  return Number.isFinite(numeric) ? numeric : 0;
-}
-
-function moneyLabel(value: number) {
-  return value ? `$${value.toLocaleString()}` : "$0";
-}
 
 const statToneClasses: Record<string, string> = {
   lime: "bg-lime-50 text-lime-700",
@@ -56,30 +44,30 @@ const statToneClasses: Record<string, string> = {
 
 export function Dashboard({ nowIso }: { nowIso: string }) {
   const { prospects } = useProspects();
-  const pipelineValue = prospects
-    .filter((item) => !["won", "lost", "opt_out"].includes(item.outreach_status))
-    .reduce((total, item) => total + moneyValue(item.deal_value || item.package_price), 0);
-  const closedRevenue = prospects
-    .filter((item) => item.outreach_status === "won")
-    .reduce((total, item) => total + moneyValue(item.deal_value || item.package_price), 0);
-  const contacted = prospects.filter((item) => item.last_contacted_at).length;
-  const conversionRate = contacted
-    ? Math.round((prospects.filter((item) => item.outreach_status === "won").length / contacted) * 100)
-    : 0;
+  const deployed = prospects.filter((item) => item.demo_url).length;
+  const generated = prospects.filter((item) => item.generated_website_html).length;
+  const readyToDeploy = prospects.filter((item) => item.generated_website_html && !item.demo_url).length;
+  const messageReady = prospects.filter((item) => item.outreach_status === "message_ready").length;
   const metrics = [
     { label: "Total prospects", value: prospects.length, icon: statIcons.prospects, tone: "lime" },
     { label: "Hot leads", value: prospects.filter((item) => item.lead_temperature === "Hot").length, icon: statIcons.replies, tone: "rose" },
     {
       label: "Websites generated",
-      value: prospects.filter((item) => item.generated_website_html).length,
+      value: generated,
       icon: statIcons.websites,
       tone: "green",
     },
     {
       label: "Websites deployed",
-      value: prospects.filter((item) => item.demo_url).length,
+      value: deployed,
       icon: statIcons.sent,
       tone: "cyan",
+    },
+    {
+      label: "Ready to deploy",
+      value: readyToDeploy,
+      icon: statIcons.websites,
+      tone: "amber",
     },
     {
       label: "Messages generated",
@@ -106,20 +94,8 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
       tone: "orange",
     },
     {
-      label: "Pipeline value",
-      value: moneyLabel(pipelineValue),
-      icon: statIcons.won,
-      tone: "emerald",
-    },
-    {
-      label: "Closed revenue",
-      value: moneyLabel(closedRevenue),
-      icon: statIcons.won,
-      tone: "emerald",
-    },
-    {
-      label: "Conversion rate",
-      value: `${conversionRate}%`,
+      label: "Messages ready",
+      value: messageReady,
       icon: statIcons.lost,
       tone: "blue",
     },
@@ -178,7 +154,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
                 <ArrowUpRight className="size-4" />
               </Link>
               <Link href="/prospects" className={buttonClass("outline", "min-h-12 border-white/15 bg-white/10 px-5 text-white hover:bg-white hover:text-ink-950")}>
-                Review pipeline
+                Review prospects
               </Link>
             </div>
           </div>
@@ -201,18 +177,18 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
           <div className="mt-8 grid gap-3">
             <div className="rounded-2xl border border-[#ececf2] bg-[#fafafd] p-4">
               <div className="text-[0.66rem] font-bold tracking-[0.12em] text-[#969bad] uppercase">
-                Open pipeline
+                Ready to deploy
               </div>
               <div className="mt-2 text-2xl font-black tracking-[-0.05em] text-ink-950">
-                {moneyLabel(pipelineValue)}
+                {readyToDeploy}
               </div>
             </div>
             <div className="rounded-2xl border border-[#ececf2] bg-[#fafafd] p-4">
               <div className="text-[0.66rem] font-bold tracking-[0.12em] text-[#969bad] uppercase">
-                Closed revenue
+                Deployed demos
               </div>
               <div className="mt-2 text-2xl font-black tracking-[-0.05em] text-ink-950">
-                {moneyLabel(closedRevenue)}
+                {deployed}
               </div>
             </div>
           </div>
@@ -246,7 +222,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
           <div className="flex items-center justify-between border-b border-[#ececf2] px-5 py-4 sm:px-6">
             <div>
               <h2 className="font-bold tracking-[-0.025em]">Recent prospects</h2>
-              <p className="mt-1 text-xs text-[#848a9c]">Latest work across the outreach pipeline.</p>
+              <p className="mt-1 text-xs text-[#848a9c]">Latest real prospects saved in this workspace.</p>
             </div>
             <Link href="/prospects" className="text-xs font-bold text-brand-600 hover:text-brand-700">
               View all
@@ -276,7 +252,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
             <EmptyState
               icon={<Users className="size-5" />}
               title="No prospects yet"
-              description="Create a site to add your first prospect to the pipeline."
+              description="Create a site to add your first real prospect."
             />
           )}
         </Card>
@@ -285,7 +261,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="font-bold tracking-[-0.025em]">Pipeline snapshot</h2>
-              <p className="mt-1 text-xs text-[#848a9c]">Current prospect distribution.</p>
+              <p className="mt-1 text-xs text-[#848a9c]">Current production status distribution.</p>
             </div>
             <span className="rounded-full bg-mint-50 px-2.5 py-1 text-[0.67rem] font-bold text-emerald-700">
               Live
@@ -321,7 +297,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
               Go from copied info to outreach-ready in minutes.
             </h2>
             <p className="mt-3 max-w-sm text-sm leading-6 text-white/58">
-              Generate the site, review the copy, attach the live URL, and open the right draft.
+              Generate the site, deploy the live URL, review the copy, and open the right draft.
             </p>
             <Link href="/create" className={buttonClass("outline", "mt-6 border-white/15 bg-white text-ink-950")}>
               Launch workspace
@@ -338,23 +314,31 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
             </div>
             <Clock3 className="size-4 text-[#a1a6b5]" />
           </div>
-          <div className="divide-y divide-[#eff0f4]">
-            {MOCK_ACTIVITY.map((activity) => (
-              <div key={activity.id} className="flex gap-4 px-5 py-4 sm:px-6">
+          {recent.length ? (
+            <div className="divide-y divide-[#eff0f4]">
+              {recent.map((prospect) => (
+                <div key={prospect.id} className="flex gap-4 px-5 py-4 sm:px-6">
                 <span className="mt-1 size-2 shrink-0 rounded-full bg-brand-500 ring-4 ring-brand-50" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <p className="text-sm font-bold text-ink-950">{activity.action}</p>
-                    <span className="text-[0.7rem] text-[#979cac]">{formatRelativeDate(activity.createdAt, nowIso)}</span>
+                    <p className="text-sm font-bold text-ink-950">{prospect.business_name}</p>
+                    <span className="text-[0.7rem] text-[#979cac]">{formatRelativeDate(prospect.updated_at, nowIso)}</span>
                   </div>
                   <p className="mt-1 text-xs leading-5 text-[#7c8294]">
-                    <span className="font-semibold text-[#5f6679]">{activity.prospectName}:</span>{" "}
-                    {activity.detail}
+                    <span className="font-semibold text-[#5f6679]">{prospect.outreach_status.replaceAll("_", " ")}:</span>{" "}
+                    {prospect.demo_url ? "Live demo URL is saved." : prospect.generated_website_html ? "Website generated and ready to deploy." : "Prospect is saved and ready for website generation."}
                   </p>
                 </div>
               </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              icon={<Clock3 className="size-5" />}
+              title="No activity yet"
+              description="Real activity will appear here after you save prospects, generate sites, and deploy demos."
+            />
+          )}
         </Card>
       </section>
 

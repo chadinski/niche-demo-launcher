@@ -38,6 +38,8 @@ export function SettingsForm() {
     vercel: false,
     deploymentReady: false,
     missing: [] as string[],
+    githubMissing: [] as string[],
+    supabaseMissing: [] as string[],
   });
 
   useEffect(() => {
@@ -141,7 +143,9 @@ export function SettingsForm() {
               <IntegrationRow label="Service role" variable="SUPABASE_SERVICE_ROLE_KEY" configured={serviceStatus.supabase} privateValue />
             </div>
             <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-              Without Supabase variables, the launcher runs in local demo mode using browser storage.
+              {serviceStatus.supabase
+                ? "Supabase is enabled for authenticated CRM records."
+                : `Supabase is not enabled yet. Missing: ${serviceStatus.supabaseMissing.join(", ") || "Supabase variables"}. The app will use local browser storage only.`}
             </div>
           </Card>
 
@@ -161,11 +165,13 @@ export function SettingsForm() {
               <IntegrationRow label="Repo prefix" variable="GITHUB_REPO_PREFIX" configured={serviceStatus.github} privateValue />
             </div>
             <div className="mt-5 rounded-xl border border-dashed border-[#dcdde6] bg-[#fafafd] p-4 text-center">
-              <p className="text-sm font-bold">{serviceStatus.deploymentReady ? "Automation ready" : "Setup required"}</p>
+              <p className="text-sm font-bold">{serviceStatus.deploymentReady ? "Vercel deployment ready" : "Vercel token required"}</p>
               <p className="mt-1 text-xs leading-5 text-[#858b9d]">
                 {serviceStatus.deploymentReady
-                  ? "GitHub and Vercel deployment can run server-side."
-                  : `Missing: ${serviceStatus.missing.join(", ") || "deployment variables"}. Manual download remains available.`}
+                  ? serviceStatus.github
+                    ? "Demos can deploy to Vercel and archive index.html to GitHub."
+                    : `Demos can deploy to Vercel. GitHub archive is optional and currently missing: ${serviceStatus.githubMissing.join(", ")}.`
+                  : `Missing: ${serviceStatus.missing.join(", ") || "VERCEL_TOKEN"}. Manual download remains available.`}
               </p>
             </div>
           </Card>

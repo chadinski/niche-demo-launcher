@@ -1,6 +1,6 @@
 # Seraphim
 
-Private internal command center for Niche Technologies. Paste business information, generate a premium single-file website, prepare personalized outreach, add the deployed live URL, and track the prospect.
+Private internal command center for Niche Technologies. Paste business information, generate a premium single-file website, deploy the demo, prepare personalized outreach, and track the real prospect.
 
 ## Core Workflow
 
@@ -9,7 +9,7 @@ Private internal command center for Niche Technologies. Paste business informati
 2. Parse and review the extracted facts.
 3. Generate a private `noindex` single-file `index.html`.
 4. Generate WhatsApp, email, DM, and follow-up messages.
-5. Add the live Vercel URL.
+5. Deploy the demo to Vercel or paste an existing live URL.
 6. Copy a message or open a WhatsApp/email draft.
 7. Manually approve sending and update the prospect status.
 
@@ -35,7 +35,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-When Supabase variables are blank, the app runs in local mode using browser storage and bundled mock prospects.
+When Supabase variables are blank, the app runs in local mode using browser storage. It does not preload fake prospects or fake revenue.
 
 ## Supabase Setup
 
@@ -44,6 +44,7 @@ When Supabase variables are blank, the app runs in local mode using browser stor
 3. Create the private internal user in Supabase Auth.
 4. Optionally run `supabase/seed.sql` after the user exists.
 5. Add the project URL and anon key to `.env.local`.
+6. Add the same variables to Vercel production.
 
 All tables use Row Level Security and scope reads/writes to `auth.uid()`.
 
@@ -59,9 +60,15 @@ GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash-lite
 GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-3.1-flash-lite-preview,gemini-flash-lite-latest,gemini-2.5-flash
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+GITHUB_TOKEN=
+GITHUB_OWNER=
+GITHUB_REPO_PREFIX=niche-demo
+VERCEL_TOKEN=
+VERCEL_TEAM_ID=
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, and `GEMINI_API_KEY` are server-only. Never expose them through `NEXT_PUBLIC_*`.
+`VERCEL_TOKEN` is required for one-click demo deployment. `GITHUB_TOKEN` and `GITHUB_OWNER` are optional for deployment, but when present the generated `index.html` is also archived to a GitHub repository.
 
 ## AI Extraction
 
@@ -98,8 +105,18 @@ Key UI paths:
 ## Vercel Deployment
 
 1. Import the `niche-demo-launcher` folder as a Vercel project.
-2. Add the environment variables.
+2. Add the app environment variables.
 3. Set the framework preset to Next.js.
 4. Deploy.
 
-The Vercel and GitHub buttons in Settings are placeholders for future deployment automation. Today, generated HTML is copied or downloaded for manual deployment.
+## Demo Deployment Conveyor
+
+For one-click deployment of each generated demo:
+
+1. Create a Vercel API token in the Vercel account settings.
+2. Add it as `VERCEL_TOKEN` in Vercel project environment variables.
+3. Optionally add `VERCEL_TEAM_ID` when deploying under a team scope.
+4. Optionally add `GITHUB_TOKEN`, `GITHUB_OWNER`, and `GITHUB_REPO_PREFIX` to archive each generated `index.html` to GitHub.
+5. Redeploy this app after changing environment variables.
+
+After that, the **Deploy Website** button on `/create` and `/prospects/[id]` sends the generated HTML to Vercel, saves the live URL, and archives to GitHub when GitHub credentials are configured. Manual copy/download remains available as a fallback.

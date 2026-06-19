@@ -13,12 +13,17 @@ const GITHUB_OWNER_PATTERN = /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i;
 
 function requiredEnv() {
   const missing: string[] = [];
+  if (!process.env.VERCEL_TOKEN) missing.push("VERCEL_TOKEN");
+  return missing;
+}
+
+function githubMissingEnv() {
+  const missing: string[] = [];
   if (!process.env.GITHUB_TOKEN) missing.push("GITHUB_TOKEN");
   if (!process.env.GITHUB_OWNER) missing.push("GITHUB_OWNER");
   if (process.env.GITHUB_OWNER && !GITHUB_OWNER_PATTERN.test(process.env.GITHUB_OWNER)) {
     missing.push("GITHUB_OWNER_VALID_NAME");
   }
-  if (!process.env.VERCEL_TOKEN) missing.push("VERCEL_TOKEN");
   return missing;
 }
 
@@ -31,15 +36,23 @@ function githubOwner() {
 }
 
 export async function getAutomationStatus() {
+  const githubMissing = githubMissingEnv();
+  const supabaseMissing = [
+    process.env.NEXT_PUBLIC_SUPABASE_URL ? "" : "NEXT_PUBLIC_SUPABASE_URL",
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "" : "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  ].filter(Boolean);
+
   return {
     ai: Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY),
     gemini: Boolean(process.env.GEMINI_API_KEY),
     openai: Boolean(process.env.OPENAI_API_KEY),
-    supabase: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
-    github: Boolean(process.env.GITHUB_TOKEN && process.env.GITHUB_OWNER),
+    supabase: supabaseMissing.length === 0,
+    github: githubMissing.length === 0,
     vercel: Boolean(process.env.VERCEL_TOKEN),
     deploymentReady: requiredEnv().length === 0,
     missing: requiredEnv(),
+    githubMissing,
+    supabaseMissing,
   };
 }
 
@@ -156,11 +169,16 @@ export async function deployGeneratedWebsite(input: DeployInput): Promise<Deploy
   }
 
   const slug = slugify(input.businessName || "seraphim-site") || "seraphim-site";
-  const repo = `${process.env.GITHUB_REPO_PREFIX || "seraphim"}-${slug}`.slice(0, 80);
+  const repo = `${process.env.GITHUB_REPO_PREFIX || "niche-demo"}-${slug}`.slice(0, 80);
 
   try {
-    await ensureRepo(repo);
-    await upsertIndexHtml(repo, input.html);
+    let repoUrl = "";
+    if (githubMissingEnv().length === 0) {
+      await ensureRepo(repo);
+      await upsertIndexHtml(repo, input.html);
+      repoUrl = `https://github.com/${githubOwner()}/${repo}`;
+    }
+
     const url = await deployToVercel(repo, input.html);
 
     return {
@@ -168,7 +186,7 @@ export async function deployGeneratedWebsite(input: DeployInput): Promise<Deploy
       status: "deployed",
       message: "Website deployed successfully.",
       url,
-      repoUrl: `https://github.com/${githubOwner()}/${repo}`,
+      repoUrl,
     };
   } catch (error) {
     return {
