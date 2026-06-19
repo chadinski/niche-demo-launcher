@@ -15,7 +15,7 @@ Private internal command center for Niche Technologies. Paste business informati
 
 The app does not bulk-send or automatically submit outreach.
 
-Screenshot extraction requires `OPENAI_API_KEY`. Images are sent to the server-side `/api/business-intelligence` route, then to OpenAI for structured business intelligence. The app does not run local screenshot OCR.
+Screenshot extraction requires `GEMINI_API_KEY` or `OPENAI_API_KEY`. Images are sent to the server-side `/api/business-intelligence` route, then to the configured AI provider for structured business intelligence. Gemini is used first when configured. The app does not run local screenshot OCR.
 
 ## Stack
 
@@ -55,14 +55,16 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.4
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` and `OPENAI_API_KEY` are server-only. Never expose them through `NEXT_PUBLIC_*`.
+`SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, and `GEMINI_API_KEY` are server-only. Never expose them through `NEXT_PUBLIC_*`.
 
 ## AI Extraction
 
-Screenshot and pasted-info extraction use the server-side OpenAI route in `app/api/business-intelligence/route.ts`. Set `OPENAI_API_KEY` locally and in Vercel before production use.
+Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use. Gemini is preferred when both are present.
 
 Generated concept sites:
 

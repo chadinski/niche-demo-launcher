@@ -30,6 +30,8 @@ const tones: MessageTone[] = [
 export function SettingsForm() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [serviceStatus, setServiceStatus] = useState({
+    ai: false,
+    gemini: false,
     openai: false,
     supabase: false,
     github: false,
@@ -119,10 +121,12 @@ export function SettingsForm() {
           <Card className="p-5 sm:p-6">
             <SettingsHeader icon={<KeyRound className="size-4" />} title="AI configuration" description="Server-side secrets belong in Vercel environment variables." />
             <div className="mt-6 space-y-3">
+              <IntegrationRow label="Gemini API key" variable="GEMINI_API_KEY" configured={serviceStatus.gemini} privateValue />
+              <IntegrationRow label="Gemini model" variable="GEMINI_MODEL" configured={serviceStatus.gemini} privateValue />
               <IntegrationRow label="OpenAI API key" variable="OPENAI_API_KEY" configured={serviceStatus.openai} privateValue />
               <IntegrationRow label="OpenAI model" variable="OPENAI_MODEL" configured={serviceStatus.openai} privateValue />
               <p className="mt-3 text-xs leading-5 text-[#858b9d]">
-                The app uses strong local mock generation when no key is configured. API keys are never stored in browser settings.
+                Gemini is used first when configured, then OpenAI. API keys are never stored in browser settings.
               </p>
             </div>
           </Card>

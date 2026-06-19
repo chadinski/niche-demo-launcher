@@ -32,6 +32,8 @@ function githubOwner() {
 
 export async function getAutomationStatus() {
   return {
+    ai: Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY),
+    gemini: Boolean(process.env.GEMINI_API_KEY),
     openai: Boolean(process.env.OPENAI_API_KEY),
     supabase: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
     github: Boolean(process.env.GITHUB_TOKEN && process.env.GITHUB_OWNER),
