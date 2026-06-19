@@ -36,7 +36,7 @@ import { nextFollowUpDate } from "@/lib/automation/follow-ups";
 import { scoreLead } from "@/lib/automation/lead-scoring";
 import { auditWebsite } from "@/lib/automation/quality-audit";
 import type { BusinessInfo, OutreachStatus, Prospect } from "@/lib/types";
-import { cn, formatDate, phoneDigits } from "@/lib/utils";
+import { cn, externalHref, formatDate, phoneDigits } from "@/lib/utils";
 
 type DetailTab = "profile" | "website" | "messages" | "activity";
 
@@ -372,7 +372,8 @@ export function ProspectDetail() {
                 <iframe
                   title={`${prospect.business_name} website preview`}
                   srcDoc={prospect.generated_website_html}
-                  sandbox=""
+                  sandbox="allow-scripts"
+                  referrerPolicy="no-referrer"
                   className="h-[720px] w-full rounded-xl border border-[#dfe0e7] bg-white shadow-xl"
                 />
               </div>
@@ -604,12 +605,14 @@ function CardHeading({ title, icon }: { title: string; icon: ReactNode }) {
 }
 
 function Detail({ label, value, link }: { label: string; value: string; link?: boolean }) {
+  const href = link ? externalHref(value) : "";
+
   return (
     <div className="rounded-2xl border border-[#e9eaf0] bg-[#fafafd] p-4">
       <dt className="text-[0.65rem] font-bold tracking-[0.12em] text-[#999eae] uppercase">{label}</dt>
       <dd className="mt-2 break-words text-sm font-semibold text-[#4f566a]">
         {value ? (
-          link ? <a href={value} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">{value}</a> : value
+          href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-700 hover:underline">{value}</a> : value
         ) : (
           <span className="font-normal text-[#a0a5b5]">Not provided</span>
         )}

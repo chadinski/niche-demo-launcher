@@ -15,7 +15,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { buttonClass } from "@/components/ui";
 
@@ -29,12 +29,35 @@ const navigation = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const mobileNavId = useId();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [mobileOpen]);
 
   if (pathname === "/login") return <>{children}</>;
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
+      <a
+        href="#main-content"
+        className="skip-link fixed left-4 z-[70] rounded-xl bg-ink-950 px-4 py-2 text-sm font-bold text-white shadow-xl"
+      >
+        Skip to main content
+      </a>
+
       <aside className="hidden min-h-screen border-r border-[#e7e8ef] bg-white lg:fixed lg:inset-y-0 lg:flex lg:w-[260px] lg:flex-col">
         <Sidebar pathname={pathname} />
       </aside>
@@ -56,6 +79,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           onClick={() => setMobileOpen(false)}
         />
         <aside
+          id={mobileNavId}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Main navigation"
           className={cn(
             "relative flex h-full w-[min(86vw,310px)] flex-col bg-white shadow-2xl transition-transform",
             mobileOpen ? "translate-x-0" : "-translate-x-full",
@@ -86,12 +113,16 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="grid size-10 place-items-center rounded-xl border border-[#e1e3eb] bg-white"
             onClick={() => setMobileOpen(true)}
             aria-expanded={mobileOpen}
+            aria-controls={mobileNavId}
             aria-label="Open navigation"
           >
             <Menu className="size-5" />
           </button>
         </header>
-        <main className="mx-auto min-h-screen w-full max-w-[1560px] px-4 py-5 sm:px-6 sm:py-7 xl:px-9 xl:py-8">
+        <main
+          id="main-content"
+          className="mx-auto min-h-screen w-full max-w-[1560px] px-4 py-5 sm:px-6 sm:py-7 xl:px-9 xl:py-8"
+        >
           {children}
         </main>
       </div>

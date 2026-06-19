@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useEffect, useId } from "react";
 import { Button } from "@/components/ui";
 
 export function ConfirmModal({
@@ -20,6 +21,20 @@ export function ConfirmModal({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const titleId = useId();
+  const descriptionId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onCancel, open]);
+
   if (!open) return null;
 
   return (
@@ -34,14 +49,15 @@ export function ConfirmModal({
         className="w-full max-w-md rounded-3xl border border-white/60 bg-white p-6 shadow-[0_30px_90px_rgba(21,26,45,.3)]"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="confirm-title"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 id="confirm-title" className="text-xl font-bold tracking-[-0.03em] text-ink-950">
+            <h2 id={titleId} className="text-xl font-bold tracking-[-0.03em] text-ink-950">
               {title}
             </h2>
-            <p className="mt-2 text-sm leading-6 text-[#70778b]">{description}</p>
+            <p id={descriptionId} className="mt-2 text-sm leading-6 text-[#70778b]">{description}</p>
           </div>
           <button
             type="button"

@@ -55,6 +55,17 @@ function normalizeProspect(prospect: Prospect): Prospect {
   };
 }
 
+function readStoredProspects() {
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? (parsed as Prospect[]).map(normalizeProspect) : null;
+  } catch {
+    return null;
+  }
+}
+
 interface ProspectContextValue {
   prospects: Prospect[];
   hydrated: boolean;
@@ -79,12 +90,12 @@ export function ProspectProvider({ children }: { children: ReactNode }) {
         if (remote.configured) {
           setProspects(remote.data.map(normalizeProspect));
         } else {
-          const stored = window.localStorage.getItem(STORAGE_KEY);
-          if (stored) setProspects((JSON.parse(stored) as Prospect[]).map(normalizeProspect));
+          const stored = readStoredProspects();
+          if (stored) setProspects(stored);
         }
       } catch {
-        const stored = window.localStorage.getItem(STORAGE_KEY);
-        if (stored && active) setProspects((JSON.parse(stored) as Prospect[]).map(normalizeProspect));
+        const stored = readStoredProspects();
+        if (stored && active) setProspects(stored);
       } finally {
         if (active) setHydrated(true);
       }
@@ -97,7 +108,11 @@ export function ProspectProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(prospects));
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(prospects));
+    } catch {
+      // Remote persistence and in-memory state remain usable if storage is full or blocked.
+    }
   }, [hydrated, prospects]);
 
   const saveProspect = useCallback((prospect: Prospect) => {
