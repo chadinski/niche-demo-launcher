@@ -5,7 +5,7 @@ Private internal command center for Niche Technologies. Paste business informati
 ## Core Workflow
 
 1. Paste messy business information into **Create Site**.
-   You can also import a business screenshot or photo. Browser-based OCR extracts the text, populates the profile, and suggests dominant brand colors.
+   You can also import a business screenshot or photo. OpenAI vision analyzes the image, extracts the business facts, classifies the industry, and populates the profile.
 2. Parse and review the extracted facts.
 3. Generate a private `noindex` single-file `index.html`.
 4. Generate WhatsApp, email, DM, and follow-up messages.
@@ -15,7 +15,7 @@ Private internal command center for Niche Technologies. Paste business informati
 
 The app does not bulk-send or automatically submit outreach.
 
-Screenshot OCR runs locally in the browser through Tesseract.js. Imported images are not uploaded to the application server, but the OCR engine may download its language model files when first used.
+Screenshot extraction requires `OPENAI_API_KEY`. Images are sent to the server-side `/api/business-intelligence` route, then to OpenAI for structured business intelligence. The app does not run local screenshot OCR.
 
 ## Stack
 
@@ -54,22 +54,15 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
-OPENAI_MODEL=
+OPENAI_MODEL=gpt-5.4
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` and `OPENAI_API_KEY` are server-only. Never expose them through `NEXT_PUBLIC_*`.
 
-## AI Generation
+## AI Extraction
 
-The server action placeholders are in `app/actions.ts`:
-
-- `parseBusinessInfo()`
-- `generateWebsiteHTML()`
-- `generateSalesMessages()`
-- `generateFollowUpMessage()`
-
-The current implementation intentionally uses deterministic mock generation, even when an API key exists. Replace the `ai-placeholder` branch with the preferred OpenAI call when the prompt and model are approved. The local generator remains the fallback.
+Screenshot and pasted-info extraction use the server-side OpenAI route in `app/api/business-intelligence/route.ts`. Set `OPENAI_API_KEY` locally and in Vercel before production use.
 
 Generated concept sites:
 

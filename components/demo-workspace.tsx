@@ -46,18 +46,12 @@ import {
   generateSalesMessages,
   generateWebsiteHTML,
   generatedNames,
-  parseBusinessInfo,
 } from "@/lib/generators";
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
 import {
-  combineOcrText,
-  createHeaderCrop,
-  extractImageColors,
-} from "@/lib/image-extraction";
-import {
-  analyzeBusinessScreenshot,
-  type BusinessUnderstanding,
-} from "@/lib/industry-theme-engine";
+  toOpenAIBusinessInfo,
+  type OpenAIBusinessUnderstanding as BusinessUnderstanding,
+} from "@/lib/openai-business-intelligence";
 import { generateBusinessIntelligence } from "@/lib/automation/business-intelligence";
 import { nextFollowUpDate, statusAfterMilestone } from "@/lib/automation/follow-ups";
 import { scoreLead } from "@/lib/automation/lead-scoring";
@@ -189,6 +183,15 @@ function nextBestAction(checks: ReadinessCheck[]) {
   return checks.find((check) => !check.passed)?.action ?? "Approve and send manually";
 }
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
 export function DemoWorkspace() {
   const { saveProspect, setStatus, updateProspect } = useProspects();
   const [info, setInfo] = useState<BusinessInfo>(() => emptyBusinessInfo());
@@ -202,6 +205,7 @@ export function DemoWorkspace() {
   const [confirmSent, setConfirmSent] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
+  const [imageDataUrl, setImageDataUrl] = useState("");
   const [ocrProgress, setOcrProgress] = useState(0);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [businessUnderstanding, setBusinessUnderstanding] = useState<BusinessUnderstanding | null>(null);
@@ -246,46 +250,94 @@ export function DemoWorkspace() {
     [info, messages, tone],
   );
 
-  const runAction = async (action: BusyAction, work: () => void, success: string) => {
+  const runAction = async (action: BusyAction, work: () => void | Promise<void>, success: string) => {
     setBusy(action);
-    await new Promise((resolve) => window.setTimeout(resolve, 420));
-    work();
-    setBusy(null);
-    toast.success(success);
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 420));
+      await work();
+      toast.success(success);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That action could not be completed");
+    } finally {
+      setBusy(null);
+    }
   };
 
-  const applyBusinessUnderstanding = useCallback(
-    (sourceInfo: BusinessInfo, imageName = imageFile?.name) => {
-      const understanding = analyzeBusinessScreenshot({
-        rawOcrText: sourceInfo.rawInfo,
-        parsedInfo: sourceInfo,
-        brandColors: sourceInfo.brandColors,
-        imageName,
-      });
-      const nextInfo = { ...sourceInfo, ...understanding.enrichedInfo };
+  const applyOpenAIUnderstanding = useCallback(
+    (sourceInfo: BusinessInfo, understanding: BusinessUnderstanding) => {
+      const populated = Object.fromEntries(
+        Object.entries(understanding.enrichedInfo).filter(([, value]) =>
+          typeof value === "string" ? value.trim() : Boolean(value),
+        ),
+      ) as Partial<BusinessInfo>;
+      const nextInfo = {
+        ...sourceInfo,
+        ...populated,
+        rawInfo: sourceInfo.rawInfo || understanding.rawOcrText,
+      };
       setBusinessUnderstanding(understanding);
       setBusinessReport(understanding.reportMarkdown);
       setInfo(nextInfo);
-      return { understanding, nextInfo };
+      return nextInfo;
     },
-    [imageFile?.name],
+    [],
+  );
+
+  const requestOpenAIBusinessUnderstanding = useCallback(
+    async (
+      sourceInfo: BusinessInfo,
+      options: { imageName?: string; imageDataUrl?: string } = {},
+    ) => {
+      const response = await fetch("/api/business-intelligence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rawOcrText: sourceInfo.rawInfo,
+          imageDataUrl: options.imageDataUrl || imageDataUrl,
+          imageName: options.imageName || imageFile?.name || "",
+          brandColors: sourceInfo.brandColors,
+          currentInfo: toOpenAIBusinessInfo(sourceInfo),
+        }),
+      });
+      const payload = (await response.json()) as {
+        understanding?: BusinessUnderstanding;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.understanding) {
+        throw new Error(payload.error || "OpenAI business intelligence failed");
+      }
+
+      return payload.understanding;
+    },
+    [imageDataUrl, imageFile?.name],
+  );
+
+  const analyzeBusinessWithOpenAI = useCallback(
+    async (
+      sourceInfo: BusinessInfo,
+      options: { imageName?: string; imageDataUrl?: string } = {},
+    ): Promise<BusinessInfo> => {
+      const understanding = await requestOpenAIBusinessUnderstanding(sourceInfo, options);
+      return applyOpenAIUnderstanding(sourceInfo, understanding);
+    },
+    [applyOpenAIUnderstanding, requestOpenAIBusinessUnderstanding],
   );
 
   const handleParse = () =>
     runAction(
       "parse",
-      () => {
-        const parsed = parseBusinessInfo(info.rawInfo);
-        const nextInfo = { ...info, ...parsed, rawInfo: info.rawInfo };
-        applyBusinessUnderstanding(nextInfo);
+      async () => {
+        await analyzeBusinessWithOpenAI(info);
       },
-      "Business intelligence extracted",
+      "OpenAI business intelligence extracted",
     );
 
   const removeImage = () => {
     if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImageFile(null);
     setImagePreview("");
+    setImageDataUrl("");
     setOcrProgress(0);
     if (imageInputRef.current) imageInputRef.current.value = "";
   };
@@ -307,59 +359,26 @@ export function DemoWorkspace() {
     setOcrProgress(0.04);
 
     try {
-      const [{ createWorker }, sampledColors, headerCrop] = await Promise.all([
-        import("tesseract.js"),
-        extractImageColors(file).catch(() => ""),
-        createHeaderCrop(file),
-      ]);
-      let scanPhase: "full" | "header" = "full";
-      const worker = await createWorker("eng", undefined, {
-        logger(message) {
-          if (message.status === "recognizing text") {
-            const progress =
-              scanPhase === "full"
-                ? 0.08 + message.progress * 0.68
-                : 0.76 + message.progress * 0.22;
-            setOcrProgress(progress);
-          }
-        },
-      });
-      let fullResult;
-      let headerResult;
-      try {
-        fullResult = await worker.recognize(file);
-        scanPhase = "header";
-        headerResult = await worker.recognize(headerCrop);
-      } finally {
-        await worker.terminate();
-      }
-      const extractedText = combineOcrText(
-        headerResult.data.text,
-        fullResult.data.text,
-      );
-
-      if (!extractedText) {
-        setOcrProgress(0);
-        toast.error("No readable text was found in that image");
-        return;
-      }
-
-      const parsed = parseBusinessInfo(extractedText);
-      const populated = Object.fromEntries(
-        Object.entries(parsed).filter(([, value]) => Boolean(value)),
-      ) as Partial<BusinessInfo>;
+      const dataUrl = await readFileAsDataUrl(file);
+      setImageDataUrl(dataUrl);
       const nextInfo = {
         ...info,
-        ...populated,
-        rawInfo: extractedText,
-        brandColors: parsed.brandColors || sampledColors || info.brandColors,
+        rawInfo: info.rawInfo,
       };
-      applyBusinessUnderstanding(nextInfo, file.name);
+      setOcrProgress(0.35);
+      await analyzeBusinessWithOpenAI(nextInfo, {
+        imageName: file.name,
+        imageDataUrl: dataUrl,
+      });
       setOcrProgress(1);
-      toast.success("Screenshot analyzed and business intelligence report created");
-    } catch {
+      toast.success("OpenAI vision analyzed the screenshot and populated the profile");
+    } catch (error) {
       setOcrProgress(0);
-      toast.error("The screenshot could not be read. Try a clearer or tighter crop.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "OpenAI screenshot extraction failed. Check OPENAI_API_KEY and try again.",
+      );
     } finally {
       setBusy(null);
     }
@@ -368,12 +387,12 @@ export function DemoWorkspace() {
   const handleGenerateWebsite = () =>
     runAction(
       "website",
-      () => {
-        const { nextInfo } = applyBusinessUnderstanding(info);
+      async () => {
+        const nextInfo = await analyzeBusinessWithOpenAI(info);
         setHtml(generateWebsiteHTML(nextInfo));
         setOutputTab("preview");
       },
-      "Business intelligence report and website generated",
+      "OpenAI business intelligence report and website generated",
     );
 
   const handleGenerateMessages = () =>
@@ -386,13 +405,13 @@ export function DemoWorkspace() {
   const handleGenerateBoth = () =>
     runAction(
       "both",
-      () => {
-        const { nextInfo } = applyBusinessUnderstanding(info);
+      async () => {
+        const nextInfo = await analyzeBusinessWithOpenAI(info);
         setHtml(generateWebsiteHTML(nextInfo));
         setMessages(generateSalesMessages(nextInfo, tone, DEFAULT_SETTINGS));
         setOutputTab("preview");
       },
-      "Business intelligence, website, and outreach kit generated",
+      "OpenAI business intelligence, website, and outreach kit generated",
     );
 
   const buildProspect = (): Prospect => {
@@ -804,10 +823,10 @@ export function DemoWorkspace() {
                       </p>
                       <p className="mt-1 text-[0.7rem] text-[#7d8496]">
                         {busy === "image"
-                          ? `Reading screenshot · ${Math.round(ocrProgress * 100)}%`
+                          ? `OpenAI analyzing screenshot - ${Math.round(ocrProgress * 100)}%`
                           : ocrProgress === 1
-                            ? "Screenshot imported · review the populated fields below"
-                            : "Screenshot ready · scan again or try a clearer crop"}
+                            ? "OpenAI analysis complete - review the populated fields below"
+                            : "Screenshot ready - analyze again or try a clearer crop"}
                       </p>
                     </div>
                     <Button
@@ -817,7 +836,7 @@ export function DemoWorkspace() {
                       disabled={!imageFile}
                     >
                       <ScanText className="size-4" />
-                      Scan Again
+                      Analyze Again
                     </Button>
                   </div>
                   <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white">
@@ -867,11 +886,11 @@ export function DemoWorkspace() {
                   Upload a business screenshot or photo
                 </span>
                 <span className="mt-1 max-w-sm text-xs leading-5 text-[#7f8597]">
-                  Click or drag an image here. OCR runs in your browser and fills the profile automatically.
+                  Click or drag an image here. OpenAI vision analyzes it and fills the profile automatically.
                 </span>
                 <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[0.68rem] font-bold text-[#697084] shadow-sm">
                   <FileImage className="size-3.5 text-brand-600" />
-                  PNG, JPG or WebP · 12 MB max
+                  PNG, JPG or WebP - 12 MB max
                 </span>
               </button>
             )}
