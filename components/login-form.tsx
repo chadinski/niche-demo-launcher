@@ -11,6 +11,7 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -27,6 +28,27 @@ export function LoginForm() {
       return;
     }
     window.location.href = "/";
+  };
+
+  const signInWithGoogle = async () => {
+    if (!supabase) {
+      toast.info("Supabase is not configured. The app is running in local demo mode.");
+      window.location.href = "/";
+      return;
+    }
+
+    setGoogleLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=/`,
+      },
+    });
+
+    if (error) {
+      setGoogleLoading(false);
+      toast.error(error.message);
+    }
   };
 
   return (
@@ -63,7 +85,7 @@ export function LoginForm() {
             <p className="mt-8 text-[0.68rem] font-bold tracking-[0.16em] text-brand-600 uppercase">Niche Technologies</p>
             <h2 className="mt-2 text-3xl font-extrabold tracking-[-0.05em]">Sign in to your workspace</h2>
             <p className="mt-3 text-sm leading-6 text-[#747b8f]">
-              Use your Supabase email and password. Without Supabase credentials, local demo mode remains available.
+              Use your Supabase email and password, or continue with your Google account. Without Supabase credentials, local demo mode remains available.
             </p>
             <div className="mt-8 space-y-4">
               <label>
@@ -77,6 +99,23 @@ export function LoginForm() {
             </div>
             <Button className="mt-6 w-full min-h-11" type="submit" loading={loading}>
               {supabase ? <><LogIn className="size-4" /> Sign In</> : <><LockKeyhole className="size-4" /> Enter Local Demo</>}
+            </Button>
+            <div className="my-5 flex items-center gap-3 text-xs font-semibold text-[#959aaa]">
+              <span className="h-px flex-1 bg-[#e7e8ef]" />
+              or
+              <span className="h-px flex-1 bg-[#e7e8ef]" />
+            </div>
+            <Button
+              className="w-full min-h-11"
+              disabled={loading}
+              loading={googleLoading}
+              onClick={signInWithGoogle}
+              variant="outline"
+            >
+              <span className="grid size-5 place-items-center rounded-full border border-[#dfe1ea] text-xs font-black text-ink-950" aria-hidden="true">
+                G
+              </span>
+              Continue with Google
             </Button>
             <p className="mt-5 text-center text-xs leading-5 text-[#959aaa]">
               This app is intended for private internal use only.
