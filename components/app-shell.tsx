@@ -7,6 +7,7 @@ import {
   ChevronRight,
   FileStack,
   LayoutDashboard,
+  LogOut,
   Menu,
   PanelLeftClose,
   Plus,
@@ -18,6 +19,8 @@ import {
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { buttonClass } from "@/components/ui";
+import { createClient } from "@/lib/supabase/client";
+import { clearGenerationStorage } from "@/lib/generation/session";
 
 const navigation = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -31,6 +34,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const mobileNavId = useId();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -49,6 +53,16 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (pathname === "/login") return <>{children}</>;
 
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    clearGenerationStorage();
+    const supabase = createClient();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    window.location.href = "/login";
+  };
+
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
       <a
@@ -59,7 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </a>
 
       <aside className="hidden min-h-screen border-r border-[#e7e8ef] bg-white lg:fixed lg:inset-y-0 lg:flex lg:w-[260px] lg:flex-col">
-        <Sidebar pathname={pathname} />
+        <Sidebar pathname={pathname} signingOut={signingOut} onSignOut={handleSignOut} />
       </aside>
 
       <div
@@ -96,7 +110,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <X className="size-5" />
           </button>
-          <Sidebar pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+          <Sidebar
+            pathname={pathname}
+            signingOut={signingOut}
+            onNavigate={() => setMobileOpen(false)}
+            onSignOut={handleSignOut}
+          />
         </aside>
       </div>
 
@@ -130,7 +149,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+function Sidebar({
+  pathname,
+  signingOut,
+  onNavigate,
+  onSignOut,
+}: {
+  pathname: string;
+  signingOut: boolean;
+  onNavigate?: () => void;
+  onSignOut: () => void;
+}) {
   return (
     <>
       <div className="flex h-20 items-center gap-3 border-b border-[#ececf2] px-5">
@@ -194,7 +223,20 @@ function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
         </p>
       </div>
 
-      <div className="flex items-center gap-3 border-t border-[#ececf2] px-5 py-4">
+      <div className="border-t border-[#ececf2] px-5 py-4">
+        <button
+          type="button"
+          className="mb-4 flex min-h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#e1e3eb] bg-white text-sm font-bold text-[#666d81] hover:bg-[#f6f6fa] hover:text-ink-950 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={() => {
+            onNavigate?.();
+            void onSignOut();
+          }}
+          disabled={signingOut}
+        >
+          <LogOut className="size-4" />
+          {signingOut ? "Signing out..." : "Sign Out"}
+        </button>
+        <div className="flex items-center gap-3">
         <div className="grid size-9 place-items-center rounded-full bg-ink-950 text-xs font-bold text-white">
           CT
         </div>
@@ -203,6 +245,7 @@ function Sidebar({ pathname, onNavigate }: { pathname: string; onNavigate?: () =
           <div className="truncate text-xs text-[#8b91a2]">Niche Technologies</div>
         </div>
         <PanelLeftClose className="size-4 text-[#a1a6b5]" aria-hidden="true" />
+        </div>
       </div>
     </>
   );

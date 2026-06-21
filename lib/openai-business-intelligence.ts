@@ -91,6 +91,7 @@ export const openAIBusinessUnderstandingSchema = z.object({
 });
 
 export const openAIBusinessIntelligenceRequestSchema = z.object({
+  generationId: z.string().min(1).max(80),
   rawOcrText: z.string().max(24000).optional().default(""),
   imageDataUrl: z.string().max(18_000_000).optional().default(""),
   imageName: z.string().max(180).optional().default(""),

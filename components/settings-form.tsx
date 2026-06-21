@@ -124,11 +124,15 @@ export function SettingsForm() {
             <SettingsHeader icon={<KeyRound className="size-4" />} title="AI configuration" description="Server-side secrets belong in Vercel environment variables." />
             <div className="mt-6 space-y-3">
               <IntegrationRow label="Gemini API key" variable="GEMINI_API_KEY" configured={serviceStatus.gemini} privateValue />
-              <IntegrationRow label="Gemini model" variable="GEMINI_MODEL" configured={serviceStatus.gemini} privateValue />
+              <IntegrationRow label="Extraction model" variable="EXTRACTION_MODEL" configured={serviceStatus.ai} privateValue />
+              <IntegrationRow label="Planning model" variable="PLANNER_MODEL" configured={serviceStatus.ai} privateValue />
+              <IntegrationRow label="Section model" variable="SECTION_MODEL" configured={serviceStatus.ai} privateValue />
+              <IntegrationRow label="QA model" variable="QA_MODEL" configured={serviceStatus.ai} privateValue />
+              <IntegrationRow label="Vision model" variable="VISION_MODEL" configured={serviceStatus.ai} privateValue />
+              <IntegrationRow label="Fallback model" variable="FALLBACK_MODEL" configured={serviceStatus.ai} privateValue />
               <IntegrationRow label="OpenAI API key" variable="OPENAI_API_KEY" configured={serviceStatus.openai} privateValue />
-              <IntegrationRow label="OpenAI model" variable="OPENAI_MODEL" configured={serviceStatus.openai} privateValue />
               <p className="mt-3 text-xs leading-5 text-[#858b9d]">
-                Gemini is used first when configured, then OpenAI. API keys are never stored in browser settings.
+                Model routing is stage-based and centralized server-side. API keys are never stored in browser settings.
               </p>
             </div>
           </Card>

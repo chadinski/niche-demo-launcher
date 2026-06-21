@@ -14,9 +14,16 @@ import {
   generalWebsiteCategories,
   type ThemeVariation,
 } from "@/lib/industry-theme-engine";
+import {
+  getRoutesForStage,
+  logModelRoute,
+  type ModelRoute,
+} from "@/lib/ai/modelRouter";
 import type { BusinessInfo } from "@/lib/types";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const BUSINESS_INTELLIGENCE_PROMPT = `You are the business understanding engine for Niche Demo Launcher.
 
@@ -51,14 +58,6 @@ const themeVariations: ThemeVariation[] = [
   "bold-high-energy",
   "soft-elegant",
   "corporate",
-];
-
-const defaultGeminiFallbackModels = [
-  "gemini-2.5-flash-lite",
-  "gemini-3.1-flash-lite",
-  "gemini-3.1-flash-lite-preview",
-  "gemini-flash-lite-latest",
-  "gemini-2.5-flash",
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -109,18 +108,6 @@ function parseLooseJson(text: string) {
     if (!match) throw new Error("Gemini did not return parseable JSON.");
     return JSON.parse(match[0]) as unknown;
   }
-}
-
-function uniqueValues(values: string[]) {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
-
-function geminiModelsToTry() {
-  return uniqueValues([
-    process.env.GEMINI_MODEL || "gemini-2.5-flash-lite",
-    ...(process.env.GEMINI_FALLBACK_MODELS || "").split(","),
-    ...defaultGeminiFallbackModels,
-  ]);
 }
 
 function sleep(ms: number) {
@@ -353,12 +340,13 @@ function userContext(input: {
 }
 
 async function generateWithGemini(input: {
+  generationId: string;
   rawOcrText: string;
   imageDataUrl: string;
   imageName: string;
   brandColors: string;
   currentInfo: unknown;
-}) {
+}, route: ModelRoute) {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) return null;
@@ -381,98 +369,102 @@ ${userContext(input)}`,
     ...(imagePart ? [imagePart] : []),
   ];
   const errors: string[] = [];
+  const model = route.model;
 
-  for (const model of geminiModelsToTry()) {
-    const thinkingConfig = geminiThinkingConfig(model);
-    const body = JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        maxOutputTokens: 5000,
-        temperature: 0.1,
-        ...(thinkingConfig ? { thinkingConfig } : {}),
-      },
-    });
+  const thinkingConfig = geminiThinkingConfig(model);
+  const body = JSON.stringify({
+    contents: [{ parts }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      maxOutputTokens: 5000,
+      temperature: 0.1,
+      ...(thinkingConfig ? { thinkingConfig } : {}),
+    },
+  });
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey,
-          },
-          body,
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
         },
-      );
+        body,
+        cache: "no-store",
+      },
+    );
 
-      const payload = await response.json();
+    const payload = await response.json();
 
-      if (!response.ok) {
-        const message =
-          payload?.error?.message ||
-          payload?.error ||
-          "Gemini business intelligence request failed.";
-        errors.push(`${model}: ${message}`);
+    if (!response.ok) {
+      const message =
+        payload?.error?.message ||
+        payload?.error ||
+        "Gemini business intelligence request failed.";
+      errors.push(`${model}: ${message}`);
 
-        if (shouldSwitchGeminiModel(response.status, String(message))) break;
-        if (attempt === 0 && shouldRetryGeminiModel(response.status, String(message))) {
-          await sleep(retryAfterMs(response.headers, String(message)) ?? 1200);
-          continue;
-        }
-        break;
+      if (shouldSwitchGeminiModel(response.status, String(message))) break;
+      if (attempt === 0 && shouldRetryGeminiModel(response.status, String(message))) {
+        await sleep(retryAfterMs(response.headers, String(message)) ?? 1200);
+        continue;
       }
+      break;
+    }
 
-      const text = payload?.candidates?.[0]?.content?.parts
-        ?.map((part: { text?: string }) => part.text || "")
-        .join("")
-        .trim();
+    const text = payload?.candidates?.[0]?.content?.parts
+      ?.map((part: { text?: string }) => part.text || "")
+      .join("")
+      .trim();
 
-      if (!text) {
-        errors.push(`${model}: Gemini did not return structured business intelligence.`);
-        break;
-      }
+    if (!text) {
+      errors.push(`${model}: Gemini did not return structured business intelligence.`);
+      break;
+    }
 
-      const parsedJson = parseLooseJson(text);
-      const parsed = openAIBusinessUnderstandingSchema.safeParse(parsedJson);
+    const parsedJson = parseLooseJson(text);
+    const parsed = openAIBusinessUnderstandingSchema.safeParse(parsedJson);
 
-      if (!parsed.success) {
-        const repaired = repairGeminiUnderstanding(parsedJson, input);
-
-        return {
-          understanding: sanitizeOpenAIUnderstanding(repaired),
-          model,
-          provider: "gemini",
-        };
-      }
+    if (!parsed.success) {
+      const repaired = repairGeminiUnderstanding(parsedJson, input);
+      logModelRoute(route, input.generationId);
 
       return {
-        understanding: sanitizeOpenAIUnderstanding(parsed.data),
+        understanding: sanitizeOpenAIUnderstanding(repaired),
         model,
         provider: "gemini",
+        route,
       };
     }
+
+    logModelRoute(route, input.generationId);
+
+    return {
+      understanding: sanitizeOpenAIUnderstanding(parsed.data),
+      model,
+      provider: "gemini",
+      route,
+    };
   }
 
-  throw new Error(
-    `Gemini extraction could not complete after trying fallback models. Last errors: ${errors.slice(-3).join(" | ")}`,
-  );
+  throw new Error(`Gemini extraction failed for ${model}: ${errors.slice(-3).join(" | ")}`);
 }
 
 async function generateWithOpenAI(input: {
+  generationId: string;
   rawOcrText: string;
   imageDataUrl: string;
   imageName: string;
   brandColors: string;
   currentInfo: unknown;
-}) {
+}, route: ModelRoute) {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) return null;
 
   const client = new OpenAI({ apiKey });
-  const model = process.env.OPENAI_MODEL || "gpt-5.4";
+  const model = route.model;
   const text = userContext(input);
   const response = await client.responses.parse({
     model,
@@ -502,44 +494,83 @@ async function generateWithOpenAI(input: {
     understanding: sanitizeOpenAIUnderstanding(response.output_parsed),
     model,
     provider: "openai",
+    route,
   };
 }
 
 export async function POST(request: Request) {
-  const parsedRequest = openAIBusinessIntelligenceRequestSchema.safeParse(await request.json());
+  const requestBody = await request.json().catch(() => null);
+  const requestGenerationId = isRecord(requestBody) ? asString(requestBody.generationId) : "";
+  const noStoreHeaders = { "Cache-Control": "no-store, no-cache, must-revalidate" };
+  const parsedRequest = openAIBusinessIntelligenceRequestSchema.safeParse(requestBody);
 
   if (!parsedRequest.success) {
     return NextResponse.json(
-      { error: "Invalid business intelligence request.", details: parsedRequest.error.flatten() },
-      { status: 400 },
+      {
+        generationId: requestGenerationId,
+        error: "Invalid business intelligence request.",
+        details: parsedRequest.error.flatten(),
+      },
+      { status: 400, headers: noStoreHeaders },
     );
   }
 
-  const { rawOcrText, imageDataUrl, imageName, brandColors, currentInfo } = parsedRequest.data;
+  const { generationId, rawOcrText, imageDataUrl, imageName, brandColors, currentInfo } = parsedRequest.data;
 
   if (!rawOcrText.trim() && !hasImage(imageDataUrl)) {
     return NextResponse.json(
-      { error: "Supply OCR text or a valid image data URL." },
-      { status: 400 },
+      { generationId, error: "Supply OCR text or a valid image data URL." },
+      { status: 400, headers: noStoreHeaders },
     );
   }
 
   try {
-    const providerInput = { rawOcrText, imageDataUrl, imageName, brandColors, currentInfo };
-    const result =
-      (await generateWithGemini(providerInput)) ||
-      (await generateWithOpenAI(providerInput));
+    const providerInput = { generationId, rawOcrText, imageDataUrl, imageName, brandColors, currentInfo };
+    const routes = getRoutesForStage("extraction", { hasImage: hasImage(imageDataUrl) });
+    const routeErrors: string[] = [];
+    let result = null;
+
+    for (const route of routes) {
+      try {
+        result =
+          route.provider === "gemini"
+            ? await generateWithGemini(providerInput, route)
+            : await generateWithOpenAI(providerInput, route);
+      } catch (error) {
+        routeErrors.push(error instanceof Error ? error.message : `${route.provider}:${route.model} failed`);
+        result = null;
+      }
+
+      if (result) break;
+    }
 
     if (!result) {
       return NextResponse.json(
-        { error: "No AI extraction provider configured. Add GEMINI_API_KEY or OPENAI_API_KEY to .env.local, then restart the app." },
-        { status: 503 },
+        {
+          generationId,
+          error: routeErrors.length
+            ? `AI extraction could not complete. Last errors: ${routeErrors.slice(-3).join(" | ")}`
+            : "No AI extraction provider configured. Add GEMINI_API_KEY or OPENAI_API_KEY to .env.local, then restart the app.",
+        },
+        { status: 503, headers: noStoreHeaders },
       );
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json(
+      {
+        generationId,
+        understanding: result.understanding,
+        modelMetadata: {
+          stage: result.route.stage,
+          provider: result.provider,
+          model: result.model,
+          fallback: result.route.fallback,
+        },
+      },
+      { headers: noStoreHeaders },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "AI business intelligence request failed.";
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json({ generationId, error: message }, { status: 502, headers: noStoreHeaders });
   }
 }
