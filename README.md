@@ -48,6 +48,16 @@ When Supabase variables are blank, the app runs in local mode using browser stor
 
 All tables use Row Level Security and scope reads/writes to `auth.uid()`.
 
+### Google Sign-In
+
+The login screen supports Supabase Google OAuth. To enable Gmail/Google sign-in:
+
+1. In Google Cloud, create an OAuth Client ID for a web application.
+2. Add your app origins, such as `http://localhost:3000` and your Vercel production URL, under **Authorized JavaScript origins**.
+3. Add the Supabase Google callback URL from **Supabase Dashboard > Authentication > Sign In / Providers > Google** under **Authorized redirect URIs**.
+4. In Supabase, enable the Google provider and paste the Google client ID and client secret.
+5. In Supabase **Authentication > URL Configuration**, allow the app callback URLs, such as `http://localhost:3000/auth/callback` and `https://your-production-domain.com/auth/callback`.
+
 ## Environment Variables
 
 ```env
