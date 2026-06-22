@@ -65,8 +65,16 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-5.4
 GEMINI_API_KEY=
+
+# Stage-based model routing
+EXTRACTION_MODEL=gemini-2.5-flash-lite
+PLANNER_MODEL=gemini-2.5-flash-lite
+SECTION_MODEL=gemini-2.5-flash
+QA_MODEL=gemini-2.5-flash-lite
+VISION_MODEL=gemini-2.5-flash
+FALLBACK_MODEL=gemini-2.5-flash-lite
+OPENAI_MODEL=
 GEMINI_MODEL=gemini-2.5-flash-lite
 GEMINI_FALLBACK_MODELS=gemini-3.1-flash-lite,gemini-3.1-flash-lite-preview,gemini-flash-lite-latest,gemini-2.5-flash
 NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -80,9 +88,15 @@ VERCEL_TEAM_ID=
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, and `GEMINI_API_KEY` are server-only. Never expose them through `NEXT_PUBLIC_*`.
 `VERCEL_TOKEN` is required for one-click demo deployment. `GITHUB_TOKEN` and `GITHUB_OWNER` are optional for deployment, but when present the generated `index.html` is also archived to a GitHub repository.
 
-## AI Extraction
+## AI Model Routing
 
-Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use. Gemini is preferred when both are present. `GEMINI_FALLBACK_MODELS` lets the server try alternate Gemini models when the primary model is rate-limited or temporarily overloaded.
+Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Website HTML generation uses the server-side AI route in `app/api/generate-website/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use.
+
+Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. Use the cheapest reliable model for extraction/planning/QA, reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable.
+
+## Generation Isolation
+
+Every create-workspace run has a fresh `generationId`. The client sends that ID to the extraction API, aborts old requests when starting over, clears generation-only storage, and ignores late responses from old IDs. The visible **New Generation** and **Clear Current Data** controls reset screenshot, extracted facts, generated HTML, preview state, messages, section outputs, QA state, errors, and placeholders without clearing auth or prospect records.
 
 Generated concept sites:
 

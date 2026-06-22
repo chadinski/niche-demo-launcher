@@ -75,7 +75,34 @@ export interface BusinessIntelligence {
   screenshotDataUrl?: string;
   screenshotSaved?: boolean;
   generationMode?: string;
+  generationId?: string;
   extractionReviewed?: boolean;
+  generationPlan?: {
+    generationId: string;
+    stage: "planning";
+    summary: string;
+    sectionIds: string[];
+  } | null;
+  sectionOutputs?: Array<{
+    generationId: string;
+    sectionId: string;
+    type: string;
+    html: string;
+    status: "success" | "failed" | "skipped";
+    error?: string;
+  }>;
+  skippedSections?: string[];
+  generationErrors?: Array<{
+    generationId: string;
+    stage: string;
+    message: string;
+  }>;
+  modelMetadata?: Array<{
+    stage: string;
+    provider: string;
+    model: string;
+    fallback: boolean;
+  }>;
 }
 
 export interface QualityAuditItem {

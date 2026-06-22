@@ -18,6 +18,7 @@ import {
   MessageCircle,
   MousePointerClick,
   Route,
+  RotateCcw,
   Rocket,
   Save,
   ScanText,
@@ -31,6 +32,7 @@ import {
 } from "lucide-react";
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -46,7 +48,6 @@ import { useProspects } from "@/components/prospect-provider";
 import {
   emptyBusinessInfo,
   generateSalesMessages,
-  generateWebsiteHTML,
   generatedNames,
 } from "@/lib/generators";
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
@@ -54,6 +55,13 @@ import {
   toOpenAIBusinessInfo,
   type OpenAIBusinessUnderstanding as BusinessUnderstanding,
 } from "@/lib/openai-business-intelligence";
+import {
+  clearGenerationStorage,
+  createGenerationId,
+  type GenerationError,
+  type GenerationPlan,
+  type SectionOutput,
+} from "@/lib/generation/session";
 import { generateBusinessIntelligence } from "@/lib/automation/business-intelligence";
 import { nextFollowUpDate, statusAfterMilestone } from "@/lib/automation/follow-ups";
 import { scoreLead } from "@/lib/automation/lead-scoring";
@@ -232,6 +240,7 @@ function readFileAsDataUrl(file: File) {
 
 export function DemoWorkspace() {
   const { saveProspect, setStatus, updateProspect } = useProspects();
+  const [generationId, setGenerationId] = useState(() => createGenerationId());
   const [info, setInfo] = useState<BusinessInfo>(() => emptyBusinessInfo());
   const [html, setHtml] = useState("");
   const [messages, setMessages] = useState<SalesMessages | null>(null);
@@ -250,7 +259,23 @@ export function DemoWorkspace() {
   const [businessReport, setBusinessReport] = useState("");
   const [extractionReviewed, setExtractionReviewed] = useState(false);
   const [generationMode, setGenerationMode] = useState<GenerationMode>("standard");
+  const [generationPlan, setGenerationPlan] = useState<GenerationPlan | null>(null);
+  const [sectionOutputs, setSectionOutputs] = useState<SectionOutput[]>([]);
+  const [skippedSections, setSkippedSections] = useState<string[]>([]);
+  const [generationErrors, setGenerationErrors] = useState<GenerationError[]>([]);
+  const [modelMetadata, setModelMetadata] = useState<Array<{
+    stage: string;
+    provider: string;
+    model: string;
+    fallback: boolean;
+  }>>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const generationIdRef = useRef(generationId);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    generationIdRef.current = generationId;
+  }, [generationId]);
 
   const names = useMemo(() => generatedNames(info), [info]);
   const leadScore = useMemo(() => scoreLead(info), [info]);
@@ -333,6 +358,72 @@ export function DemoWorkspace() {
     [businessUnderstanding],
   );
 
+  const isActiveGeneration = useCallback(
+    (candidateGenerationId: string) => candidateGenerationId === generationIdRef.current,
+    [],
+  );
+
+  const noteGenerationError = useCallback((candidateGenerationId: string, stage: string, error: unknown) => {
+    if (!isActiveGeneration(candidateGenerationId)) return;
+    const message = error instanceof Error ? error.message : "Generation step failed.";
+    setGenerationErrors((current) => [
+      ...current.filter((item) => item.generationId === candidateGenerationId),
+      { generationId: candidateGenerationId, stage, message },
+    ]);
+  }, [isActiveGeneration]);
+
+  const startGenerationRequest = useCallback((candidateGenerationId: string) => {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    if (process.env.NODE_ENV !== "production") {
+      console.debug(`[generation:${candidateGenerationId}] started server extraction request`);
+    }
+    return controller;
+  }, []);
+
+  const resetGenerationState = useCallback((toastMessage = "Started a clean generation") => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+
+    if (imagePreview) URL.revokeObjectURL(imagePreview);
+
+    const nextGenerationId = createGenerationId();
+    generationIdRef.current = nextGenerationId;
+    setGenerationId(nextGenerationId);
+    clearGenerationStorage();
+    setInfo(emptyBusinessInfo());
+    setHtml("");
+    setMessages(null);
+    setTone("Friendly");
+    setBusy(null);
+    setOutputTab("preview");
+    setMessageTab("whatsapp");
+    setProspectId(null);
+    setConfirmSent(false);
+    setImageFile(null);
+    setImagePreview("");
+    setImageDataUrl("");
+    setOcrProgress(0);
+    setIsDraggingImage(false);
+    setBusinessUnderstanding(null);
+    setBusinessReport("");
+    setExtractionReviewed(false);
+    setGenerationMode("standard");
+    setGenerationPlan(null);
+    setSectionOutputs([]);
+    setSkippedSections([]);
+    setGenerationErrors([]);
+    setModelMetadata([]);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+
+    if (process.env.NODE_ENV !== "production") {
+      console.debug(`[generation:${nextGenerationId}] clean generation state initialized`);
+    }
+
+    if (toastMessage) toast.success(toastMessage);
+  }, [imagePreview]);
+
   const updateInfo = useCallback(
     (key: keyof BusinessInfo, value: string) => {
       const nextInfo = { ...info, [key]: value };
@@ -350,21 +441,35 @@ export function DemoWorkspace() {
     [businessUnderstanding, info, messages, tone],
   );
 
-  const runAction = async (action: BusyAction, work: () => void | Promise<void>, success: string) => {
+  const runAction = async (
+    action: BusyAction,
+    work: (activeGenerationId: string) => void | Promise<void>,
+    success: string,
+  ) => {
+    const activeGenerationId = generationIdRef.current;
     setBusy(action);
     try {
       await new Promise((resolve) => window.setTimeout(resolve, 420));
-      await work();
-      toast.success(success);
+      await work(activeGenerationId);
+      if (isActiveGeneration(activeGenerationId)) toast.success(success);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (!isActiveGeneration(activeGenerationId)) return;
+      noteGenerationError(activeGenerationId, action || "unknown", error);
       toast.error(error instanceof Error ? error.message : "That action could not be completed");
     } finally {
-      setBusy(null);
+      if (isActiveGeneration(activeGenerationId)) setBusy(null);
     }
   };
 
   const applyOpenAIUnderstanding = useCallback(
-    (sourceInfo: BusinessInfo, understanding: BusinessUnderstanding) => {
+    (
+      sourceInfo: BusinessInfo,
+      understanding: BusinessUnderstanding,
+      activeGenerationId: string,
+      metadata?: { stage: string; provider: string; model: string; fallback: boolean },
+    ) => {
+      if (!isActiveGeneration(activeGenerationId)) return null;
       const populated = Object.fromEntries(
         Object.entries(understanding.enrichedInfo).filter(([, value]) =>
           typeof value === "string" ? value.trim() : Boolean(value),
@@ -377,22 +482,28 @@ export function DemoWorkspace() {
       };
       setBusinessUnderstanding(understanding);
       setBusinessReport(understanding.reportMarkdown);
+      if (metadata) setModelMetadata((current) => [...current.filter((item) => item.stage !== metadata.stage), metadata]);
       setExtractionReviewed(false);
       setInfo(nextInfo);
       return nextInfo;
     },
-    [],
+    [isActiveGeneration],
   );
 
   const requestOpenAIBusinessUnderstanding = useCallback(
     async (
       sourceInfo: BusinessInfo,
+      activeGenerationId: string,
       options: { imageName?: string; imageDataUrl?: string } = {},
     ) => {
+      const controller = startGenerationRequest(activeGenerationId);
       const response = await fetch("/api/business-intelligence", {
         method: "POST",
+        cache: "no-store",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          generationId: activeGenerationId,
           rawOcrText: sourceInfo.rawInfo,
           imageDataUrl: options.imageDataUrl || imageDataUrl,
           imageName: options.imageName || imageFile?.name || "",
@@ -401,26 +512,37 @@ export function DemoWorkspace() {
         }),
       });
       const payload = (await response.json()) as {
+        generationId?: string;
         understanding?: BusinessUnderstanding;
+        modelMetadata?: { stage: string; provider: string; model: string; fallback: boolean };
         error?: string;
       };
+
+      if (payload.generationId !== activeGenerationId || !isActiveGeneration(activeGenerationId)) {
+        if (process.env.NODE_ENV !== "production") {
+          console.debug(`[generation:${activeGenerationId}] ignored stale extraction response`);
+        }
+        return null;
+      }
 
       if (!response.ok || !payload.understanding) {
         throw new Error(payload.error || "OpenAI business intelligence failed");
       }
 
-      return payload.understanding;
+      return payload;
     },
-    [imageDataUrl, imageFile?.name],
+    [imageDataUrl, imageFile?.name, isActiveGeneration, startGenerationRequest],
   );
 
   const analyzeBusinessWithOpenAI = useCallback(
     async (
       sourceInfo: BusinessInfo,
+      activeGenerationId: string,
       options: { imageName?: string; imageDataUrl?: string } = {},
-    ): Promise<BusinessInfo> => {
-      const understanding = await requestOpenAIBusinessUnderstanding(sourceInfo, options);
-      return applyOpenAIUnderstanding(sourceInfo, understanding);
+    ): Promise<BusinessInfo | null> => {
+      const payload = await requestOpenAIBusinessUnderstanding(sourceInfo, activeGenerationId, options);
+      if (!payload?.understanding) return null;
+      return applyOpenAIUnderstanding(sourceInfo, payload.understanding, activeGenerationId, payload.modelMetadata);
     },
     [applyOpenAIUnderstanding, requestOpenAIBusinessUnderstanding],
   );
@@ -428,14 +550,16 @@ export function DemoWorkspace() {
   const handleParse = () =>
     runAction(
       "parse",
-      async () => {
-        await analyzeBusinessWithOpenAI(info);
+      async (activeGenerationId) => {
+        await analyzeBusinessWithOpenAI(info, activeGenerationId);
       },
       "AI business intelligence extracted - review before generating",
     );
 
   const removeImage = () => {
     if (imagePreview) URL.revokeObjectURL(imagePreview);
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     setImageFile(null);
     setImagePreview("");
     setImageDataUrl("");
@@ -445,6 +569,7 @@ export function DemoWorkspace() {
   };
 
   const importBusinessImage = async (file: File) => {
+    const activeGenerationId = generationIdRef.current;
     if (!file.type.startsWith("image/")) {
       toast.error("Choose a PNG, JPG, WebP, or other image file");
       return;
@@ -462,19 +587,24 @@ export function DemoWorkspace() {
 
     try {
       const dataUrl = await readFileAsDataUrl(file);
+      if (!isActiveGeneration(activeGenerationId)) return;
       setImageDataUrl(dataUrl);
       const nextInfo = {
         ...info,
         rawInfo: info.rawInfo,
       };
       setOcrProgress(0.35);
-      await analyzeBusinessWithOpenAI(nextInfo, {
+      await analyzeBusinessWithOpenAI(nextInfo, activeGenerationId, {
         imageName: file.name,
         imageDataUrl: dataUrl,
       });
+      if (!isActiveGeneration(activeGenerationId)) return;
       setOcrProgress(1);
       toast.success("AI vision analyzed the screenshot - review the extracted facts");
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (!isActiveGeneration(activeGenerationId)) return;
+      noteGenerationError(activeGenerationId, "vision", error);
       setOcrProgress(0);
       toast.error(
         error instanceof Error
@@ -482,7 +612,7 @@ export function DemoWorkspace() {
           : "AI screenshot extraction failed. Check the provider key and try again.",
       );
     } finally {
-      setBusy(null);
+      if (isActiveGeneration(activeGenerationId)) setBusy(null);
     }
   };
 
@@ -496,6 +626,45 @@ export function DemoWorkspace() {
     };
   }, [businessUnderstanding, generationMode, info]);
 
+  const requestAIWebsiteHTML = useCallback(
+    async (sourceInfo: BusinessInfo, activeGenerationId: string) => {
+      const response = await fetch("/api/generate-website", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generationId: activeGenerationId,
+          info: sourceInfo,
+          generationMode,
+          businessUnderstanding,
+        }),
+      });
+      const payload = (await response.json()) as {
+        generationId?: string;
+        html?: string;
+        modelMetadata?: { stage: string; provider: string; model: string; fallback: boolean };
+        error?: string;
+      };
+
+      if (payload.generationId !== activeGenerationId || !isActiveGeneration(activeGenerationId)) {
+        if (process.env.NODE_ENV !== "production") {
+          console.debug(`[generation:${activeGenerationId}] ignored stale website generation response`);
+        }
+        return null;
+      }
+
+      if (!response.ok || !payload.html) {
+        throw new Error(payload.error || "AI website generation failed.");
+      }
+
+      return {
+        html: payload.html,
+        modelMetadata: payload.modelMetadata,
+      };
+    },
+    [businessUnderstanding, generationMode, isActiveGeneration],
+  );
+
   const requireGenerationReady = useCallback(() => {
     if (businessUnderstanding && !extractionReviewed) {
       throw new Error("Review and approve the extracted facts before generating the website.");
@@ -508,14 +677,48 @@ export function DemoWorkspace() {
   const handleGenerateWebsite = () =>
     runAction(
       "website",
-      () => {
+      async (activeGenerationId) => {
         requireGenerationReady();
         const nextInfo = buildGenerationInfo();
-        const nextHtml = generateWebsiteHTML(nextInfo);
+        const generated = await requestAIWebsiteHTML(nextInfo, activeGenerationId);
+        if (!generated) return;
+        const nextHtml = generated.html;
         const nextAudit = auditWebsite(nextHtml, nextInfo);
+        if (!isActiveGeneration(activeGenerationId)) return;
+        const nextPlan: GenerationPlan = {
+          generationId: activeGenerationId,
+          stage: "planning",
+          summary: `${nextInfo.businessName} ${nextInfo.category} website plan`,
+          sectionIds: ["full-website"],
+        };
+        const nextSectionOutputs: SectionOutput[] = [{
+          generationId: activeGenerationId,
+          sectionId: "full-website",
+          type: "full-page",
+          html: nextHtml,
+          status: "success",
+        }];
+        setGenerationPlan(nextPlan);
+        setSectionOutputs(nextSectionOutputs);
+        setSkippedSections([]);
+        setGenerationErrors([]);
         setHtml(nextHtml);
         setOutputTab("preview");
-        const prospect = buildProspect({ info: nextInfo, html: nextHtml, qualityAudit: nextAudit });
+        const websiteModelMetadata = generated.modelMetadata;
+        const nextModelMetadata = websiteModelMetadata
+          ? [...modelMetadata.filter((item) => item.stage !== websiteModelMetadata.stage), websiteModelMetadata]
+          : modelMetadata;
+        if (websiteModelMetadata) {
+          setModelMetadata(nextModelMetadata);
+        }
+        const prospect = buildProspect({
+          info: nextInfo,
+          html: nextHtml,
+          qualityAudit: nextAudit,
+          generationPlan: nextPlan,
+          sectionOutputs: nextSectionOutputs,
+          modelMetadata: nextModelMetadata,
+        });
         saveProspect(prospect);
         setProspectId(prospect.id);
         if (!nextAudit.passed) {
@@ -528,23 +731,61 @@ export function DemoWorkspace() {
   const handleGenerateMessages = () =>
     runAction(
       "message",
-      () => setMessages(generateSalesMessages(info, tone, DEFAULT_SETTINGS)),
+      (activeGenerationId) => {
+        if (!isActiveGeneration(activeGenerationId)) return;
+        setMessages(generateSalesMessages(info, tone, DEFAULT_SETTINGS));
+      },
       "Outreach messages generated",
     );
 
   const handleGenerateBoth = () =>
     runAction(
       "both",
-      () => {
+      async (activeGenerationId) => {
         requireGenerationReady();
         const nextInfo = buildGenerationInfo();
-        const nextHtml = generateWebsiteHTML(nextInfo);
+        const generated = await requestAIWebsiteHTML(nextInfo, activeGenerationId);
+        if (!generated) return;
+        const nextHtml = generated.html;
         const nextMessages = generateSalesMessages(nextInfo, tone, DEFAULT_SETTINGS);
         const nextAudit = auditWebsite(nextHtml, nextInfo);
+        if (!isActiveGeneration(activeGenerationId)) return;
+        const nextPlan: GenerationPlan = {
+          generationId: activeGenerationId,
+          stage: "planning",
+          summary: `${nextInfo.businessName} ${nextInfo.category} website and outreach plan`,
+          sectionIds: ["full-website"],
+        };
+        const nextSectionOutputs: SectionOutput[] = [{
+          generationId: activeGenerationId,
+          sectionId: "full-website",
+          type: "full-page",
+          html: nextHtml,
+          status: "success",
+        }];
+        setGenerationPlan(nextPlan);
+        setSectionOutputs(nextSectionOutputs);
+        setSkippedSections([]);
+        setGenerationErrors([]);
         setHtml(nextHtml);
         setMessages(nextMessages);
         setOutputTab("preview");
-        const prospect = buildProspect({ info: nextInfo, html: nextHtml, messages: nextMessages, qualityAudit: nextAudit });
+        const websiteModelMetadata = generated.modelMetadata;
+        const nextModelMetadata = websiteModelMetadata
+          ? [...modelMetadata.filter((item) => item.stage !== websiteModelMetadata.stage), websiteModelMetadata]
+          : modelMetadata;
+        if (websiteModelMetadata) {
+          setModelMetadata(nextModelMetadata);
+        }
+        const prospect = buildProspect({
+          info: nextInfo,
+          html: nextHtml,
+          messages: nextMessages,
+          qualityAudit: nextAudit,
+          generationPlan: nextPlan,
+          sectionOutputs: nextSectionOutputs,
+          modelMetadata: nextModelMetadata,
+        });
         saveProspect(prospect);
         setProspectId(prospect.id);
         if (!nextAudit.passed) {
@@ -559,12 +800,23 @@ export function DemoWorkspace() {
     html?: string;
     messages?: SalesMessages | null;
     qualityAudit?: QualityAudit | null;
+    generationPlan?: GenerationPlan | null;
+    sectionOutputs?: SectionOutput[];
+    modelMetadata?: Array<{
+      stage: string;
+      provider: string;
+      model: string;
+      fallback: boolean;
+    }>;
   } = {}): Prospect => {
     const now = new Date().toISOString();
     const prospectInfo = overrides.info ?? info;
     const prospectHtml = overrides.html ?? html;
     const prospectMessages = overrides.messages ?? messages;
     const prospectAudit = overrides.qualityAudit ?? qualityAudit;
+    const prospectGenerationPlan = overrides.generationPlan ?? generationPlan;
+    const prospectSectionOutputs = overrides.sectionOutputs ?? sectionOutputs;
+    const prospectModelMetadata = overrides.modelMetadata ?? modelMetadata;
     const canPersistScreenshot = Boolean(imageDataUrl && imageDataUrl.length <= 750_000);
     return {
       id: prospectId ?? crypto.randomUUID(),
@@ -593,12 +845,18 @@ export function DemoWorkspace() {
       recommended_sales_angle: leadScore.recommendedAngle,
       business_intelligence: {
         ...intelligence,
+        generationId,
         extractionReportMarkdown: businessReport,
         screenshotName: imageFile?.name ?? "",
         screenshotDataUrl: canPersistScreenshot ? imageDataUrl : "",
         screenshotSaved: canPersistScreenshot,
         generationMode,
         extractionReviewed,
+        generationPlan: prospectGenerationPlan,
+        sectionOutputs: prospectSectionOutputs,
+        skippedSections,
+        generationErrors,
+        modelMetadata: prospectModelMetadata,
       },
       website_quality_audit: prospectAudit,
       generated_website_html: prospectHtml,
@@ -752,6 +1010,9 @@ export function DemoWorkspace() {
   };
 
   const activeMessage = messages?.[messageTab] ?? "";
+  const actionInProgress = Boolean(busy);
+  const generationNeedsReview = Boolean(businessUnderstanding && !extractionReviewed);
+  const generationDisabled = actionInProgress || generationNeedsReview;
 
   return (
     <div className="space-y-7">
@@ -761,11 +1022,15 @@ export function DemoWorkspace() {
         description="Paste what you have, shape the facts, generate the website, then prepare outreach for manual approval."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={handleSave} loading={busy === "save"}>
+            <Button variant="outline" onClick={() => resetGenerationState("Started a fresh generation")}>
+              <RotateCcw className="size-4" />
+              New Generation
+            </Button>
+            <Button variant="outline" onClick={handleSave} loading={busy === "save"} disabled={actionInProgress && busy !== "save"}>
               <Save className="size-4" />
               Save Prospect
             </Button>
-            <Button onClick={handleGenerateBoth} loading={busy === "both"} disabled={Boolean(businessUnderstanding && !extractionReviewed)}>
+            <Button onClick={handleGenerateBoth} loading={busy === "both"} disabled={generationDisabled}>
               <WandSparkles className="size-4" />
               Generate Website + Message
             </Button>
@@ -991,7 +1256,7 @@ export function DemoWorkspace() {
                       variant="outline"
                       onClick={() => imageFile && void importBusinessImage(imageFile)}
                       loading={busy === "image"}
-                      disabled={!imageFile}
+                      disabled={!imageFile || actionInProgress}
                     >
                       <ScanText className="size-4" />
                       Analyze Again
@@ -1072,10 +1337,19 @@ export function DemoWorkspace() {
               className="mt-3 w-full"
               onClick={handleParse}
               loading={busy === "parse"}
-              disabled={!info.rawInfo.trim()}
+              disabled={!info.rawInfo.trim() || actionInProgress}
             >
               <Sparkles className="size-4 text-brand-600" />
               Parse Business Info
+            </Button>
+            <Button
+              variant="outline"
+              className="mt-2 w-full"
+              onClick={() => resetGenerationState("Current generation data cleared")}
+              disabled={actionInProgress && busy !== "image" && busy !== "parse"}
+            >
+              <X className="size-4" />
+              Clear Current Data
             </Button>
           </Card>
 
@@ -1113,15 +1387,15 @@ export function DemoWorkspace() {
               description="Generate only after extracted facts are reviewed and approved."
             />
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              <Button variant="outline" onClick={handleGenerateWebsite} loading={busy === "website"} disabled={Boolean(businessUnderstanding && !extractionReviewed)}>
+              <Button variant="outline" onClick={handleGenerateWebsite} loading={busy === "website"} disabled={generationDisabled}>
                 <Globe2 className="size-4" />
                 Generate Website
               </Button>
-              <Button variant="outline" onClick={handleGenerateMessages} loading={busy === "message"}>
+              <Button variant="outline" onClick={handleGenerateMessages} loading={busy === "message"} disabled={actionInProgress}>
                 <MessageCircle className="size-4" />
                 Generate Sales Message
               </Button>
-              <Button className="sm:col-span-2" onClick={handleGenerateBoth} loading={busy === "both"} disabled={Boolean(businessUnderstanding && !extractionReviewed)}>
+              <Button className="sm:col-span-2" onClick={handleGenerateBoth} loading={busy === "both"} disabled={generationDisabled}>
                 <WandSparkles className="size-4" />
                 Generate Website + Message
               </Button>
@@ -1212,6 +1486,7 @@ export function DemoWorkspace() {
                     else handleParse();
                   }}
                   loading={busy === "image" || busy === "parse"}
+                  disabled={actionInProgress}
                 >
                   <ScanText className="size-4" />
                   Fix
@@ -1223,11 +1498,12 @@ export function DemoWorkspace() {
                     setExtractionReviewed(false);
                     toast.info("Edit the category, then approve review again.");
                   }}
+                  disabled={actionInProgress}
                 >
                   <SlidersHorizontal className="size-4" />
                   Category
                 </Button>
-                <Button onClick={() => setExtractionReviewed(true)}>
+                <Button onClick={() => setExtractionReviewed(true)} disabled={actionInProgress}>
                   <CheckCircle2 className="size-4" />
                   Approve
                 </Button>
@@ -1242,14 +1518,23 @@ export function DemoWorkspace() {
               <div>
                 <SectionLabel>Website generator output</SectionLabel>
                 <h2 className="mt-1 text-lg font-extrabold tracking-[-0.035em]">Production-ready website</h2>
+                <p className="mt-1 font-mono text-[0.65rem] text-[#9a9faf]">
+                  Active generation: {generationId.slice(0, 8)}
+                </p>
               </div>
-              <div className="flex rounded-xl bg-[#f1f1f5] p-1">
-                <TabButton active={outputTab === "preview"} onClick={() => setOutputTab("preview")}>
-                  <Globe2 className="size-3.5" /> Preview
-                </TabButton>
-                <TabButton active={outputTab === "code"} onClick={() => setOutputTab("code")}>
-                  <Code2 className="size-3.5" /> HTML
-                </TabButton>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={() => resetGenerationState("Started a clean generation")}>
+                  <RotateCcw className="size-4" />
+                  New Generation
+                </Button>
+                <div className="flex rounded-xl bg-[#f1f1f5] p-1">
+                  <TabButton active={outputTab === "preview"} onClick={() => setOutputTab("preview")}>
+                    <Globe2 className="size-3.5" /> Preview
+                  </TabButton>
+                  <TabButton active={outputTab === "code"} onClick={() => setOutputTab("code")}>
+                    <Code2 className="size-3.5" /> HTML
+                  </TabButton>
+                </div>
               </div>
             </div>
 
@@ -1319,10 +1604,16 @@ export function DemoWorkspace() {
                           : "Generate a website to run the checklist."}
                       </p>
                     </div>
-                    <Button onClick={handleDeploy} loading={busy === "deploy"} disabled={!html}>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" onClick={() => resetGenerationState("Current generation data cleared")}>
+                        <X className="size-4" />
+                        Clear Current Data
+                      </Button>
+                      <Button onClick={handleDeploy} loading={busy === "deploy"} disabled={!html || actionInProgress}>
                       <Rocket className="size-4" />
                       Deploy Website
-                    </Button>
+                      </Button>
+                    </div>
                   </div>
                   {qualityAudit ? (
                     <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -1354,7 +1645,7 @@ export function DemoWorkspace() {
                   <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#7a8194]">
                     Add the business details, then generate a complete single-file website with production-minded metadata.
                   </p>
-                  <Button className="mt-5" onClick={handleGenerateWebsite} loading={busy === "website"} disabled={Boolean(businessUnderstanding && !extractionReviewed)}>
+                  <Button className="mt-5" onClick={handleGenerateWebsite} loading={busy === "website"} disabled={generationDisabled}>
                     <Sparkles className="size-4" />
                     Generate Website
                   </Button>
@@ -1460,7 +1751,7 @@ export function DemoWorkspace() {
                   <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[#7a8194]">
                     Create channel-specific outreach with a clear concept disclosure and no fake urgency.
                   </p>
-                  <Button variant="outline" className="mt-5" onClick={handleGenerateMessages} loading={busy === "message"}>
+                  <Button variant="outline" className="mt-5" onClick={handleGenerateMessages} loading={busy === "message"} disabled={actionInProgress}>
                     <Sparkles className="size-4" />
                     Generate Sales Messages
                   </Button>
@@ -1480,11 +1771,15 @@ export function DemoWorkspace() {
             <strong className="text-ink-950">Next:</strong> {recommendedAction}. Manual approval remains required before sending.
           </span>
         </div>
-        <Button variant="outline" onClick={handleSave} loading={busy === "save"}>
+        <Button variant="outline" onClick={() => resetGenerationState("Started a fresh generation")}>
+          <RotateCcw className="size-4" />
+          New Generation
+        </Button>
+        <Button variant="outline" onClick={handleSave} loading={busy === "save"} disabled={actionInProgress && busy !== "save"}>
           <Save className="size-4" />
           Save Prospect
         </Button>
-        <Button onClick={handleGenerateBoth} loading={busy === "both"} disabled={Boolean(businessUnderstanding && !extractionReviewed)}>
+        <Button onClick={handleGenerateBoth} loading={busy === "both"} disabled={generationDisabled}>
           <WandSparkles className="size-4" />
           Generate Website + Message
         </Button>
