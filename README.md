@@ -70,7 +70,7 @@ GEMINI_API_KEY=
 # Stage-based model routing
 EXTRACTION_MODEL=gemini-2.5-flash-lite
 PLANNER_MODEL=gemini-2.5-flash-lite
-SECTION_MODEL=
+SECTION_MODEL=gemini-2.5-flash
 QA_MODEL=gemini-2.5-flash-lite
 VISION_MODEL=gemini-2.5-flash
 FALLBACK_MODEL=gemini-2.5-flash-lite
@@ -90,9 +90,9 @@ VERCEL_TEAM_ID=
 
 ## AI Model Routing
 
-Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use.
+Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Website HTML generation uses the server-side AI route in `app/api/generate-website/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use.
 
-Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. Use the cheapest reliable model for deterministic extraction/planning/QA, reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model when AI section generation is added. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable.
+Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. Use the cheapest reliable model for extraction/planning/QA, reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable.
 
 ## Generation Isolation
 

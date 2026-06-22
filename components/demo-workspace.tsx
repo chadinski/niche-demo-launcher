@@ -48,7 +48,6 @@ import { useProspects } from "@/components/prospect-provider";
 import {
   emptyBusinessInfo,
   generateSalesMessages,
-  generateWebsiteHTML,
   generatedNames,
 } from "@/lib/generators";
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
@@ -627,6 +626,45 @@ export function DemoWorkspace() {
     };
   }, [businessUnderstanding, generationMode, info]);
 
+  const requestAIWebsiteHTML = useCallback(
+    async (sourceInfo: BusinessInfo, activeGenerationId: string) => {
+      const response = await fetch("/api/generate-website", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generationId: activeGenerationId,
+          info: sourceInfo,
+          generationMode,
+          businessUnderstanding,
+        }),
+      });
+      const payload = (await response.json()) as {
+        generationId?: string;
+        html?: string;
+        modelMetadata?: { stage: string; provider: string; model: string; fallback: boolean };
+        error?: string;
+      };
+
+      if (payload.generationId !== activeGenerationId || !isActiveGeneration(activeGenerationId)) {
+        if (process.env.NODE_ENV !== "production") {
+          console.debug(`[generation:${activeGenerationId}] ignored stale website generation response`);
+        }
+        return null;
+      }
+
+      if (!response.ok || !payload.html) {
+        throw new Error(payload.error || "AI website generation failed.");
+      }
+
+      return {
+        html: payload.html,
+        modelMetadata: payload.modelMetadata,
+      };
+    },
+    [businessUnderstanding, generationMode, isActiveGeneration],
+  );
+
   const requireGenerationReady = useCallback(() => {
     if (businessUnderstanding && !extractionReviewed) {
       throw new Error("Review and approve the extracted facts before generating the website.");
@@ -639,10 +677,12 @@ export function DemoWorkspace() {
   const handleGenerateWebsite = () =>
     runAction(
       "website",
-      (activeGenerationId) => {
+      async (activeGenerationId) => {
         requireGenerationReady();
         const nextInfo = buildGenerationInfo();
-        const nextHtml = generateWebsiteHTML(nextInfo);
+        const generated = await requestAIWebsiteHTML(nextInfo, activeGenerationId);
+        if (!generated) return;
+        const nextHtml = generated.html;
         const nextAudit = auditWebsite(nextHtml, nextInfo);
         if (!isActiveGeneration(activeGenerationId)) return;
         const nextPlan: GenerationPlan = {
@@ -664,7 +704,21 @@ export function DemoWorkspace() {
         setGenerationErrors([]);
         setHtml(nextHtml);
         setOutputTab("preview");
-        const prospect = buildProspect({ info: nextInfo, html: nextHtml, qualityAudit: nextAudit });
+        const websiteModelMetadata = generated.modelMetadata;
+        const nextModelMetadata = websiteModelMetadata
+          ? [...modelMetadata.filter((item) => item.stage !== websiteModelMetadata.stage), websiteModelMetadata]
+          : modelMetadata;
+        if (websiteModelMetadata) {
+          setModelMetadata(nextModelMetadata);
+        }
+        const prospect = buildProspect({
+          info: nextInfo,
+          html: nextHtml,
+          qualityAudit: nextAudit,
+          generationPlan: nextPlan,
+          sectionOutputs: nextSectionOutputs,
+          modelMetadata: nextModelMetadata,
+        });
         saveProspect(prospect);
         setProspectId(prospect.id);
         if (!nextAudit.passed) {
@@ -687,10 +741,12 @@ export function DemoWorkspace() {
   const handleGenerateBoth = () =>
     runAction(
       "both",
-      (activeGenerationId) => {
+      async (activeGenerationId) => {
         requireGenerationReady();
         const nextInfo = buildGenerationInfo();
-        const nextHtml = generateWebsiteHTML(nextInfo);
+        const generated = await requestAIWebsiteHTML(nextInfo, activeGenerationId);
+        if (!generated) return;
+        const nextHtml = generated.html;
         const nextMessages = generateSalesMessages(nextInfo, tone, DEFAULT_SETTINGS);
         const nextAudit = auditWebsite(nextHtml, nextInfo);
         if (!isActiveGeneration(activeGenerationId)) return;
@@ -714,7 +770,22 @@ export function DemoWorkspace() {
         setHtml(nextHtml);
         setMessages(nextMessages);
         setOutputTab("preview");
-        const prospect = buildProspect({ info: nextInfo, html: nextHtml, messages: nextMessages, qualityAudit: nextAudit });
+        const websiteModelMetadata = generated.modelMetadata;
+        const nextModelMetadata = websiteModelMetadata
+          ? [...modelMetadata.filter((item) => item.stage !== websiteModelMetadata.stage), websiteModelMetadata]
+          : modelMetadata;
+        if (websiteModelMetadata) {
+          setModelMetadata(nextModelMetadata);
+        }
+        const prospect = buildProspect({
+          info: nextInfo,
+          html: nextHtml,
+          messages: nextMessages,
+          qualityAudit: nextAudit,
+          generationPlan: nextPlan,
+          sectionOutputs: nextSectionOutputs,
+          modelMetadata: nextModelMetadata,
+        });
         saveProspect(prospect);
         setProspectId(prospect.id);
         if (!nextAudit.passed) {
@@ -729,12 +800,23 @@ export function DemoWorkspace() {
     html?: string;
     messages?: SalesMessages | null;
     qualityAudit?: QualityAudit | null;
+    generationPlan?: GenerationPlan | null;
+    sectionOutputs?: SectionOutput[];
+    modelMetadata?: Array<{
+      stage: string;
+      provider: string;
+      model: string;
+      fallback: boolean;
+    }>;
   } = {}): Prospect => {
     const now = new Date().toISOString();
     const prospectInfo = overrides.info ?? info;
     const prospectHtml = overrides.html ?? html;
     const prospectMessages = overrides.messages ?? messages;
     const prospectAudit = overrides.qualityAudit ?? qualityAudit;
+    const prospectGenerationPlan = overrides.generationPlan ?? generationPlan;
+    const prospectSectionOutputs = overrides.sectionOutputs ?? sectionOutputs;
+    const prospectModelMetadata = overrides.modelMetadata ?? modelMetadata;
     const canPersistScreenshot = Boolean(imageDataUrl && imageDataUrl.length <= 750_000);
     return {
       id: prospectId ?? crypto.randomUUID(),
@@ -770,11 +852,11 @@ export function DemoWorkspace() {
         screenshotSaved: canPersistScreenshot,
         generationMode,
         extractionReviewed,
-        generationPlan,
-        sectionOutputs,
+        generationPlan: prospectGenerationPlan,
+        sectionOutputs: prospectSectionOutputs,
         skippedSections,
         generationErrors,
-        modelMetadata,
+        modelMetadata: prospectModelMetadata,
       },
       website_quality_audit: prospectAudit,
       generated_website_html: prospectHtml,
