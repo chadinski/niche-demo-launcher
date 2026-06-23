@@ -31,6 +31,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button, Card, EmptyState, buttonClass } from "@/components/ui";
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
 import { generateSalesMessages, generateWebsiteHTML } from "@/lib/generators";
+import { createPreviewHtml } from "@/lib/generation/preview";
 import { generateBusinessIntelligence } from "@/lib/automation/business-intelligence";
 import { nextFollowUpDate } from "@/lib/automation/follow-ups";
 import { scoreLead } from "@/lib/automation/lead-scoring";
@@ -73,6 +74,7 @@ export function ProspectDetail() {
   const qualityAudit = prospect.website_quality_audit ?? (
     prospect.generated_website_html ? auditWebsite(prospect.generated_website_html, info) : null
   );
+  const generatedWebsitePreviewHtml = createPreviewHtml(prospect.generated_website_html);
 
   const copyText = async (value: string, label: string) => {
     if (!value) {
@@ -371,8 +373,8 @@ export function ProspectDetail() {
               <div className="bg-[#ececf2] p-4">
                 <iframe
                   title={`${prospect.business_name} website preview`}
-                  srcDoc={prospect.generated_website_html}
-                  sandbox="allow-scripts"
+                  srcDoc={generatedWebsitePreviewHtml}
+                  sandbox=""
                   referrerPolicy="no-referrer"
                   className="h-[720px] w-full rounded-xl border border-[#dfe0e7] bg-white shadow-xl"
                 />

@@ -62,6 +62,7 @@ import {
   type GenerationPlan,
   type SectionOutput,
 } from "@/lib/generation/session";
+import { createPreviewHtml } from "@/lib/generation/preview";
 import { generateBusinessIntelligence } from "@/lib/automation/business-intelligence";
 import { nextFollowUpDate, statusAfterMilestone } from "@/lib/automation/follow-ups";
 import { scoreLead } from "@/lib/automation/lead-scoring";
@@ -287,6 +288,7 @@ export function DemoWorkspace() {
     () => (html ? auditWebsite(html, info) : null),
     [html, info],
   );
+  const previewHtml = useMemo(() => createPreviewHtml(html), [html]);
   const readinessChecks = useMemo(
     () => buildReadinessChecks(info, html, messages, qualityAudit),
     [info, html, messages, qualityAudit],
@@ -1512,7 +1514,7 @@ export function DemoWorkspace() {
           ) : null}
         </div>
 
-        <div className="min-w-0 space-y-5 2xl:sticky 2xl:top-8">
+        <div className="min-w-0 space-y-5">
           <Card className="overflow-hidden">
             <div className="flex flex-col justify-between gap-4 border-b border-[#e9eaf0] px-5 py-4 sm:flex-row sm:items-center sm:px-6">
               <div>
@@ -1553,8 +1555,8 @@ export function DemoWorkspace() {
                       </div>
                       <iframe
                         title="Generated website preview"
-                        srcDoc={html}
-                        sandbox="allow-scripts"
+                        srcDoc={previewHtml}
+                        sandbox=""
                         referrerPolicy="no-referrer"
                         className="h-[620px] w-full bg-white"
                       />
