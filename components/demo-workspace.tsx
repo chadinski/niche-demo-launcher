@@ -1514,7 +1514,7 @@ export function DemoWorkspace() {
           ) : null}
         </div>
 
-        <div className="min-w-0 space-y-5">
+        <div className="min-w-0 space-y-5 2xl:sticky 2xl:top-8">
           <Card className="overflow-hidden">
             <div className="flex flex-col justify-between gap-4 border-b border-[#e9eaf0] px-5 py-4 sm:flex-row sm:items-center sm:px-6">
               <div>
@@ -1557,8 +1557,10 @@ export function DemoWorkspace() {
                         title="Generated website preview"
                         srcDoc={previewHtml}
                         sandbox=""
+                        scrolling="no"
+                        tabIndex={-1}
                         referrerPolicy="no-referrer"
-                        className="h-[620px] w-full bg-white"
+                        className="pointer-events-none h-[620px] w-full select-none bg-white"
                       />
                     </div>
                   </div>

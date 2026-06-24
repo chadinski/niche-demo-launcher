@@ -12,6 +12,9 @@ const previewResetCss = `
   body {
     min-height: 100% !important;
     overflow-x: hidden !important;
+    overflow-y: hidden !important;
+    overscroll-behavior: none !important;
+    scroll-snap-type: none !important;
   }
 
   body,
@@ -23,15 +26,25 @@ const previewResetCss = `
     visibility: visible !important;
   }
 
-  .reveal,
-  [class*="reveal"],
-  [data-reveal],
-  [data-animate],
-  [data-animation],
-  .fade-in,
-  .fade-up,
-  .animate,
-  .animated {
+  :where(
+    .reveal,
+    [class*="reveal"],
+    [class*="fade"],
+    [class*="animate"],
+    [class*="motion"],
+    [class*="observe"],
+    [class*="parallax"],
+    [data-reveal],
+    [data-animate],
+    [data-animation],
+    [data-aos],
+    [data-scroll],
+    [data-observe],
+    [style*="opacity: 0"],
+    [style*="opacity:0"],
+    [style*="visibility: hidden"],
+    [style*="visibility:hidden"]
+  ) {
     opacity: 1 !important;
     visibility: visible !important;
     transform: none !important;
@@ -52,6 +65,10 @@ export function createPreviewHtml(html: string) {
   }
 
   if (/<head[^>]*>/i.test(html)) {
+    if (/<\/head>/i.test(html)) {
+      return html.replace(/<\/head>/i, `${previewResetCss}</head>`);
+    }
+
     return html.replace(/<head([^>]*)>/i, `<head$1>${previewResetCss}`);
   }
 
