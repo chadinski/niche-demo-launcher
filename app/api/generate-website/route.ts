@@ -28,6 +28,13 @@ const requestSchema = z.object({
   businessUnderstanding: z.unknown().optional(),
 });
 
+type InspirationReference = {
+  title: string;
+  url: string;
+  description: string;
+  summary: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -107,7 +114,128 @@ function modeDirection(mode: string) {
   }
 }
 
-function buildPrompt(input: z.infer<typeof requestSchema>) {
+function compactText(value: string, maxLength = 800) {
+  return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function inspirationQuery(info: z.infer<typeof businessInfoSchema>) {
+  const category = info.category.trim() || "premium local service";
+  const location = info.location.trim();
+  const serviceKeywords = info.services
+    .split(/[,;\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(" ");
+
+  return compactText(
+    [category, serviceKeywords, location, "premium landing page design inspiration photography"].filter(Boolean).join(" "),
+    480,
+  );
+}
+
+function photoDirection(info: z.infer<typeof businessInfoSchema>) {
+  const category = info.category.trim() || "the business niche";
+  const services = info.services.trim() || "the core service or product";
+  const location = info.location.trim() || "the service area";
+
+  return [
+    `Hero image: cinematic, above-the-fold photography showing ${category} in context for ${location}; the image should explain the offer before the visitor reads the copy.`,
+    `Service imagery: close-up details of ${services}, materials, tools, finished results, or the customer experience; use real photographic texture instead of abstract gradients.`,
+    `Trust imagery: location, team, workspace, storefront, treatment room, job site, product shelf, or craft process when verified; otherwise label as representative imagery.`,
+    "Composition: use full-bleed crops, layered image cards, editorial captions, and image-led proof sections rather than text-only panels.",
+  ].join("\n");
+}
+
+function fallbackDesignInspiration(info: z.infer<typeof businessInfoSchema>) {
+  return [
+    "Live inspiration research: not configured or unavailable. Use this premium fallback brief instead.",
+    "Reference mindset: study patterns from Land-book, Lapa Ninja, Awwwards, Godly, Vercel, Stripe, Aesop, Apple, Studio Freight, Instrument, Collins, and high-end hospitality/editorial sites as abstract inspiration only.",
+    "Do not copy reference layouts, copy, trademarks, branded imagery, screenshots, or distinctive compositions.",
+    "Design cues to apply: one memorable first-viewport visual idea; real photography or photo-real scene direction; sharp editorial type scale; asymmetric section rhythm; fewer but stronger modules; image captions that build trust; proof slots that are honest when facts are missing.",
+    "Avoid: text-only hero, repeated generic card grids, decorative blobs, fake dashboards, vague badges, stock-photo mismatch, and interchangeable SaaS styling.",
+    "Photography/art direction:",
+    photoDirection(info),
+  ].join("\n");
+}
+
+function formatReferences(references: InspirationReference[], info: z.infer<typeof businessInfoSchema>) {
+  if (!references.length) return fallbackDesignInspiration(info);
+
+  const referenceLines = references
+    .map((reference, index) => {
+      const details = [reference.description, reference.summary].filter(Boolean).join(" ");
+      return `${index + 1}. ${reference.title} — ${reference.url}\n   Cues: ${compactText(details, 520) || "premium landing-page reference; infer composition, image strategy, and section rhythm without copying."}`;
+    })
+    .join("\n");
+
+  return [
+    "Live inspiration research: Firecrawl found premium landing-page references for this niche.",
+    "Use these only as abstract visual, photographic, and conversion-pattern inspiration. Do not copy layouts, copy, trademarks, branded imagery, screenshots, or distinctive compositions.",
+    referenceLines,
+    "Extracted design mandate:",
+    "- The generated site must have a premium visual thesis before copy: a hero image or image-led composition that matches the niche.",
+    "- Translate recurring reference patterns into original components: editorial hero, proof-led visual strip, services with photography, process/story section, and final CTA.",
+    "- If a real business image is not supplied, use representative HTTPS photography that matches the category and label it honestly.",
+    "Photography/art direction:",
+    photoDirection(info),
+  ].join("\n");
+}
+
+async function buildDesignInspirationBrief(info: z.infer<typeof businessInfoSchema>) {
+  const apiKey = process.env.FIRECRAWL_API_KEY;
+  if (!apiKey) return fallbackDesignInspiration(info);
+
+  try {
+    const response = await fetch("https://api.firecrawl.dev/v2/search", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: inspirationQuery(info),
+        limit: 5,
+        sources: ["web"],
+        includeDomains: ["land-book.com", "lapa.ninja", "awwwards.com", "godly.website"],
+        country: "US",
+        timeout: 15000,
+        ignoreInvalidURLs: true,
+        scrapeOptions: {
+          formats: [{ type: "summary" }],
+          onlyMainContent: true,
+        },
+      }),
+      signal: AbortSignal.timeout(18000),
+    });
+
+    const payload = (await response.json().catch(() => null)) as {
+      success?: boolean;
+      data?: { web?: unknown[] };
+    } | null;
+
+    if (!response.ok || !payload?.success || !Array.isArray(payload.data?.web)) {
+      return fallbackDesignInspiration(info);
+    }
+
+    const references = payload.data.web
+      .filter(isRecord)
+      .map((item) => ({
+        title: compactText(asString(item.title) || "Premium landing reference", 120),
+        url: compactText(asString(item.url), 220),
+        description: compactText(asString(item.description), 360),
+        summary: compactText(asString(item.markdown) || asString(item.summary), 520),
+      }))
+      .filter((item) => item.url)
+      .slice(0, 5);
+
+    return formatReferences(references, info);
+  } catch {
+    return fallbackDesignInspiration(info);
+  }
+}
+
+function buildPrompt(input: z.infer<typeof requestSchema>, designInspiration: string) {
   const { info, generationMode, businessUnderstanding } = input;
   const businessFacts = compactBusinessFacts(info);
   const intelligence = getUnderstandingSummary(businessUnderstanding);
@@ -123,6 +251,9 @@ Business intelligence:
 ${intelligence}
 
 Generation direction: ${modeDirection(generationMode)}
+
+Premium reference and photo research:
+${designInspiration}
 
 Output rules:
 - Return only HTML. Start with <!DOCTYPE html> and end with </html>. No markdown fences.
@@ -141,6 +272,10 @@ Luxury execution standard:
 - Choose one visual thesis tailored to the industry: e.g. warm editorial hospitality, precise technical confidence, quiet clinical trust, crafted local authority, cinematic portfolio, dignified memorial care.
 - Preserve any supplied brand colors, but elevate them with a disciplined palette, rich neutrals, and restrained accents.
 - Use editorial composition: asymmetry where useful, strong first viewport, varied section rhythms, purposeful whitespace, composed typography, and proof-oriented imagery.
+- The site must not look like plain words on a page. Lead with photography, spatial composition, material texture, product/service detail, process imagery, or a cinematic business scene.
+- Include at least four meaningful visual moments: hero image, service/detail image, proof/showcase image, and process/contact image. Use real HTTPS image URLs or supplied assets; if representative, caption them honestly.
+- Images must match the business niche. A restaurant needs food/interior/hospitality photography; a salon needs beauty/service/detail imagery; a contractor needs worksite/material/finished-result imagery; a SaaS needs UI/product visuals; a clinic needs calm clinical/people/place imagery.
+- Every image needs alt text, width and height attributes where possible, loading strategy, and a visible treatment that feels designed rather than dropped in.
 - Avoid cheap signals: repeated three-card grids, fake logo strips, generic SaaS dashboards for non-software businesses, vague hype, decorative blobs, neon/purple defaults, filler badges, and inflated copy.
 - Every section needs a conversion job. Skimmable headings should communicate value without reading body copy.
 
@@ -159,12 +294,15 @@ Design system requirements:
 - Use CSS custom properties for color, type, spacing, radius, borders, shadow, focus, and motion.
 - Mobile-first; include responsive behavior for 360px, 430px, 768px, 1280px, and wide desktop.
 - Accessible landmarks, one h1, logical h2/h3 order, labels, descriptive links, visible focus, 44px-ish tap targets, reduced-motion support.
+- Use text-wrap: balance or text-wrap: pretty for headings, avoid transition: all, and animate only transform/opacity.
 - Use guarded JS only for real interactions such as mobile nav, accordions, or demo form success.
 - Prevent overflow, clipped text, layout shift, and local machine paths.
 
 Quality bar before final output:
 - The hero is immediately specific to this business.
 - The page feels custom to the industry and brand direction.
+- The first viewport has an inspiring, niche-matched visual direction, not just text.
+- Photography choices correspond to the business and are never random adjacent-category stock.
 - The CTA path is obvious and functional.
 - No unsupported claims are present.
 - Contact links use tel:, mailto:, and verified HTTPS links where supplied.
@@ -273,7 +411,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const prompt = buildPrompt(parsed.data);
+  const designInspiration = await buildDesignInspirationBrief(parsed.data.info);
+  const prompt = buildPrompt(parsed.data, designInspiration);
   const routes = getRoutesForStage("section");
   const errors: string[] = [];
 
