@@ -17,6 +17,8 @@ The app does not bulk-send or automatically submit outreach.
 
 Screenshot extraction requires `GEMINI_API_KEY` or `OPENAI_API_KEY`. Images are sent to the server-side `/api/business-intelligence` route, then to the configured AI provider for structured business intelligence. Gemini is used first when configured. The app does not run local screenshot OCR.
 
+Website generation can optionally use `FIRECRAWL_API_KEY` to research premium landing-page references before prompting the HTML model. When configured, the server searches curated design inspiration sources, extracts visual/photo cues, and passes an abstract design brief into `/api/generate-website`. When it is not configured, generation still works with an internal premium fallback brief.
+
 ## Stack
 
 - Next.js 16 App Router
@@ -66,6 +68,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
 GEMINI_API_KEY=
+FIRECRAWL_API_KEY=
 
 # Stage-based model routing
 EXTRACTION_MODEL=gemini-2.5-flash-lite
@@ -85,12 +88,13 @@ VERCEL_TOKEN=
 VERCEL_TEAM_ID=
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, and `GEMINI_API_KEY` are server-only. Never expose them through `NEXT_PUBLIC_*`.
+`SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `FIRECRAWL_API_KEY` are server-only. Never expose them through `NEXT_PUBLIC_*`.
+`FIRECRAWL_API_KEY` is optional. Add it when you want generated websites to research premium landing-page references and stronger niche-matched photo direction before HTML generation.
 `VERCEL_TOKEN` is required for one-click demo deployment. `GITHUB_TOKEN` and `GITHUB_OWNER` are optional for deployment, but when present the generated `index.html` is also archived to a GitHub repository.
 
 ## AI Model Routing
 
-Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Website HTML generation uses the server-side AI route in `app/api/generate-website/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use.
+Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Website HTML generation uses the server-side AI route in `app/api/generate-website/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use. Add `FIRECRAWL_API_KEY` when you want the website generator to research premium landing-page references before building the prompt.
 
 Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. Use the cheapest reliable model for extraction/planning/QA, reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable.
 
