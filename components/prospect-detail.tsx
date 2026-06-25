@@ -440,10 +440,9 @@ export function ProspectDetail() {
                   title={`${prospect.business_name} website preview`}
                   srcDoc={generatedWebsitePreviewHtml}
                   sandbox=""
-                  scrolling="no"
-                  tabIndex={-1}
+                  scrolling="auto"
                   referrerPolicy="no-referrer"
-                  className="pointer-events-none h-[720px] w-full select-none rounded-xl border border-[#dfe0e7] bg-white shadow-xl"
+                  className="h-[720px] w-full rounded-xl border border-[#dfe0e7] bg-white shadow-xl"
                 />
               </div>
               <pre className="scrollbar-thin max-h-[752px] overflow-auto bg-[#161a2b] p-5 text-xs leading-6 text-[#dce0f0]">
