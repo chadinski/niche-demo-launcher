@@ -12,8 +12,8 @@ const previewResetCss = `
   body {
     min-height: 100% !important;
     overflow-x: hidden !important;
-    overflow-y: hidden !important;
-    overscroll-behavior: none !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
     scroll-snap-type: none !important;
   }
 

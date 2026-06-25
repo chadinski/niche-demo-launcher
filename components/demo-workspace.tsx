@@ -1604,10 +1604,9 @@ export function DemoWorkspace() {
                         title="Generated website preview"
                         srcDoc={previewHtml}
                         sandbox=""
-                        scrolling="no"
-                        tabIndex={-1}
+                        scrolling="auto"
                         referrerPolicy="no-referrer"
-                        className="pointer-events-none h-[620px] w-full select-none bg-white"
+                        className="h-[620px] w-full bg-white"
                       />
                     </div>
                   </div>
