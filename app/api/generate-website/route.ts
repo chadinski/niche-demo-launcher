@@ -64,10 +64,13 @@ type PremiumWebsitePlan = {
   targetCustomer: string;
   emotionalHook: string;
   conversionGoal: string;
+  visualHook: string;
   visualDirection: string;
   colorSystem: string;
   typographyDirection: string;
   imageDirection: string;
+  compositionRhythm: string;
+  signatureInteraction: string;
   sectionList: Array<{
     id: string;
     title: string;
@@ -379,19 +382,22 @@ function fallbackPremiumWebsitePlan(
     targetCustomer: cleanBusinessData.targetAudience,
     emotionalHook: `Make the visitor feel that ${cleanBusinessData.companyName} is organized, trustworthy, and worth contacting before they compare alternatives.`,
     conversionGoal: cleanBusinessData.phone || cleanBusinessData.email ? "Drive a direct call, email, or enquiry using verified contact paths." : "Drive a low-friction enquiry with clearly labeled demo placeholders for missing contact details.",
-    visualDirection: `${modeDirection(generationMode)} Use one cinematic visual thesis tied to ${cleanBusinessData.businessType}; avoid generic card grids and text-only sections. ${compactText(designInspiration, 700)}`,
+    visualHook: `Create one poster-worthy first-screen idea for ${cleanBusinessData.businessType}: oversized editorial type, niche-matched hero photography, layered service detail cards, and a visible motif that could only belong to this business category.`,
+    visualDirection: `${modeDirection(generationMode)} Make the first 5 seconds visually magnetic: bold but tasteful scale contrast, asymmetric media, rich section rhythm, and one memorable motif tied to ${cleanBusinessData.businessType}; avoid generic card grids and text-only sections. ${compactText(designInspiration, 700)}`,
     colorSystem: cleanBusinessData.visibleColors.length
       ? `Elevate the visible palette (${cleanBusinessData.visibleColors.join(", ")}) with deep neutrals, soft surfaces, and one disciplined accent.`
       : "Create a refined palette from industry cues: deep neutral base, warm surface colors, and one confident accent.",
     typographyDirection: "Use editorial display type for major headings, a highly readable sans-serif for interface/copy, generous line-height, balanced headings, and a controlled type scale.",
     imageDirection,
+    compositionRhythm: "Alternate high-impact visual sections with tighter proof and decision sections: hero montage, trust strip, asymmetric services, full-bleed showcase, process timeline, CTA band. No two consecutive sections should share the same centered-heading/card-grid pattern.",
+    signatureInteraction: "Use restrained but memorable motion: reveal layers in the hero, tactile hover states on service cards, FAQ accordion, mobile nav, and reduced-motion support. Do not hide essential content behind animation.",
     sectionList: [
       { id: "header", title: "Sticky premium navigation", purpose: "Orient the visitor and keep contact available.", visualTreatment: "Transparent-to-solid sticky bar with compact anchors.", conversionJob: "Make the primary CTA reachable at all times." },
-      { id: "hero", title: "Cinematic hero", purpose: "Explain what the business does, for whom, and why it is worth contacting.", visualTreatment: "Image-led editorial composition with layered proof cue.", conversionJob: "Earn the first click or scroll." },
+      { id: "hero", title: "Cinematic hero", purpose: "Explain what the business does, for whom, and why it is worth contacting.", visualTreatment: "Poster-quality first viewport with oversized type, layered niche photography, proof cue, and one memorable visual motif.", conversionJob: "Earn attention within five seconds and make the first click or scroll feel obvious." },
       { id: "trust", title: "Trust bridge", purpose: "Show verified facts and honest proof placeholders.", visualTreatment: "Premium stat/fact strip with restrained borders.", conversionJob: "Reduce uncertainty without fake claims." },
-      { id: "services", title: "Service architecture", purpose: "Group visible services by customer intent.", visualTreatment: "Custom cards with image/details and clear outcomes.", conversionJob: "Help visitors find the relevant offer." },
+      { id: "services", title: "Service architecture", purpose: "Group visible services by customer intent.", visualTreatment: "Asymmetric service cards with photography, numbered priorities, or tactile material/detail treatments instead of equal bland boxes.", conversionJob: "Help visitors find the relevant offer." },
       { id: "difference", title: "Why this experience feels better", purpose: "Translate the business context into a differentiated customer journey.", visualTreatment: "Split editorial section with material or process imagery.", conversionJob: "Create preference." },
-      { id: "showcase", title: "Visual showcase", purpose: "Make the niche tangible through representative, honestly labeled photography.", visualTreatment: "Gallery grid with captions and varied image ratios.", conversionJob: "Replace abstract promises with visual confidence." },
+      { id: "showcase", title: "Visual showcase", purpose: "Make the niche tangible through representative, honestly labeled photography.", visualTreatment: "High-impact gallery with varied image ratios, overlap, captions, and one full-bleed or near-full-bleed visual moment.", conversionJob: "Replace abstract promises with visual confidence." },
       { id: "process", title: "Process and expectations", purpose: "Explain how to enquire, confirm availability, or book.", visualTreatment: "Numbered timeline with mobile-friendly cards.", conversionJob: "Remove friction." },
       { id: "faq", title: "Decision-support FAQ", purpose: "Answer realistic questions using only supplied facts or clear placeholders.", visualTreatment: "Accessible accordion.", conversionJob: "Resolve objections." },
       { id: "contact", title: "Final CTA and contact", purpose: "Give the visitor a clear next step.", visualTreatment: "High-contrast CTA band plus contact card/footer.", conversionJob: "Convert intent into contact." },
@@ -424,10 +430,13 @@ Return exactly this JSON shape:
   "targetCustomer": "specific target customer",
   "emotionalHook": "specific emotional hook",
   "conversionGoal": "primary conversion goal",
+  "visualHook": "one poster-worthy first-screen visual idea that fits this exact business",
   "visualDirection": "custom visual thesis",
   "colorSystem": "specific color system",
   "typographyDirection": "specific type direction",
   "imageDirection": "specific photography/art direction",
+  "compositionRhythm": "how section layouts vary so the page feels custom and eye-catching",
+  "signatureInteraction": "one restrained but memorable interaction or motion idea",
   "sectionList": [
     {"id":"header","title":"...","purpose":"...","visualTreatment":"...","conversionJob":"..."}
   ],
@@ -443,7 +452,9 @@ Rules:
 - Include at least 9 meaningful sections, including header, cinematic hero, trust bridge, services/products, differentiator/story, visual showcase, process, FAQ, contact/footer.
 - Do not invent reviews, awards, prices, certifications, addresses, phone numbers, years in business, or guarantees.
 - Make the plan specific to the business type, visible colors, services, audience, and missing data.
-- The plan should force a custom, expensive, image-led website rather than a generic template.`;
+- The plan should force a custom, expensive, image-led website rather than a generic template.
+- The visual hook must be bold enough to make the page impressive in the first 5 seconds, while still believable for the business.
+- Avoid safe defaults: centered hero plus cards, bland white sections, generic blue/purple gradients, and identical section layouts.`;
 }
 
 function parseJsonObject(text: string) {
@@ -474,10 +485,13 @@ function normalizePlan(value: unknown, fallback: PremiumWebsitePlan): PremiumWeb
     targetCustomer: asString(value.targetCustomer) || fallback.targetCustomer,
     emotionalHook: asString(value.emotionalHook) || fallback.emotionalHook,
     conversionGoal: asString(value.conversionGoal) || fallback.conversionGoal,
+    visualHook: asString(value.visualHook) || fallback.visualHook,
     visualDirection: asString(value.visualDirection) || fallback.visualDirection,
     colorSystem: asString(value.colorSystem) || fallback.colorSystem,
     typographyDirection: asString(value.typographyDirection) || fallback.typographyDirection,
     imageDirection: asString(value.imageDirection) || fallback.imageDirection,
+    compositionRhythm: asString(value.compositionRhythm) || fallback.compositionRhythm,
+    signatureInteraction: asString(value.signatureInteraction) || fallback.signatureInteraction,
     sectionList: sectionList.length >= 8 ? sectionList : fallback.sectionList,
     ctaStrategy: asString(value.ctaStrategy) || fallback.ctaStrategy,
     trustStrategy: asString(value.trustStrategy) || fallback.trustStrategy,
@@ -529,6 +543,7 @@ TECH RULES:
 
 DESIGN STANDARD:
 The page must feel custom, expensive, modern, high-converting, and specific to this business.
+It should also feel immediately eye-catching: a prospect should understand the offer and feel impressed within the first five seconds.
 
 Avoid:
 - generic SaaS template look
@@ -544,6 +559,9 @@ Avoid:
 - filler copy
 - repeated layouts
 - weak hero sections
+- safe-but-boring compositions
+- centered heading plus three cards repeated across the page
+- decorative effects that do not connect to the niche
 
 Required premium elements:
 - strong SEO head
@@ -599,14 +617,27 @@ The CSS must include:
 - animation classes
 - reduced-motion support if possible
 
+VISUAL MAGNETISM STANDARD:
+- Build around the plan's visualHook, compositionRhythm, and signatureInteraction.
+- The hero must feel like a designed poster or magazine opener, not a normal landing-page block.
+- Use bold scale contrast: the h1 should be substantially larger than body text while still wrapping well on mobile.
+- Use at least one distinctive niche-specific visual motif such as layered service photos, material textures, product/service detail crops, editorial captions, map/service-area framing, before/after style framing with no fake claims, or a crafted split composition.
+- Use varied section compositions: asymmetric services, full-bleed or near-full-bleed showcase, split editorial story, process timeline, CTA band, and FAQ.
+- Include depth that feels intentional: overlapping media, image masks, tasteful gradients, inset borders, surface contrast, strong shadows, or blend treatments where appropriate.
+- Make hover states tactile and visible, but keep content stable.
+- Do not let every section share the same background, padding, heading alignment, or card style.
+- Use real HTTPS photography that visually corresponds to the business category; no random adjacent stock.
+
 QUALITY BAR:
 Before finalizing, mentally compare the result to premium reference \`index.html\` files.
 If it feels basic, rewrite it until it feels premium.
+If it feels merely clean but not eye-catching, rewrite the hero, showcase, and service section until they have stronger visual energy.
 The result should feel like a serious designer and senior frontend engineer built it.
 
 Hard requirements:
 - Include at least ${Math.max(9, premiumWebsitePlan.sectionList.length)} meaningful sections from the plan.
 - Include at least four niche-matched HTTPS images or rich visual treatments, with representative captions when not verified.
+- Include at least one visually distinctive first-screen motif and at least one high-impact showcase section.
 - Use every supplied verified contact path correctly: tel: for phone, mailto: for email, HTTPS links for website/social.
 - Use robots noindex,nofollow because this is a private demo.
 - Footer must disclose that this is a website concept/private demo for review.
@@ -778,6 +809,13 @@ function hardRejectionReasons(html: string, cleanBusinessData: CleanBusinessData
   const reasons: string[] = [];
   const sectionCount = htmlCount(html, /<section\b/gi);
   const imageCount = htmlCount(html, /<img\b[^>]*https?:\/\//gi);
+  const visualMotifCount = [
+    /hero/i.test(html),
+    /(showcase|gallery|portfolio|visual)/i.test(html),
+    /(mask-image|clip-path|mix-blend-mode|backdrop-filter|object-fit|aspect-ratio)/i.test(html),
+    /(::before|::after|radial-gradient|linear-gradient)/i.test(html),
+    /(overlap|layer|stack|collage|montage|editorial|cinematic|poster)/i.test(html),
+  ].filter(Boolean).length;
 
   if (sectionCount < 8) reasons.push(`Only ${sectionCount} section elements found; premium output requires at least 8 meaningful sections.`);
   if (!/<script\b[^>]*type=["']application\/ld\+json["']/i.test(html)) reasons.push("Missing JSON-LD schema.");
@@ -786,6 +824,8 @@ function hardRejectionReasons(html: string, cleanBusinessData: CleanBusinessData
   if (!/(faq|accordion|details|aria-controls)/i.test(html)) reasons.push("Missing FAQ accordion or decision-support interaction.");
   if (!/(reveal|intersectionobserver|data-reveal|scroll)/i.test(html)) reasons.push("Missing scroll reveal or interaction layer.");
   if (imageCount < 3 && !/(showcase|gallery|visual)/i.test(html)) reasons.push("Missing rich niche-matched photography or visual showcase.");
+  if (imageCount < 4) reasons.push(`Only ${imageCount} remote image elements found; eye-catching demos need at least four niche-matched visual moments.`);
+  if (visualMotifCount < 4) reasons.push("Missing a distinctive visual motif or high-impact composition; the page may be premium but not eye-catching enough.");
   if (!/--[a-z0-9-]+\s*:/i.test(html)) reasons.push("Missing CSS custom-property design tokens.");
   if (/bootstrap|cdn\.jsdelivr\.net\/npm\/bootstrap|tailwind/i.test(html)) reasons.push("Looks like a framework/template instead of a bespoke single-file site.");
   if (!html.toLowerCase().includes(cleanBusinessData.companyName.toLowerCase().slice(0, Math.min(12, cleanBusinessData.companyName.length)))) {
@@ -801,6 +841,7 @@ function hardRejectionReasons(html: string, cleanBusinessData: CleanBusinessData
 function heuristicQualityGate(html: string, cleanBusinessData: CleanBusinessData): QualityGate {
   const dimensions: Record<string, number> = {
     visualPremiumFeel: 5,
+    visualMagnetism: 5,
     brandSpecificity: 5,
     sectionDepth: 5,
     conversionClarity: 5,
@@ -822,6 +863,15 @@ function heuristicQualityGate(html: string, cleanBusinessData: CleanBusinessData
   const hasReveal = /(intersectionobserver|data-reveal|reveal)/i.test(html);
   const hasNav = /<nav\b/i.test(html) && /(aria-expanded|menu-toggle|hamburger|mobile-menu)/i.test(html);
   const hasContact = Boolean((cleanBusinessData.phone && html.includes("tel:")) || (cleanBusinessData.email && html.includes("mailto:")) || /contact/i.test(html));
+  const visualMotifs = [
+    /(mask-image|clip-path|mix-blend-mode|backdrop-filter)/i.test(html),
+    /(aspect-ratio|object-fit)/i.test(html),
+    /(::before|::after)/i.test(html),
+    /(radial-gradient|linear-gradient)/i.test(html),
+    /(showcase|gallery|portfolio|visual)/i.test(html),
+    /(overlap|layer|stack|collage|montage|editorial|cinematic|poster)/i.test(html),
+    /font-size:\s*clamp\([^;]+(4rem|5rem|6rem|7rem|8rem|9rem|10rem)/i.test(html),
+  ];
   const hardReasons = hardRejectionReasons(html, cleanBusinessData);
 
   dimensions.sectionDepth = Math.min(10, 3 + sectionCount);
@@ -832,6 +882,7 @@ function heuristicQualityGate(html: string, cleanBusinessData: CleanBusinessData
   dimensions.brandSpecificity = [cleanBusinessData.companyName && html.includes(cleanBusinessData.companyName), cleanBusinessData.businessType && html.toLowerCase().includes(cleanBusinessData.businessType.toLowerCase().split(" ")[0]), cleanBusinessData.services.some((service) => html.toLowerCase().includes(service.toLowerCase().split(" ")[0])), cleanBusinessData.visibleColors.some((color) => html.toLowerCase().includes(color.toLowerCase()))].filter(Boolean).length * 2.5;
   dimensions.conversionClarity = [hasContact, /cta|call|quote|book|enquiry|availability/i.test(html), /footer/i.test(html), /button|btn/i.test(html)].filter(Boolean).length * 2.5;
   dimensions.visualPremiumFeel = [hasCssTokens, imageCount >= 3, /hero/i.test(html), /(showcase|gallery|editorial|cinematic|surface|shadow|gradient)/i.test(html)].filter(Boolean).length * 2.5;
+  dimensions.visualMagnetism = Math.min(10, 2 + visualMotifs.filter(Boolean).length * 1.35 + (imageCount >= 4 ? 1 : 0));
   dimensions.factualSafety = hardReasons.some((reason) => /unsupported/i.test(reason)) ? 5 : 9;
   dimensions.codeCleanliness = [/<style[\s>]/i.test(html), /<script[\s>]/i.test(html), !/file:\/\//i.test(html), !/console\.log/i.test(html)].filter(Boolean).length * 2.5;
 
@@ -866,6 +917,7 @@ ${html.slice(0, 70000)}
 
 Rubric dimensions:
 - visualPremiumFeel
+- visualMagnetism
 - brandSpecificity
 - sectionDepth
 - conversionClarity
@@ -876,13 +928,19 @@ Rubric dimensions:
 - factualSafety
 - codeCleanliness
 
-Hard reject if it looks like Bootstrap, generic SaaS, lacks business-specific visual identity, has fewer than 8 meaningful sections, misses SEO/schema/nav/FAQ/scroll reveal, invents fake proof, or is placeholder-heavy when data exists.
+Hard reject if it looks like Bootstrap, generic SaaS, lacks business-specific visual identity, has fewer than 8 meaningful sections, misses SEO/schema/nav/FAQ/scroll reveal, invents fake proof, is placeholder-heavy when data exists, or feels clean but not visually memorable.
+
+Visual magnetism review:
+- Score below 8 if the first viewport is a normal centered hero with no memorable image composition.
+- Score below 8 if services/showcase/process all use the same card-grid rhythm.
+- Score below 8 if imagery is present but not treated as a designed composition.
+- Score 9+ only when the page has a strong visual hook, niche-specific photography direction, bold but controlled typography, varied section rhythm, and at least one distinctive motif.
 
 Return exactly:
 {
   "score": 8.7,
   "passed": true,
-  "dimensionScores": {"visualPremiumFeel": 9, "brandSpecificity": 9, "sectionDepth": 9, "conversionClarity": 9, "seoCompleteness": 9, "mobileResponsiveness": 9, "imageQuality": 9, "interactionQuality": 9, "factualSafety": 9, "codeCleanliness": 9},
+  "dimensionScores": {"visualPremiumFeel": 9, "visualMagnetism": 9, "brandSpecificity": 9, "sectionDepth": 9, "conversionClarity": 9, "seoCompleteness": 9, "mobileResponsiveness": 9, "imageQuality": 9, "interactionQuality": 9, "factualSafety": 9, "codeCleanliness": 9},
   "rejectionReasons": [],
   "revisionBrief": "specific improvement brief"
 }`;
@@ -974,6 +1032,8 @@ Revision rules:
 - Preserve verified facts exactly.
 - Do not invent testimonials, ratings, awards, certifications, prices, guarantees, addresses, phone numbers, or years in business.
 - Make it visibly more premium, custom, image-led, business-specific, and conversion-focused.
+- If visual magnetism is weak, rewrite the hero, services, and showcase sections with a stronger first-screen visual hook, bolder typography scale, layered niche photography, varied section rhythm, and a distinctive motif tied to the business category.
+- Keep the result tasteful and credible; eye-catching should come from composition, imagery, type contrast, spacing, and craft rather than gimmicks.
 - Ensure strong SEO head, JSON-LD, sticky responsive nav, cinematic hero, at least 8 sections, FAQ accordion, scroll reveal, polished footer, and no horizontal overflow.`;
 
   const result = await generateFinalHtml(prompt);
