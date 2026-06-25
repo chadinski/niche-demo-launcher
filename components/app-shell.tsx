@@ -20,7 +20,7 @@ import { useEffect, useId, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { buttonClass } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
-import { clearGenerationStorage } from "@/lib/generation/session";
+import { clearWorkspaceStorage } from "@/lib/generation/session";
 
 const navigation = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -55,7 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     setSigningOut(true);
-    clearGenerationStorage();
+    clearWorkspaceStorage();
     const supabase = createClient();
     if (supabase) {
       await supabase.auth.signOut();
