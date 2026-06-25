@@ -97,6 +97,12 @@ const messageTabs: Array<{ key: keyof SalesMessages; label: string }> = [
 
 type BusyAction = "image" | "parse" | "website" | "message" | "both" | "save" | "deploy" | null;
 type GenerationMode = "standard" | "more-luxury" | "more-local" | "more-bold";
+type ModelMetadata = {
+  stage: string;
+  provider: string;
+  model: string;
+  fallback: boolean;
+};
 
 const generationModes: Array<{ key: GenerationMode; label: string; directive: string }> = [
   { key: "standard", label: "Balanced", directive: "" },
@@ -264,12 +270,7 @@ export function DemoWorkspace() {
   const [sectionOutputs, setSectionOutputs] = useState<SectionOutput[]>([]);
   const [skippedSections, setSkippedSections] = useState<string[]>([]);
   const [generationErrors, setGenerationErrors] = useState<GenerationError[]>([]);
-  const [modelMetadata, setModelMetadata] = useState<Array<{
-    stage: string;
-    provider: string;
-    model: string;
-    fallback: boolean;
-  }>>([]);
+  const [modelMetadata, setModelMetadata] = useState<ModelMetadata[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const generationIdRef = useRef(generationId);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -426,6 +427,20 @@ export function DemoWorkspace() {
     if (toastMessage) toast.success(toastMessage);
   }, [imagePreview]);
 
+  const clearGeneratedArtifacts = useCallback(() => {
+    setHtml("");
+    setMessages(null);
+    setOutputTab("preview");
+    setProspectId(null);
+    setConfirmSent(false);
+    setGenerationPlan(null);
+    setSectionOutputs([]);
+    setSkippedSections([]);
+    setGenerationErrors([]);
+    setModelMetadata([]);
+    clearGenerationStorage();
+  }, []);
+
   const updateInfo = useCallback(
     (key: keyof BusinessInfo, value: string) => {
       const nextInfo = { ...info, [key]: value };
@@ -469,7 +484,7 @@ export function DemoWorkspace() {
       sourceInfo: BusinessInfo,
       understanding: BusinessUnderstanding,
       activeGenerationId: string,
-      metadata?: { stage: string; provider: string; model: string; fallback: boolean },
+      metadata?: ModelMetadata,
     ) => {
       if (!isActiveGeneration(activeGenerationId)) return null;
       const populated = Object.fromEntries(
@@ -516,7 +531,7 @@ export function DemoWorkspace() {
       const payload = (await response.json()) as {
         generationId?: string;
         understanding?: BusinessUnderstanding;
-        modelMetadata?: { stage: string; provider: string; model: string; fallback: boolean };
+        modelMetadata?: ModelMetadata;
         error?: string;
       };
 
@@ -553,6 +568,7 @@ export function DemoWorkspace() {
     runAction(
       "parse",
       async (activeGenerationId) => {
+        clearGeneratedArtifacts();
         await analyzeBusinessWithOpenAI(info, activeGenerationId);
       },
       "AI business intelligence extracted - review before generating",
@@ -571,7 +587,6 @@ export function DemoWorkspace() {
   };
 
   const importBusinessImage = async (file: File) => {
-    const activeGenerationId = generationIdRef.current;
     if (!file.type.startsWith("image/")) {
       toast.error("Choose a PNG, JPG, WebP, or other image file");
       return;
@@ -581,9 +596,33 @@ export function DemoWorkspace() {
       return;
     }
 
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    const activeGenerationId = createGenerationId();
+    generationIdRef.current = activeGenerationId;
+    setGenerationId(activeGenerationId);
+    clearGenerationStorage();
     if (imagePreview) URL.revokeObjectURL(imagePreview);
+    const freshInfo = emptyBusinessInfo();
+    setInfo(freshInfo);
+    setHtml("");
+    setMessages(null);
+    setOutputTab("preview");
+    setMessageTab("whatsapp");
+    setProspectId(null);
+    setConfirmSent(false);
+    setBusinessUnderstanding(null);
+    setBusinessReport("");
+    setExtractionReviewed(false);
+    setGenerationMode("standard");
+    setGenerationPlan(null);
+    setSectionOutputs([]);
+    setSkippedSections([]);
+    setGenerationErrors([]);
+    setModelMetadata([]);
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
+    setImageDataUrl("");
     setBusy("image");
     setOcrProgress(0.04);
 
@@ -591,12 +630,8 @@ export function DemoWorkspace() {
       const dataUrl = await readFileAsDataUrl(file);
       if (!isActiveGeneration(activeGenerationId)) return;
       setImageDataUrl(dataUrl);
-      const nextInfo = {
-        ...info,
-        rawInfo: info.rawInfo,
-      };
       setOcrProgress(0.35);
-      await analyzeBusinessWithOpenAI(nextInfo, activeGenerationId, {
+      await analyzeBusinessWithOpenAI(freshInfo, activeGenerationId, {
         imageName: file.name,
         imageDataUrl: dataUrl,
       });
@@ -644,7 +679,15 @@ export function DemoWorkspace() {
       const payload = (await response.json()) as {
         generationId?: string;
         html?: string;
-        modelMetadata?: { stage: string; provider: string; model: string; fallback: boolean };
+        modelMetadata?: ModelMetadata;
+        pipelineModelMetadata?: ModelMetadata[];
+        generationPlan?: GenerationPlan;
+        qualityGate?: {
+          score: number;
+          passed: boolean;
+          rejectionReasons: string[];
+          revisionBrief?: string;
+        };
         error?: string;
       };
 
@@ -662,6 +705,9 @@ export function DemoWorkspace() {
       return {
         html: payload.html,
         modelMetadata: payload.modelMetadata,
+        pipelineModelMetadata: payload.pipelineModelMetadata,
+        generationPlan: payload.generationPlan,
+        qualityGate: payload.qualityGate,
       };
     },
     [businessUnderstanding, generationMode, isActiveGeneration],
@@ -681,13 +727,14 @@ export function DemoWorkspace() {
       "website",
       async (activeGenerationId) => {
         requireGenerationReady();
+        clearGeneratedArtifacts();
         const nextInfo = buildGenerationInfo();
         const generated = await requestAIWebsiteHTML(nextInfo, activeGenerationId);
         if (!generated) return;
         const nextHtml = generated.html;
         const nextAudit = auditWebsite(nextHtml, nextInfo);
         if (!isActiveGeneration(activeGenerationId)) return;
-        const nextPlan: GenerationPlan = {
+        const nextPlan: GenerationPlan = generated.generationPlan ?? {
           generationId: activeGenerationId,
           stage: "planning",
           summary: `${nextInfo.businessName} ${nextInfo.category} website plan`,
@@ -706,13 +753,13 @@ export function DemoWorkspace() {
         setGenerationErrors([]);
         setHtml(nextHtml);
         setOutputTab("preview");
-        const websiteModelMetadata = generated.modelMetadata;
-        const nextModelMetadata = websiteModelMetadata
-          ? [...modelMetadata.filter((item) => item.stage !== websiteModelMetadata.stage), websiteModelMetadata]
-          : modelMetadata;
-        if (websiteModelMetadata) {
-          setModelMetadata(nextModelMetadata);
-        }
+        const receivedMetadata = generated.pipelineModelMetadata?.length
+          ? generated.pipelineModelMetadata
+          : generated.modelMetadata
+            ? [generated.modelMetadata]
+            : [];
+        const nextModelMetadata = receivedMetadata;
+        setModelMetadata(nextModelMetadata);
         const prospect = buildProspect({
           info: nextInfo,
           html: nextHtml,
@@ -723,7 +770,9 @@ export function DemoWorkspace() {
         });
         saveProspect(prospect);
         setProspectId(prospect.id);
-        if (!nextAudit.passed) {
+        if (generated.qualityGate && !generated.qualityGate.passed) {
+          toast.warning(`Premium QA revised or flagged this page: ${generated.qualityGate.score}/10`);
+        } else if (!nextAudit.passed) {
           toast.warning(`Quality audit needs review: ${nextAudit.score}/100`);
         }
       },
@@ -745,6 +794,7 @@ export function DemoWorkspace() {
       "both",
       async (activeGenerationId) => {
         requireGenerationReady();
+        clearGeneratedArtifacts();
         const nextInfo = buildGenerationInfo();
         const generated = await requestAIWebsiteHTML(nextInfo, activeGenerationId);
         if (!generated) return;
@@ -752,7 +802,7 @@ export function DemoWorkspace() {
         const nextMessages = generateSalesMessages(nextInfo, tone, DEFAULT_SETTINGS);
         const nextAudit = auditWebsite(nextHtml, nextInfo);
         if (!isActiveGeneration(activeGenerationId)) return;
-        const nextPlan: GenerationPlan = {
+        const nextPlan: GenerationPlan = generated.generationPlan ?? {
           generationId: activeGenerationId,
           stage: "planning",
           summary: `${nextInfo.businessName} ${nextInfo.category} website and outreach plan`,
@@ -772,13 +822,13 @@ export function DemoWorkspace() {
         setHtml(nextHtml);
         setMessages(nextMessages);
         setOutputTab("preview");
-        const websiteModelMetadata = generated.modelMetadata;
-        const nextModelMetadata = websiteModelMetadata
-          ? [...modelMetadata.filter((item) => item.stage !== websiteModelMetadata.stage), websiteModelMetadata]
-          : modelMetadata;
-        if (websiteModelMetadata) {
-          setModelMetadata(nextModelMetadata);
-        }
+        const receivedMetadata = generated.pipelineModelMetadata?.length
+          ? generated.pipelineModelMetadata
+          : generated.modelMetadata
+            ? [generated.modelMetadata]
+            : [];
+        const nextModelMetadata = receivedMetadata;
+        setModelMetadata(nextModelMetadata);
         const prospect = buildProspect({
           info: nextInfo,
           html: nextHtml,
@@ -790,7 +840,9 @@ export function DemoWorkspace() {
         });
         saveProspect(prospect);
         setProspectId(prospect.id);
-        if (!nextAudit.passed) {
+        if (generated.qualityGate && !generated.qualityGate.passed) {
+          toast.warning(`Premium QA revised or flagged this page: ${generated.qualityGate.score}/10`);
+        } else if (!nextAudit.passed) {
           toast.warning(`Quality audit needs review: ${nextAudit.score}/100`);
         }
       },
@@ -804,12 +856,7 @@ export function DemoWorkspace() {
     qualityAudit?: QualityAudit | null;
     generationPlan?: GenerationPlan | null;
     sectionOutputs?: SectionOutput[];
-    modelMetadata?: Array<{
-      stage: string;
-      provider: string;
-      model: string;
-      fallback: boolean;
-    }>;
+    modelMetadata?: ModelMetadata[];
   } = {}): Prospect => {
     const now = new Date().toISOString();
     const prospectInfo = overrides.info ?? info;

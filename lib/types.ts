@@ -82,6 +82,14 @@ export interface BusinessIntelligence {
     stage: "planning";
     summary: string;
     sectionIds: string[];
+    premiumPlan?: unknown;
+    qualityGate?: {
+      score: number;
+      passed: boolean;
+      rejectionReasons: string[];
+      revisionBrief?: string;
+    };
+    revisionCount?: number;
   } | null;
   sectionOutputs?: Array<{
     generationId: string;

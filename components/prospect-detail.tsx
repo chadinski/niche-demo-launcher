@@ -30,7 +30,8 @@ import { useProspects } from "@/components/prospect-provider";
 import { StatusBadge } from "@/components/status-badge";
 import { Button, Card, EmptyState, buttonClass } from "@/components/ui";
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
-import { generateSalesMessages, generateWebsiteHTML } from "@/lib/generators";
+import { generateSalesMessages } from "@/lib/generators";
+import { createGenerationId, type GenerationPlan } from "@/lib/generation/session";
 import { createPreviewHtml } from "@/lib/generation/preview";
 import { generateBusinessIntelligence } from "@/lib/automation/business-intelligence";
 import { nextFollowUpDate } from "@/lib/automation/follow-ups";
@@ -40,6 +41,12 @@ import type { BusinessInfo, OutreachStatus, Prospect } from "@/lib/types";
 import { cn, externalHref, formatDate, phoneDigits } from "@/lib/utils";
 
 type DetailTab = "profile" | "website" | "messages" | "activity";
+type ModelMetadata = {
+  stage: string;
+  provider: string;
+  model: string;
+  fallback: boolean;
+};
 
 export function ProspectDetail() {
   const params = useParams<{ id: string }>();
@@ -49,6 +56,7 @@ export function ProspectDetail() {
   const [tab, setTab] = useState<DetailTab>("profile");
   const [confirmStatus, setConfirmStatus] = useState<OutreachStatus | null>(null);
   const [deploying, setDeploying] = useState(false);
+  const [regeneratingWebsite, setRegeneratingWebsite] = useState(false);
 
   if (!prospect && !hydrated) {
     return <div className="panel min-h-96 animate-pulse bg-white" />;
@@ -100,14 +108,71 @@ export function ProspectDetail() {
     URL.revokeObjectURL(url);
   };
 
-  const regenerateWebsite = () => {
-    const nextHtml = generateWebsiteHTML(info);
-    updateProspect(prospect.id, {
-      generated_website_html: nextHtml,
-      website_quality_audit: auditWebsite(nextHtml, info),
-      outreach_status: "demo_generated",
-    });
-    toast.success("Website regenerated");
+  const regenerateWebsite = async () => {
+    const activeGenerationId = createGenerationId();
+    setRegeneratingWebsite(true);
+
+    try {
+      const response = await fetch("/api/generate-website", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          generationId: activeGenerationId,
+          info,
+          generationMode: "more-luxury",
+          businessUnderstanding: prospect.business_intelligence,
+        }),
+      });
+      const payload = (await response.json()) as {
+        generationId?: string;
+        html?: string;
+        modelMetadata?: ModelMetadata;
+        pipelineModelMetadata?: ModelMetadata[];
+        generationPlan?: GenerationPlan;
+        qualityGate?: {
+          score: number;
+          passed: boolean;
+          rejectionReasons: string[];
+          revisionBrief?: string;
+        };
+        error?: string;
+      };
+
+      if (payload.generationId !== activeGenerationId || !response.ok || !payload.html) {
+        throw new Error(payload.error || "Premium website regeneration failed.");
+      }
+
+      const nextMetadata = payload.pipelineModelMetadata?.length
+        ? payload.pipelineModelMetadata
+        : payload.modelMetadata
+          ? [payload.modelMetadata]
+          : prospect.business_intelligence?.modelMetadata ?? [];
+
+      updateProspect(prospect.id, {
+        generated_website_html: payload.html,
+        website_quality_audit: auditWebsite(payload.html, info),
+        outreach_status: "demo_generated",
+        business_intelligence: {
+          ...intelligence,
+          ...prospect.business_intelligence,
+          generationId: activeGenerationId,
+          generationMode: "more-luxury",
+          generationPlan: payload.generationPlan ?? prospect.business_intelligence?.generationPlan ?? null,
+          modelMetadata: nextMetadata,
+        },
+      });
+
+      if (payload.qualityGate && !payload.qualityGate.passed) {
+        toast.warning(`Premium regeneration completed with QA notes: ${payload.qualityGate.score}/10`);
+      } else {
+        toast.success("Premium website regenerated");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Premium website regeneration failed.");
+    } finally {
+      setRegeneratingWebsite(false);
+    }
   };
 
   const regenerateMessages = () => {
@@ -215,9 +280,9 @@ export function ProspectDetail() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={regenerateWebsite}>
+            <Button variant="outline" onClick={regenerateWebsite} loading={regeneratingWebsite}>
               <RefreshCcw className="size-4" />
-              Regenerate Website
+              Regenerate Premium
             </Button>
             <Button variant="outline" onClick={regenerateMessages}>
               <MessageSquareText className="size-4" />
@@ -390,7 +455,7 @@ export function ProspectDetail() {
               icon={<Code2 className="size-5" />}
               title="No website generated"
               description="Generate a complete single-file website for this prospect."
-              action={<Button onClick={regenerateWebsite}>Generate Website</Button>}
+              action={<Button onClick={regenerateWebsite} loading={regeneratingWebsite}>Generate Premium</Button>}
             />
           )}
           <div className="border-t border-[#e9eaf0] p-5">
@@ -581,6 +646,8 @@ export function ProspectDetail() {
 }
 
 function prospectToBusinessInfo(prospect: Prospect): BusinessInfo {
+  const servicesMatch = prospect.extracted_summary.match(/Services:\s*([^.]*)/i);
+
   return {
     rawInfo: prospect.pasted_raw_info,
     businessName: prospect.business_name,
@@ -590,7 +657,7 @@ function prospectToBusinessInfo(prospect: Prospect): BusinessInfo {
     email: prospect.email,
     websiteUrl: prospect.website_url,
     socialUrl: prospect.social_url,
-    services: "",
+    services: servicesMatch?.[1]?.trim() ?? "",
     brandColors: "",
     notes: prospect.notes,
     painPoints: "",
