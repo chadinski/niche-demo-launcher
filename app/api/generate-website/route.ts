@@ -364,6 +364,28 @@ function safeDebug(generationId: string, label: string, data: Record<string, unk
   console.info(`[premium-generation:${generationId}] ${label}`, data);
 }
 
+function buildMagicUiReferenceBrief(cleanBusinessData: CleanBusinessData) {
+  return [
+    "Reference library: Magic UI (https://github.com/magicuidesign/magicui).",
+    "Use Magic UI as aesthetic and interaction inspiration only. Do not copy source code, imports, React components, Tailwind classes, package names, registry commands, or Magic UI branding into the generated website.",
+    "Translate the strongest ideas into original single-file HTML/CSS/JS patterns that work without React, Tailwind, Framer Motion, shadcn, npm packages, or external JavaScript.",
+    `Business fit: choose only effects that support ${cleanBusinessData.companyName} as a ${cleanBusinessData.businessType}. Local service, hospitality, beauty, trade, care, retail, and professional businesses should feel polished and alive, not like generic AI/SaaS demos.`,
+    "Useful Magic UI pattern families to adapt:",
+    "- Hero depth: warp-background, animated-grid-pattern, retro-grid, dot/grid/hex/striped patterns, light-rays, noise-texture, and particles translated into CSS pseudo-elements, gradients, masks, and subtle keyframes.",
+    "- Layout systems: bento-grid, animated-list, progressive-blur, and visual montage translated into varied section rhythm, layered cards, asymmetric feature/service groups, and polished reveal states.",
+    "- Trust/proof movement: marquee and avatar-circles translated into slow, optional, accessible proof rails only when real logos/reviews/people exist; otherwise use static verified fact rails or clearly labeled placeholders.",
+    "- Card polish: magic-card, border-beam, shine-border, glare-hover, neon-gradient-card, and backlight translated into tasteful hover highlights, moving border sheens, light sweeps, and depth tied to the brand palette.",
+    "- Text emphasis: blur-fade, text-animate, aurora-text, line-shadow-text, text-reveal, highlighter, and animated-gradient-text translated into restrained headline accents, staggered reveals, and highlighted phrases.",
+    "- CTA polish: shiny-button, shimmer-button, ripple-button, interactive-hover-button, and pulsating-button translated into one consistent primary CTA treatment with focus-visible states and no layout shift.",
+    "Selection rules:",
+    "- Pick one primary Magic UI-inspired pattern and one supporting effect per page. Do not stack many effects in one viewport.",
+    "- Motion must clarify hierarchy or make the page feel premium; never hide essential content until JavaScript runs.",
+    "- Use CSS-only or tiny guarded vanilla JS. Include prefers-reduced-motion support.",
+    "- Effects must preserve contrast, readability, mobile performance, and no-horizontal-overflow behavior.",
+    "- Avoid confetti, cursor replacements, comic text, fake social proof, fake avatars, and developer-product visuals unless the business context truly calls for them.",
+  ].join("\n");
+}
+
 function fallbackPremiumWebsitePlan(
   cleanBusinessData: CleanBusinessData,
   designInspiration: string,
@@ -934,7 +956,8 @@ Visual magnetism review:
 - Score below 8 if the first viewport is a normal centered hero with no memorable image composition.
 - Score below 8 if services/showcase/process all use the same card-grid rhythm.
 - Score below 8 if imagery is present but not treated as a designed composition.
-- Score 9+ only when the page has a strong visual hook, niche-specific photography direction, bold but controlled typography, varied section rhythm, and at least one distinctive motif.
+- Score below 8 if the page has no refined reference-library-inspired effect, such as a subtle animated background, border sheen, light-ray/noise layer, bento rhythm, progressive blur, shimmer CTA, or tactile card hover.
+- Score 9+ only when the page has a strong visual hook, niche-specific photography direction, bold but controlled typography, varied section rhythm, and at least one distinctive motif inspired by the reference library but implemented as original single-file HTML/CSS/JS.
 
 Return exactly:
 {
@@ -1033,6 +1056,7 @@ Revision rules:
 - Do not invent testimonials, ratings, awards, certifications, prices, guarantees, addresses, phone numbers, or years in business.
 - Make it visibly more premium, custom, image-led, business-specific, and conversion-focused.
 - If visual magnetism is weak, rewrite the hero, services, and showcase sections with a stronger first-screen visual hook, bolder typography scale, layered niche photography, varied section rhythm, and a distinctive motif tied to the business category.
+- Add exactly one primary Magic UI-inspired pattern translated into original CSS/JS, such as a subtle animated grid/noise/light layer, border-beam-style card highlight, shimmer CTA, bento service rhythm, progressive blur, or tactile glare hover. Do not add React, Tailwind, imports, external JavaScript, or Magic UI branding.
 - Keep the result tasteful and credible; eye-catching should come from composition, imagery, type contrast, spacing, and craft rather than gimmicks.
 - Ensure strong SEO head, JSON-LD, sticky responsive nav, cinematic hero, at least 8 sections, FAQ accordion, scroll reveal, polished footer, and no horizontal overflow.`;
 
@@ -1074,7 +1098,14 @@ export async function POST(request: Request) {
       dataConfidence: cleanBusinessData.dataConfidence,
     });
 
-    const designInspiration = await buildDesignInspirationBrief(parsed.data.info);
+    const liveDesignInspiration = await buildDesignInspirationBrief(parsed.data.info);
+    const magicUiReference = buildMagicUiReferenceBrief(cleanBusinessData);
+    const designInspiration = [liveDesignInspiration, magicUiReference].join("\n\n");
+    safeDebug(generationId, "reference-library", {
+      source: "magicuidesign/magicui",
+      mode: "single-file-html-css-js-adaptation",
+      promptLength: magicUiReference.length,
+    });
     const planResult = await generatePremiumWebsitePlan(
       cleanBusinessData,
       designInspiration,
