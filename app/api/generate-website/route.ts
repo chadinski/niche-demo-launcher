@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRoutesForStage, type ModelRoute } from "@/lib/ai/modelRouter";
+import { selectTemplatePack, type SelectedTemplatePack } from "@/lib/generation/template-packs";
 
 const businessInfoSchema = z.object({
   rawInfo: z.string().default(""),
@@ -390,6 +391,7 @@ function fallbackPremiumWebsitePlan(
   cleanBusinessData: CleanBusinessData,
   designInspiration: string,
   generationMode: string,
+  templatePack: SelectedTemplatePack,
 ): PremiumWebsitePlan {
   const serviceLabel = cleanBusinessData.services.slice(0, 3).join(", ") || cleanBusinessData.businessType;
   const imageDirection = photoDirection({
@@ -400,12 +402,12 @@ function fallbackPremiumWebsitePlan(
   });
 
   return {
-    businessPositioning: `${cleanBusinessData.companyName} should feel like a credible, composed ${cleanBusinessData.businessType} choice with a custom local presence instead of a generic brochure.`,
+    businessPositioning: `${cleanBusinessData.companyName} should feel like a credible, composed ${cleanBusinessData.businessType} choice with a custom local presence instead of a generic brochure. Use the ${templatePack.name} internal template pack as the structural starting point, then customize it to the verified business data.`,
     targetCustomer: cleanBusinessData.targetAudience,
     emotionalHook: `Make the visitor feel that ${cleanBusinessData.companyName} is organized, trustworthy, and worth contacting before they compare alternatives.`,
     conversionGoal: cleanBusinessData.phone || cleanBusinessData.email ? "Drive a direct call, email, or enquiry using verified contact paths." : "Drive a low-friction enquiry with clearly labeled demo placeholders for missing contact details.",
     visualHook: `Create one poster-worthy first-screen idea for ${cleanBusinessData.businessType}: oversized editorial type, niche-matched hero photography, layered service detail cards, and a visible motif that could only belong to this business category.`,
-    visualDirection: `${modeDirection(generationMode)} Make the first 5 seconds visually magnetic: bold but tasteful scale contrast, asymmetric media, rich section rhythm, and one memorable motif tied to ${cleanBusinessData.businessType}; avoid generic card grids and text-only sections. ${compactText(designInspiration, 700)}`,
+    visualDirection: `${modeDirection(generationMode)} Make the first 5 seconds visually magnetic: bold but tasteful scale contrast, asymmetric media, rich section rhythm, and one memorable motif tied to ${cleanBusinessData.businessType}; avoid generic card grids and text-only sections. Internal template direction: ${compactText(templatePack.brief, 850)} ${compactText(designInspiration, 700)}`,
     colorSystem: cleanBusinessData.visibleColors.length
       ? `Elevate the visible palette (${cleanBusinessData.visibleColors.join(", ")}) with deep neutrals, soft surfaces, and one disciplined accent.`
       : "Create a refined palette from industry cues: deep neutral base, warm surface colors, and one confident accent.",
@@ -433,7 +435,12 @@ function fallbackPremiumWebsitePlan(
   };
 }
 
-function buildPlanPrompt(cleanBusinessData: CleanBusinessData, designInspiration: string, generationMode: string) {
+function buildPlanPrompt(
+  cleanBusinessData: CleanBusinessData,
+  designInspiration: string,
+  generationMode: string,
+  templatePack: SelectedTemplatePack,
+) {
   return `You are a senior creative director and conversion strategist for premium local-business website demos.
 
 Create a business-specific PremiumWebsitePlan as JSON only. Do not return markdown.
@@ -443,6 +450,9 @@ ${JSON.stringify(cleanBusinessData, null, 2)}
 
 Premium landing-page inspiration research:
 ${designInspiration}
+
+SERAPHIM INTERNAL TEMPLATE PACK:
+${templatePack.brief}
 
 Generation direction: ${modeDirection(generationMode)}
 
@@ -472,6 +482,7 @@ Return exactly this JSON shape:
 
 Rules:
 - Include at least 9 meaningful sections, including header, cinematic hero, trust bridge, services/products, differentiator/story, visual showcase, process, FAQ, contact/footer.
+- Use the selected Seraphim template pack as the structure and design DNA for this plan, but make the final plan specific to this business. Do not copy external template code or exact layouts.
 - Do not invent reviews, awards, prices, certifications, addresses, phone numbers, years in business, or guarantees.
 - Make the plan specific to the business type, visible colors, services, audience, and missing data.
 - The plan should force a custom, expensive, image-led website rather than a generic template.
@@ -527,7 +538,7 @@ function normalizePlan(value: unknown, fallback: PremiumWebsitePlan): PremiumWeb
 function buildPremiumWebsitePrompt(
   cleanBusinessData: CleanBusinessData,
   premiumWebsitePlan: PremiumWebsitePlan,
-  options: { designInspiration: string; generationMode: string },
+  options: { designInspiration: string; generationMode: string; templatePack: SelectedTemplatePack },
 ) {
   return `You are a senior creative director, conversion copywriter, and elite frontend engineer.
 
@@ -543,6 +554,9 @@ ${JSON.stringify(premiumWebsitePlan, null, 2)}
 
 PREMIUM REFERENCE AND PHOTO RESEARCH:
 ${options.designInspiration}
+
+SERAPHIM INTERNAL TEMPLATE PACK:
+${options.templatePack.brief}
 
 GENERATION DIRECTION:
 ${modeDirection(options.generationMode)}
@@ -562,6 +576,7 @@ TECH RULES:
 - No external JavaScript.
 - Remote images are allowed from reliable royalty-free sources.
 - Must open directly in a browser.
+- The selected template pack is an internal blueprint for section architecture, image direction, and component motifs. Do not copy external template source code, class names, branded assets, exact copy, or distinctive compositions.
 
 DESIGN STANDARD:
 The page must feel custom, expensive, modern, high-converting, and specific to this business.
@@ -626,6 +641,7 @@ Create a custom visual identity based on:
 - local market
 - industry mood
 - customer pain points
+- selected Seraphim template pack: ${options.templatePack.name}
 
 The CSS must include:
 - design tokens
@@ -654,6 +670,7 @@ QUALITY BAR:
 Before finalizing, mentally compare the result to premium reference \`index.html\` files.
 If it feels basic, rewrite it until it feels premium.
 If it feels merely clean but not eye-catching, rewrite the hero, showcase, and service section until they have stronger visual energy.
+If it ignores the selected Seraphim template pack's industry-specific structure, rebuild the page around that pack while preserving verified facts.
 The result should feel like a serious designer and senior frontend engineer built it.
 
 Hard requirements:
@@ -777,9 +794,10 @@ async function generatePremiumWebsitePlan(
   designInspiration: string,
   generationMode: string,
   generationId: string,
+  templatePack: SelectedTemplatePack,
 ) {
-  const fallback = fallbackPremiumWebsitePlan(cleanBusinessData, designInspiration, generationMode);
-  const prompt = buildPlanPrompt(cleanBusinessData, designInspiration, generationMode);
+  const fallback = fallbackPremiumWebsitePlan(cleanBusinessData, designInspiration, generationMode, templatePack);
+  const prompt = buildPlanPrompt(cleanBusinessData, designInspiration, generationMode, templatePack);
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("planning")) {
@@ -923,7 +941,12 @@ function heuristicQualityGate(html: string, cleanBusinessData: CleanBusinessData
   };
 }
 
-function buildQaPrompt(html: string, cleanBusinessData: CleanBusinessData, premiumWebsitePlan: PremiumWebsitePlan) {
+function buildQaPrompt(
+  html: string,
+  cleanBusinessData: CleanBusinessData,
+  premiumWebsitePlan: PremiumWebsitePlan,
+  templatePack: SelectedTemplatePack,
+) {
   return `You are a strict premium website QA reviewer.
 
 Score this generated single-file website from 1-10 against the rubric. Return JSON only.
@@ -933,6 +956,9 @@ ${JSON.stringify(cleanBusinessData, null, 2)}
 
 Premium plan:
 ${JSON.stringify(premiumWebsitePlan, null, 2)}
+
+Selected Seraphim template pack:
+${templatePack.brief}
 
 HTML to review:
 ${html.slice(0, 70000)}
@@ -951,6 +977,7 @@ Rubric dimensions:
 - codeCleanliness
 
 Hard reject if it looks like Bootstrap, generic SaaS, lacks business-specific visual identity, has fewer than 8 meaningful sections, misses SEO/schema/nav/FAQ/scroll reveal, invents fake proof, is placeholder-heavy when data exists, or feels clean but not visually memorable.
+Hard reject if the page ignores the selected industry template pack and falls back to a generic landing-page structure.
 
 Visual magnetism review:
 - Score below 8 if the first viewport is a normal centered hero with no memorable image composition.
@@ -991,13 +1018,14 @@ async function scoreGeneratedWebsite(
   html: string,
   cleanBusinessData: CleanBusinessData,
   premiumWebsitePlan: PremiumWebsitePlan,
+  templatePack: SelectedTemplatePack,
 ) {
   const heuristic = heuristicQualityGate(html, cleanBusinessData);
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("qa")) {
     try {
-      const text = await generateTextWithRoute(buildQaPrompt(html, cleanBusinessData, premiumWebsitePlan), route, {
+      const text = await generateTextWithRoute(buildQaPrompt(html, cleanBusinessData, premiumWebsitePlan, templatePack), route, {
         temperature: 0.2,
         maxOutputTokens: 6000,
       });
@@ -1034,6 +1062,7 @@ async function reviseGeneratedWebsite(
   cleanBusinessData: CleanBusinessData,
   premiumWebsitePlan: PremiumWebsitePlan,
   qualityGate: QualityGate,
+  templatePack: SelectedTemplatePack,
 ) {
   const prompt = `You are an elite frontend engineer revising a weak generated landing page.
 
@@ -1048,6 +1077,9 @@ ${JSON.stringify(cleanBusinessData, null, 2)}
 Premium plan:
 ${JSON.stringify(premiumWebsitePlan, null, 2)}
 
+Selected Seraphim template pack:
+${templatePack.brief}
+
 Existing HTML:
 ${html.slice(0, 90000)}
 
@@ -1055,6 +1087,7 @@ Revision rules:
 - Preserve verified facts exactly.
 - Do not invent testimonials, ratings, awards, certifications, prices, guarantees, addresses, phone numbers, or years in business.
 - Make it visibly more premium, custom, image-led, business-specific, and conversion-focused.
+- Rebuild around the selected Seraphim template pack's industry structure, motifs, and image strategy if the existing HTML drifted into a generic layout.
 - If visual magnetism is weak, rewrite the hero, services, and showcase sections with a stronger first-screen visual hook, bolder typography scale, layered niche photography, varied section rhythm, and a distinctive motif tied to the business category.
 - Add exactly one primary Magic UI-inspired pattern translated into original CSS/JS, such as a subtle animated grid/noise/light layer, border-beam-style card highlight, shimmer CTA, bento service rhythm, progressive blur, or tactile glare hover. Do not add React, Tailwind, imports, external JavaScript, or Magic UI branding.
 - Keep the result tasteful and credible; eye-catching should come from composition, imagery, type contrast, spacing, and craft rather than gimmicks.
@@ -1089,6 +1122,13 @@ export async function POST(request: Request) {
 
   try {
     const cleanBusinessData = buildCleanBusinessData(parsed.data);
+    const selectedTemplatePack = selectTemplatePack({
+      businessType: cleanBusinessData.businessType,
+      visibleDescription: cleanBusinessData.visibleDescription,
+      services: cleanBusinessData.services,
+      products: cleanBusinessData.products,
+      targetAudience: cleanBusinessData.targetAudience,
+    });
     safeDebug(generationId, "clean-data", {
       companyName: cleanBusinessData.companyName,
       businessType: cleanBusinessData.businessType,
@@ -1096,6 +1136,13 @@ export async function POST(request: Request) {
       colors: cleanBusinessData.visibleColors.length,
       missingFields: cleanBusinessData.missingFields,
       dataConfidence: cleanBusinessData.dataConfidence,
+    });
+    safeDebug(generationId, "template-pack", {
+      id: selectedTemplatePack.id,
+      name: selectedTemplatePack.name,
+      qualityTier: selectedTemplatePack.qualityTier,
+      matchedKeywords: selectedTemplatePack.matchedKeywords,
+      sourceModes: selectedTemplatePack.sources.map((source) => `${source.name}:${source.mode}`),
     });
 
     const liveDesignInspiration = await buildDesignInspirationBrief(parsed.data.info);
@@ -1111,6 +1158,7 @@ export async function POST(request: Request) {
       designInspiration,
       parsed.data.generationMode,
       generationId,
+      selectedTemplatePack,
     );
     pipelineMetadata.push(planResult.metadata);
     safeDebug(generationId, "premium-plan", {
@@ -1122,17 +1170,19 @@ export async function POST(request: Request) {
     const prompt = buildPremiumWebsitePrompt(cleanBusinessData, planResult.plan, {
       designInspiration,
       generationMode: parsed.data.generationMode,
+      templatePack: selectedTemplatePack,
     });
     safeDebug(generationId, "final-prompt", {
       length: prompt.length,
       generationMode: parsed.data.generationMode,
+      templatePack: selectedTemplatePack.id,
       sectionRoutes: getRoutesForStage("section").map((route) => `${route.provider}:${route.model}`),
     });
 
     let generation = await generateFinalHtml(prompt);
     pipelineMetadata.push(generation.metadata);
 
-    let qa = await scoreGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan);
+    let qa = await scoreGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, selectedTemplatePack);
     pipelineMetadata.push(qa.metadata);
     let revisionCount = 0;
     safeDebug(generationId, "quality-gate", {
@@ -1142,7 +1192,7 @@ export async function POST(request: Request) {
     });
 
     if (!qa.gate.passed) {
-      const revision = await reviseGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, qa.gate);
+      const revision = await reviseGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, qa.gate, selectedTemplatePack);
       generation = {
         html: revision.html,
         metadata: revision.metadata,
@@ -1151,7 +1201,7 @@ export async function POST(request: Request) {
       pipelineMetadata.push(revision.metadata);
       revisionCount = 1;
 
-      qa = await scoreGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan);
+      qa = await scoreGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, selectedTemplatePack);
       pipelineMetadata.push(qa.metadata);
       safeDebug(generationId, "quality-gate-after-revision", {
         score: qa.gate.score,
@@ -1173,6 +1223,7 @@ export async function POST(request: Request) {
           summary: planResult.plan.businessPositioning,
           sectionIds: planResult.plan.sectionList.map((section) => section.id),
           premiumPlan: planResult.plan,
+          selectedTemplatePack,
           qualityGate: qa.gate,
           revisionCount,
         },
