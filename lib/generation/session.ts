@@ -26,6 +26,7 @@ export type GenerationPlan = {
   summary: string;
   sectionIds: string[];
   premiumPlan?: unknown;
+  selectedTemplatePack?: unknown;
   qualityGate?: {
     score: number;
     passed: boolean;
