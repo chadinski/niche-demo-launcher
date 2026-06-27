@@ -121,6 +121,7 @@ export function ProspectDetail() {
           generationId: activeGenerationId,
           info,
           generationMode: "more-luxury",
+          imageName: prospect.business_intelligence?.screenshotName ?? "",
           businessUnderstanding: prospect.business_intelligence,
         }),
       });
@@ -141,6 +142,10 @@ export function ProspectDetail() {
 
       if (payload.generationId !== activeGenerationId || !response.ok || !payload.html) {
         throw new Error(payload.error || "Premium website regeneration failed.");
+      }
+
+      if (!payload.generationPlan?.seraphimGenerator) {
+        throw new Error("Regeneration did not return a Seraphim Generator plan. Clear the prospect output and regenerate.");
       }
 
       const nextMetadata = payload.pipelineModelMetadata?.length

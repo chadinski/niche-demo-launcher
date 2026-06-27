@@ -33,8 +33,16 @@ function normalizeTemperature(value: unknown): LeadTemperature {
   return value === "Hot" || value === "Warm" || value === "Cold" ? value : "Cold";
 }
 
+function isSeraphimHtml(html: string) {
+  return /data-seraphim-generator=["']true["']/i.test(html) ||
+    /<meta\s+name=["']generator["']\s+content=["']Seraphim Generator["']/i.test(html);
+}
+
 function normalizeProspect(prospect: Prospect): Prospect {
   const status = normalizeStatus(prospect.outreach_status as string);
+  const generatedWebsiteHtml = prospect.generated_website_html ?? "";
+  const keepGeneratedWebsite = !generatedWebsiteHtml || isSeraphimHtml(generatedWebsiteHtml);
+
   return {
     ...prospect,
     outreach_status: status,
@@ -45,7 +53,8 @@ function normalizeProspect(prospect: Prospect): Prospect {
     lead_score_explanation: prospect.lead_score_explanation ?? "",
     recommended_sales_angle: prospect.recommended_sales_angle ?? "",
     business_intelligence: prospect.business_intelligence ?? null,
-    website_quality_audit: prospect.website_quality_audit ?? null,
+    website_quality_audit: keepGeneratedWebsite ? prospect.website_quality_audit ?? null : null,
+    generated_website_html: keepGeneratedWebsite ? generatedWebsiteHtml : "",
     facebook_message: prospect.facebook_message ?? "",
     follow_up_1_message: prospect.follow_up_1_message ?? "",
     follow_up_2_message: prospect.follow_up_2_message ?? "",

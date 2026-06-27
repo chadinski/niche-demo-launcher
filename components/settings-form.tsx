@@ -140,7 +140,7 @@ export function SettingsForm() {
 
         <div className="space-y-5 xl:sticky xl:top-8">
           <Card className="p-5">
-            <SettingsHeader icon={<ShieldCheck className="size-4" />} title="Supabase" description="Authentication, CRM records, templates, and activity logs." />
+            <SettingsHeader icon={<ShieldCheck className="size-4" />} title="Supabase" description="Authentication, CRM records, generated sites, and activity logs." />
             <div className="mt-5 space-y-3">
               <IntegrationRow label="Project URL" variable="NEXT_PUBLIC_SUPABASE_URL" configured={serviceStatus.supabase} />
               <IntegrationRow label="Anon key" variable="NEXT_PUBLIC_SUPABASE_ANON_KEY" configured={serviceStatus.supabase} />

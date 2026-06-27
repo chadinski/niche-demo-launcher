@@ -127,7 +127,7 @@ Key UI paths:
 - `/create` generation workspace
 - `/prospects` CRM list
 - `/prospects/[id]` prospect detail
-- `/templates` reusable templates
+- `/settings` deployment and workspace configuration
 - `/settings` app defaults and integrations
 - `/login` Supabase sign-in
 

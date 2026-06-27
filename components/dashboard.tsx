@@ -146,7 +146,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
               Build the demo. Shape the message. Keep the send manual.
             </h2>
             <p className="mt-5 max-w-xl text-sm leading-6 text-white/62">
-              A focused workspace for one-person agency speed: capture the business, generate a polished private concept, attach the live URL, then approve outreach with context.
+              A focused workspace for one-person agency speed: capture the business, generate a polished Seraphim site, attach the live URL, then approve outreach with context.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link href="/create" className={buttonClass("primary", "min-h-12 px-5")}>

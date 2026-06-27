@@ -15,7 +15,6 @@ export const WORKSPACE_STORAGE_KEYS = [
   ...GENERATION_STORAGE_KEYS,
   "niche-demo-launcher-prospects",
   "niche-demo-launcher-settings",
-  "niche-demo-launcher-templates",
 ] as const;
 
 export type SectionType = "full-page" | "hero" | "services" | "proof" | "cta" | "custom";

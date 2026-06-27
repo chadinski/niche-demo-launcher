@@ -673,6 +673,7 @@ export function DemoWorkspace() {
           generationId: activeGenerationId,
           info: sourceInfo,
           generationMode,
+          imageName: imageFile?.name || "",
           businessUnderstanding,
         }),
       });
@@ -702,6 +703,10 @@ export function DemoWorkspace() {
         throw new Error(payload.error || "AI website generation failed.");
       }
 
+      if (!payload.generationPlan?.seraphimGenerator) {
+        throw new Error("Website generation did not return a Seraphim Generator plan. Clear the run and regenerate.");
+      }
+
       return {
         html: payload.html,
         modelMetadata: payload.modelMetadata,
@@ -710,7 +715,7 @@ export function DemoWorkspace() {
         qualityGate: payload.qualityGate,
       };
     },
-    [businessUnderstanding, generationMode, isActiveGeneration],
+    [businessUnderstanding, generationMode, imageFile, isActiveGeneration],
   );
 
   const requireGenerationReady = useCallback(() => {
