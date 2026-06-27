@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getRoutesForStage, type ModelRoute } from "@/lib/ai/modelRouter";
-import { selectTemplatePack, type SelectedTemplatePack } from "@/lib/generation/template-packs";
 
 const businessInfoSchema = z.object({
   rawInfo: z.string().default(""),
@@ -85,6 +84,19 @@ type PremiumWebsitePlan = {
   seoKeywordStrategy: string;
   animationMicrointeractionStrategy: string;
   mobileLayoutStrategy: string;
+};
+
+type SeraphimIndustryBrief = {
+  id: string;
+  name: string;
+  matchedSignals: string[];
+  visualThesis: string;
+  pageStory: string[];
+  sectionGuidance: string[];
+  imageStrategy: string[];
+  copyRules: string[];
+  qaPriorities: string[];
+  brief: string;
 };
 
 type QualityGate = {
@@ -387,11 +399,157 @@ function buildMagicUiReferenceBrief(cleanBusinessData: CleanBusinessData) {
   ].join("\n");
 }
 
+const SERAPHIM_GENERATOR_DOCTRINE = [
+  "SERAPHIM GENERATOR IS THE ONLY WEBSITE GENERATION SYSTEM.",
+  "Build from verified business facts, industry fit, conversion strategy, visual thesis, and production QA.",
+  "Do not use template packs, reusable blueprints, generic presets, fixed section recipes, or preselected layout skeletons as the source of structure.",
+  "Every page must choose its own page story based on the business: orientation, value, offer, real proof, objection handling, and conversion.",
+  "Every page must choose an industry-specific visual thesis before styling. The visual language must change materially across industries.",
+  "Never invent testimonials, ratings, awards, certifications, customer counts, prices, guarantees, locations, years in business, menu items, service claims, or performance metrics.",
+  "Do not create fake proof slots that look real. If proof is missing, either omit the proof surface or label the missing material plainly as content needed before launch.",
+  "Do not add generic 'Private Concept' seals, demo badges, fake social proof, fake avatars, meta keywords, logo marquees without real logos, or SaaS/dashboard motifs for non-software businesses.",
+  "Default output is one complete static index.html with semantic HTML, embedded CSS, minimal guarded JavaScript, no build step, no React, no Tailwind, and no external JavaScript.",
+  "Use noindex,nofollow for private demos and omit canonical URLs unless a real production domain is verified.",
+].join("\n");
+
+const industryBriefs = [
+  {
+    id: "hospitality-food",
+    name: "Hospitality and Food",
+    keywords: ["restaurant", "cafe", "bar", "grill", "catering", "bakery", "food", "menu", "dining", "kitchen", "lunch", "dinner"],
+    visualThesis: "Sensory invitation: food-first imagery, warm atmosphere, tactile surfaces, local character, and a fast visit/call/order path.",
+    pageStory: ["Appetite and location", "Cuisine or offer clarity", "Menu or availability confirmation", "Atmosphere or food proof", "Visit/contact decision"],
+    sectionGuidance: ["Use food, atmosphere, location, and call/order/reserve logic as the story spine.", "Do not invent menu items, hours, reviews, delivery, reservations, or prices.", "If the menu is unknown, group sections around call-to-confirm meal occasions."],
+    imageStrategy: ["Use real supplied food or restaurant imagery first.", "Use representative food/hospitality imagery only with honest captions.", "Avoid luxury dining imagery for casual/local restaurants unless the brand supports it."],
+    copyRules: ["Write sensory but factual copy.", "Use call-first language when menu/hours are unknown.", "Preserve cuisine, address, and phone exactly."],
+    qaPriorities: ["first-screen appetite", "clear visit/contact path", "no invented menu or ratings"],
+  },
+  {
+    id: "auto-service",
+    name: "Automotive Service",
+    keywords: ["auto", "automotive", "mechanic", "detailing", "car wash", "garage", "vehicle", "tire", "tyre", "repair", "roadside"],
+    visualThesis: "Capable vehicle care: practical confidence, finish or repair clarity, strong contact paths, and road-ready visual energy.",
+    pageStory: ["Vehicle need", "Service scope", "Care/process", "Visual work proof", "Quote or call"],
+    sectionGuidance: ["Let the type of auto business decide the tone: luxury detailing can be editorial, repair should be practical and direct.", "Do not invent certifications, warranties, emergency coverage, or turnaround claims."],
+    imageStrategy: ["Use vehicle, shop, tool, finish, diagnostic, or road imagery that matches the actual service.", "Before/after framing requires real or clearly representative labeling."],
+    copyRules: ["Write around safety, clarity, pride of ownership, or convenience according to the offer.", "Keep contact and estimate language specific."],
+    qaPriorities: ["phone-first CTA", "service clarity", "no fake guarantees/certifications"],
+  },
+  {
+    id: "care-wellness",
+    name: "Care, Health, Wellness, and Pet Services",
+    keywords: ["clinic", "medical", "doctor", "health", "dental", "wellness", "therapy", "spa", "pet", "grooming", "care"],
+    visualThesis: "Calm trust: gentle hierarchy, approachable surfaces, readable copy, preparation clarity, and low-stress contact.",
+    pageStory: ["Who is cared for", "Services or care options", "Comfort and preparation", "Verified trust facts", "Appointment/enquiry"],
+    sectionGuidance: ["Use calm, spacious layouts and explicit next-step guidance.", "Do not invent practitioners, credentials, medical claims, outcomes, reviews, or pet-care guarantees."],
+    imageStrategy: ["Use real facility/team/patient/pet imagery when supplied.", "Use representative care imagery carefully, without implying actual staff or outcomes."],
+    copyRules: ["Keep claims conservative and helpful.", "Explain what to ask or bring when booking details are unknown."],
+    qaPriorities: ["factual safety", "calm mobile flow", "appointment/enquiry clarity"],
+  },
+  {
+    id: "professional-trust",
+    name: "Professional, Legal, Finance, and Consulting",
+    keywords: ["law", "legal", "attorney", "finance", "insurance", "consulting", "accounting", "professional", "advisor", "agency"],
+    visualThesis: "Composed authority: crisp hierarchy, restrained color, proof from verified facts, and consultation-first structure.",
+    pageStory: ["Problem and audience", "Expertise areas", "Process/fit", "Verified credibility", "Consultation"],
+    sectionGuidance: ["Favor measured copy and clear segmentation over decorative novelty.", "Do not invent credentials, case results, client names, confidentiality promises, or financial outcomes."],
+    imageStrategy: ["Use workspace, documents, city, team, or abstract professional detail imagery that does not imply false staff/client relationships."],
+    copyRules: ["Make expertise clear without overclaiming.", "Use consultation language when pricing/process is unknown."],
+    qaPriorities: ["credibility", "no unsupported outcomes", "clear consultation path"],
+  },
+  {
+    id: "trades-home-local",
+    name: "Trades, Home Services, Retail, and Local Services",
+    keywords: ["construction", "contractor", "plumbing", "electrical", "windows", "doors", "awning", "home", "retail", "store", "supplier", "repair", "installation", "service"],
+    visualThesis: "Practical capability: visible craft, service-area clarity, quote-ready details, durable design, and easy contact.",
+    pageStory: ["Service need", "Capabilities", "Process/scope", "Work or product proof", "Quote/contact"],
+    sectionGuidance: ["Group services around customer intent and quote readiness.", "Do not invent licenses, insurance, warranties, project counts, supplier relationships, or timelines."],
+    imageStrategy: ["Use materials, tools, finished work, storefront, product shelves, job sites, or process detail imagery."],
+    copyRules: ["Ask for scope, location, timing, and contact details.", "Keep claims concrete and practical."],
+    qaPriorities: ["quote clarity", "service area", "visible capability"],
+  },
+  {
+    id: "creative-beauty-events",
+    name: "Creative, Beauty, Fashion, Events, and Portfolio",
+    keywords: ["salon", "beauty", "fashion", "artist", "music", "event", "florist", "photography", "portfolio", "creative"],
+    visualThesis: "Expressive taste with conversion discipline: editorial composition, portfolio energy, clear booking/collaboration paths.",
+    pageStory: ["Creative identity", "Services/occasions", "Portfolio or visual direction", "Process/booking fit", "Enquiry"],
+    sectionGuidance: ["Let visuals lead, but keep booking practical.", "Do not invent client names, press, event history, transformations, or availability."],
+    imageStrategy: ["Use real work first; otherwise representative imagery must be labeled and style-matched."],
+    copyRules: ["Write with personality but avoid unsupported prestige claims.", "Make booking details and unknowns explicit."],
+    qaPriorities: ["visual originality", "booking clarity", "no fake portfolio proof"],
+  },
+  {
+    id: "digital-platform",
+    name: "Digital Products, Apps, and Marketplaces",
+    keywords: ["app", "software", "platform", "marketplace", "saas", "digital", "download", "google play", "web application"],
+    visualThesis: "Product clarity: interface-led storytelling, audience segmentation, feature flow, status honesty, and direct signup/download/contact.",
+    pageStory: ["Product promise", "User/provider paths", "Feature flow", "Availability/status", "Conversion"],
+    sectionGuidance: ["Use product/interface concepts only for digital products.", "Do not invent live features, store URLs, user counts, integrations, or metrics."],
+    imageStrategy: ["Use real screenshots when supplied; otherwise label interface visuals as concepts."],
+    copyRules: ["Separate current facts from planned or placeholder functionality.", "Make download/signup links honest."],
+    qaPriorities: ["product status clarity", "no fake metrics", "audience path clarity"],
+  },
+];
+
+function buildSeraphimIndustryBrief(cleanBusinessData: CleanBusinessData): SeraphimIndustryBrief {
+  const searchText = [
+    cleanBusinessData.businessType,
+    cleanBusinessData.visibleDescription,
+    cleanBusinessData.targetAudience,
+    ...cleanBusinessData.services,
+    ...cleanBusinessData.products,
+    cleanBusinessData.rawExtractedData,
+  ].join(" ").toLowerCase();
+
+  const scored = industryBriefs
+    .map((brief) => ({
+      brief,
+      matchedSignals: brief.keywords.filter((keyword) => searchText.includes(keyword)),
+    }))
+    .sort((a, b) => b.matchedSignals.length - a.matchedSignals.length);
+
+  const selected = scored.find((item) => item.matchedSignals.length > 0) ?? {
+    brief: industryBriefs[4],
+    matchedSignals: ["general local business"],
+  };
+
+  const { brief, matchedSignals } = selected;
+  const formatted = [
+    `Seraphim industry brief: ${brief.name} (${brief.id}).`,
+    `Matched signals: ${matchedSignals.join(", ")}.`,
+    `Visual thesis: ${brief.visualThesis}`,
+    "Page story guidance:",
+    ...brief.pageStory.map((item) => `- ${item}`),
+    "Section guidance:",
+    ...brief.sectionGuidance.map((item) => `- ${item}`),
+    "Image strategy:",
+    ...brief.imageStrategy.map((item) => `- ${item}`),
+    "Copy rules:",
+    ...brief.copyRules.map((item) => `- ${item}`),
+    "QA priorities:",
+    ...brief.qaPriorities.map((item) => `- ${item}`),
+  ].join("\n");
+
+  return {
+    id: brief.id,
+    name: brief.name,
+    matchedSignals,
+    visualThesis: brief.visualThesis,
+    pageStory: brief.pageStory,
+    sectionGuidance: brief.sectionGuidance,
+    imageStrategy: brief.imageStrategy,
+    copyRules: brief.copyRules,
+    qaPriorities: brief.qaPriorities,
+    brief: formatted,
+  };
+}
+
 function fallbackPremiumWebsitePlan(
   cleanBusinessData: CleanBusinessData,
   designInspiration: string,
   generationMode: string,
-  templatePack: SelectedTemplatePack,
+  industryBrief: SeraphimIndustryBrief,
 ): PremiumWebsitePlan {
   const serviceLabel = cleanBusinessData.services.slice(0, 3).join(", ") || cleanBusinessData.businessType;
   const imageDirection = photoDirection({
@@ -402,23 +560,23 @@ function fallbackPremiumWebsitePlan(
   });
 
   return {
-    businessPositioning: `${cleanBusinessData.companyName} should feel like a credible, composed ${cleanBusinessData.businessType} choice with a custom local presence instead of a generic brochure. Use the ${templatePack.name} internal template pack as the structural starting point, then customize it to the verified business data.`,
+    businessPositioning: `${cleanBusinessData.companyName} should feel like a credible, composed ${cleanBusinessData.businessType} choice with a custom local presence instead of a generic brochure. Seraphim Generator must choose a structure from the verified facts, conversion goal, and industry brief, not from a template pack or preset.`,
     targetCustomer: cleanBusinessData.targetAudience,
     emotionalHook: `Make the visitor feel that ${cleanBusinessData.companyName} is organized, trustworthy, and worth contacting before they compare alternatives.`,
     conversionGoal: cleanBusinessData.phone || cleanBusinessData.email ? "Drive a direct call, email, or enquiry using verified contact paths." : "Drive a low-friction enquiry with clearly labeled demo placeholders for missing contact details.",
     visualHook: `Create one poster-worthy first-screen idea for ${cleanBusinessData.businessType}: oversized editorial type, niche-matched hero photography, layered service detail cards, and a visible motif that could only belong to this business category.`,
-    visualDirection: `${modeDirection(generationMode)} Make the first 5 seconds visually magnetic: bold but tasteful scale contrast, asymmetric media, rich section rhythm, and one memorable motif tied to ${cleanBusinessData.businessType}; avoid generic card grids and text-only sections. Internal template direction: ${compactText(templatePack.brief, 850)} ${compactText(designInspiration, 700)}`,
+    visualDirection: `${modeDirection(generationMode)} ${industryBrief.visualThesis} Make the first 5 seconds visually magnetic: bold but tasteful scale contrast, asymmetric media, rich section rhythm, and one memorable motif tied to ${cleanBusinessData.businessType}; avoid generic card grids, text-only sections, and reusable blueprint rhythms. ${compactText(industryBrief.brief, 850)} ${compactText(designInspiration, 700)}`,
     colorSystem: cleanBusinessData.visibleColors.length
       ? `Elevate the visible palette (${cleanBusinessData.visibleColors.join(", ")}) with deep neutrals, soft surfaces, and one disciplined accent.`
       : "Create a refined palette from industry cues: deep neutral base, warm surface colors, and one confident accent.",
     typographyDirection: "Use editorial display type for major headings, a highly readable sans-serif for interface/copy, generous line-height, balanced headings, and a controlled type scale.",
     imageDirection,
-    compositionRhythm: "Alternate high-impact visual sections with tighter proof and decision sections: hero montage, trust strip, asymmetric services, full-bleed showcase, process timeline, CTA band. No two consecutive sections should share the same centered-heading/card-grid pattern.",
+    compositionRhythm: "Choose the fewest sections needed for the business's conversion story, then vary them deliberately. Do not force a fixed hero/services/gallery/process/FAQ rhythm. No two consecutive sections should share the same centered-heading/card-grid pattern.",
     signatureInteraction: "Use restrained but memorable motion: reveal layers in the hero, tactile hover states on service cards, FAQ accordion, mobile nav, and reduced-motion support. Do not hide essential content behind animation.",
     sectionList: [
       { id: "header", title: "Sticky premium navigation", purpose: "Orient the visitor and keep contact available.", visualTreatment: "Transparent-to-solid sticky bar with compact anchors.", conversionJob: "Make the primary CTA reachable at all times." },
       { id: "hero", title: "Cinematic hero", purpose: "Explain what the business does, for whom, and why it is worth contacting.", visualTreatment: "Poster-quality first viewport with oversized type, layered niche photography, proof cue, and one memorable visual motif.", conversionJob: "Earn attention within five seconds and make the first click or scroll feel obvious." },
-      { id: "trust", title: "Trust bridge", purpose: "Show verified facts and honest proof placeholders.", visualTreatment: "Premium stat/fact strip with restrained borders.", conversionJob: "Reduce uncertainty without fake claims." },
+      { id: "facts", title: "Verified fact bridge", purpose: "Show only verified business facts that help the visitor decide.", visualTreatment: "Compact fact strip or editorial details rail, not fake metrics.", conversionJob: "Reduce uncertainty without fake claims." },
       { id: "services", title: "Service architecture", purpose: "Group visible services by customer intent.", visualTreatment: "Asymmetric service cards with photography, numbered priorities, or tactile material/detail treatments instead of equal bland boxes.", conversionJob: "Help visitors find the relevant offer." },
       { id: "difference", title: "Why this experience feels better", purpose: "Translate the business context into a differentiated customer journey.", visualTreatment: "Split editorial section with material or process imagery.", conversionJob: "Create preference." },
       { id: "showcase", title: "Visual showcase", purpose: "Make the niche tangible through representative, honestly labeled photography.", visualTreatment: "High-impact gallery with varied image ratios, overlap, captions, and one full-bleed or near-full-bleed visual moment.", conversionJob: "Replace abstract promises with visual confidence." },
@@ -427,7 +585,7 @@ function fallbackPremiumWebsitePlan(
       { id: "contact", title: "Final CTA and contact", purpose: "Give the visitor a clear next step.", visualTreatment: "High-contrast CTA band plus contact card/footer.", conversionJob: "Convert intent into contact." },
     ],
     ctaStrategy: "Use one primary CTA consistently, plus a secondary CTA for viewing services or confirming availability. Use tel/mailto links only when verified.",
-    trustStrategy: "Use verified facts first. Where proof is missing, show clearly labeled slots such as 'Verified reviews to add' or 'Replace with business photography'.",
+    trustStrategy: "Use verified facts first. If real proof is missing, omit fake proof surfaces or label missing materials plainly as content needed before launch. Do not make placeholders look like reviews, ratings, badges, awards, or metrics.",
     missingDataPlaceholderStrategy: `Missing fields: ${cleanBusinessData.missingFields.join(", ")}. Use professional demo placeholders and labels; never present placeholders as real facts.`,
     seoKeywordStrategy: unique([cleanBusinessData.companyName, cleanBusinessData.businessType, cleanBusinessData.city, ...cleanBusinessData.services.slice(0, 5)]).join(", "),
     animationMicrointeractionStrategy: "Use scroll reveal, accordion interactions, mobile nav, subtle hover transforms, and reduced-motion support. Animate only opacity and transform.",
@@ -439,11 +597,13 @@ function buildPlanPrompt(
   cleanBusinessData: CleanBusinessData,
   designInspiration: string,
   generationMode: string,
-  templatePack: SelectedTemplatePack,
+  industryBrief: SeraphimIndustryBrief,
 ) {
   return `You are a senior creative director and conversion strategist for premium local-business website demos.
 
 Create a business-specific PremiumWebsitePlan as JSON only. Do not return markdown.
+
+${SERAPHIM_GENERATOR_DOCTRINE}
 
 Clean business data:
 ${JSON.stringify(cleanBusinessData, null, 2)}
@@ -451,8 +611,8 @@ ${JSON.stringify(cleanBusinessData, null, 2)}
 Premium landing-page inspiration research:
 ${designInspiration}
 
-SERAPHIM INTERNAL TEMPLATE PACK:
-${templatePack.brief}
+SERAPHIM INDUSTRY BRIEF:
+${industryBrief.brief}
 
 Generation direction: ${modeDirection(generationMode)}
 
@@ -481,8 +641,8 @@ Return exactly this JSON shape:
 }
 
 Rules:
-- Include at least 9 meaningful sections, including header, cinematic hero, trust bridge, services/products, differentiator/story, visual showcase, process, FAQ, contact/footer.
-- Use the selected Seraphim template pack as the structure and design DNA for this plan, but make the final plan specific to this business. Do not copy external template code or exact layouts.
+- Choose only the sections that advance this exact business's conversion story. Do not force a fixed hero/services/gallery/process/FAQ skeleton.
+- Use the Seraphim industry brief as context, not a template. Generate a bespoke page story from verified facts, audience, offer, proof, unknowns, and primary CTA.
 - Do not invent reviews, awards, prices, certifications, addresses, phone numbers, years in business, or guarantees.
 - Make the plan specific to the business type, visible colors, services, audience, and missing data.
 - The plan should force a custom, expensive, image-led website rather than a generic template.
@@ -538,13 +698,15 @@ function normalizePlan(value: unknown, fallback: PremiumWebsitePlan): PremiumWeb
 function buildPremiumWebsitePrompt(
   cleanBusinessData: CleanBusinessData,
   premiumWebsitePlan: PremiumWebsitePlan,
-  options: { designInspiration: string; generationMode: string; templatePack: SelectedTemplatePack },
+  options: { designInspiration: string; generationMode: string; industryBrief: SeraphimIndustryBrief },
 ) {
   return `You are a senior creative director, conversion copywriter, and elite frontend engineer.
 
 Create a complete ultra-premium single-file legacy \`index.html\` website for the business below.
 
 This website must look like a custom $1,000+ website demo, not a generic AI template.
+
+${SERAPHIM_GENERATOR_DOCTRINE}
 
 BUSINESS DATA:
 ${JSON.stringify(cleanBusinessData, null, 2)}
@@ -555,8 +717,8 @@ ${JSON.stringify(premiumWebsitePlan, null, 2)}
 PREMIUM REFERENCE AND PHOTO RESEARCH:
 ${options.designInspiration}
 
-SERAPHIM INTERNAL TEMPLATE PACK:
-${options.templatePack.brief}
+SERAPHIM INDUSTRY BRIEF:
+${options.industryBrief.brief}
 
 GENERATION DIRECTION:
 ${modeDirection(options.generationMode)}
@@ -576,7 +738,7 @@ TECH RULES:
 - No external JavaScript.
 - Remote images are allowed from reliable royalty-free sources.
 - Must open directly in a browser.
-- The selected template pack is an internal blueprint for section architecture, image direction, and component motifs. Do not copy external template source code, class names, branded assets, exact copy, or distinctive compositions.
+- Seraphim Generator is the only generation system. Do not use template packs, preset layouts, reusable blueprint language, or a fixed section recipe as the page structure.
 
 DESIGN STANDARD:
 The page must feel custom, expensive, modern, high-converting, and specific to this business.
@@ -593,6 +755,7 @@ Avoid:
 - fake prices
 - fake addresses
 - fake awards
+- fake follower counts, fake review counts, fake ratings, fake statistics, or badge-like proof claims
 - filler copy
 - repeated layouts
 - weak hero sections
@@ -611,12 +774,12 @@ Required premium elements:
 - cinematic hero section
 - high-quality industry-specific hero imagery or custom visual composition
 - premium CTA buttons
-- trust/credibility strip
-- services/products cards
-- strong visual showcase section
-- conversion-focused CTA band
-- FAQ accordion
-- contact section
+- verified fact surface only when it helps conversion
+- services/products/menu/offers grouped around customer intent
+- strong visual proof/showcase/story section when images or representative visuals fit the business
+- conversion-focused CTA moment
+- FAQ or decision-support section only when it answers real decision blockers
+- contact/footer section
 - footer
 - scroll reveal animation
 - hover microinteractions
@@ -627,8 +790,9 @@ Required premium elements:
 COPY RULES:
 - Use verified business details exactly.
 - Use placeholders only where data is missing.
-- Clearly label demo placeholders.
+- Clearly label missing content as content needed before launch.
 - Never present placeholder testimonials as real.
+- Do not create testimonial, rating, award, metric, or badge-style placeholders that look like proof.
 - Do not claim services/products that are not visible unless framed carefully as "ask about current availability."
 - Make the business sound elevated but believable.
 
@@ -641,7 +805,7 @@ Create a custom visual identity based on:
 - local market
 - industry mood
 - customer pain points
-- selected Seraphim template pack: ${options.templatePack.name}
+- Seraphim industry brief: ${options.industryBrief.name}
 
 The CSS must include:
 - design tokens
@@ -670,16 +834,16 @@ QUALITY BAR:
 Before finalizing, mentally compare the result to premium reference \`index.html\` files.
 If it feels basic, rewrite it until it feels premium.
 If it feels merely clean but not eye-catching, rewrite the hero, showcase, and service section until they have stronger visual energy.
-If it ignores the selected Seraphim template pack's industry-specific structure, rebuild the page around that pack while preserving verified facts.
+If it feels like a reusable template/preset/blueprint, rebuild the page around this business's fact ledger, industry visual thesis, and conversion brief.
 The result should feel like a serious designer and senior frontend engineer built it.
 
 Hard requirements:
-- Include at least ${Math.max(9, premiumWebsitePlan.sectionList.length)} meaningful sections from the plan.
-- Include at least four niche-matched HTTPS images or rich visual treatments, with representative captions when not verified.
+- Include enough meaningful sections to complete the plan's page story; do not pad the page with generic sections.
+- Include niche-matched imagery or rich visual treatments, with representative captions when not verified.
 - Include at least one visually distinctive first-screen motif and at least one high-impact showcase section.
 - Use every supplied verified contact path correctly: tel: for phone, mailto: for email, HTTPS links for website/social.
 - Use robots noindex,nofollow because this is a private demo.
-- Footer must disclose that this is a website concept/private demo for review.
+- Footer may say "website demo concept" in restrained wording, but do not add a generic Private Concept badge/seal or in-page demo branding that makes the client-facing site feel fake.
 - Do not include local filesystem paths, API keys, or private implementation details.`;
 }
 
@@ -794,10 +958,10 @@ async function generatePremiumWebsitePlan(
   designInspiration: string,
   generationMode: string,
   generationId: string,
-  templatePack: SelectedTemplatePack,
+  industryBrief: SeraphimIndustryBrief,
 ) {
-  const fallback = fallbackPremiumWebsitePlan(cleanBusinessData, designInspiration, generationMode, templatePack);
-  const prompt = buildPlanPrompt(cleanBusinessData, designInspiration, generationMode, templatePack);
+  const fallback = fallbackPremiumWebsitePlan(cleanBusinessData, designInspiration, generationMode, industryBrief);
+  const prompt = buildPlanPrompt(cleanBusinessData, designInspiration, generationMode, industryBrief);
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("planning")) {
@@ -857,21 +1021,22 @@ function hardRejectionReasons(html: string, cleanBusinessData: CleanBusinessData
     /(overlap|layer|stack|collage|montage|editorial|cinematic|poster)/i.test(html),
   ].filter(Boolean).length;
 
-  if (sectionCount < 8) reasons.push(`Only ${sectionCount} section elements found; premium output requires at least 8 meaningful sections.`);
+  if (sectionCount < 6) reasons.push(`Only ${sectionCount} section elements found; Seraphim output needs enough meaningful sections to complete the conversion story.`);
   if (!/<script\b[^>]*type=["']application\/ld\+json["']/i.test(html)) reasons.push("Missing JSON-LD schema.");
   if (!/<meta\s+(?:name|property)=["'](?:description|og:title|twitter:card)/i.test(html)) reasons.push("SEO/Open Graph/Twitter metadata is incomplete.");
   if (!/<nav\b/i.test(html) || !/(hamburger|menu-toggle|aria-expanded|mobile-menu)/i.test(html)) reasons.push("Missing responsive premium navigation/mobile menu behavior.");
   if (!/(faq|accordion|details|aria-controls)/i.test(html)) reasons.push("Missing FAQ accordion or decision-support interaction.");
   if (!/(reveal|intersectionobserver|data-reveal|scroll)/i.test(html)) reasons.push("Missing scroll reveal or interaction layer.");
-  if (imageCount < 3 && !/(showcase|gallery|visual)/i.test(html)) reasons.push("Missing rich niche-matched photography or visual showcase.");
-  if (imageCount < 4) reasons.push(`Only ${imageCount} remote image elements found; eye-catching demos need at least four niche-matched visual moments.`);
+  if (imageCount < 2 && !/(showcase|gallery|visual|background-image|image|photo|media)/i.test(html)) reasons.push("Missing niche-matched imagery or a strong visual showcase.");
   if (visualMotifCount < 4) reasons.push("Missing a distinctive visual motif or high-impact composition; the page may be premium but not eye-catching enough.");
   if (!/--[a-z0-9-]+\s*:/i.test(html)) reasons.push("Missing CSS custom-property design tokens.");
   if (/bootstrap|cdn\.jsdelivr\.net\/npm\/bootstrap|tailwind/i.test(html)) reasons.push("Looks like a framework/template instead of a bespoke single-file site.");
+  if (/template pack|selected seraphim template pack|private\s*<br>\s*concept|private concept/i.test(html)) reasons.push("Template-pack or Private Concept language leaked into the client-facing site.");
+  if (/<meta\s+name=["']keywords["']/i.test(html)) reasons.push("Meta keywords tag found; Seraphim Generator should not output meta keywords.");
   if (!html.toLowerCase().includes(cleanBusinessData.companyName.toLowerCase().slice(0, Math.min(12, cleanBusinessData.companyName.length)))) {
     reasons.push("Business identity is not prominent enough in the generated HTML.");
   }
-  if (/(five-star|5-star|hundreds of|award-winning|certified|guaranteed|since 19|since 20)/i.test(html)) {
+  if (/(five-star|5-star|hundreds of|award-winning|certified|guaranteed|since 19|since 20|\b\d+ reviews\b|\b\d+\+ customers\b)/i.test(html)) {
     reasons.push("Potential unsupported claims detected; verified proof must not be invented.");
   }
 
@@ -945,11 +1110,13 @@ function buildQaPrompt(
   html: string,
   cleanBusinessData: CleanBusinessData,
   premiumWebsitePlan: PremiumWebsitePlan,
-  templatePack: SelectedTemplatePack,
+  industryBrief: SeraphimIndustryBrief,
 ) {
   return `You are a strict premium website QA reviewer.
 
 Score this generated single-file website from 1-10 against the rubric. Return JSON only.
+
+${SERAPHIM_GENERATOR_DOCTRINE}
 
 Business data:
 ${JSON.stringify(cleanBusinessData, null, 2)}
@@ -957,8 +1124,8 @@ ${JSON.stringify(cleanBusinessData, null, 2)}
 Premium plan:
 ${JSON.stringify(premiumWebsitePlan, null, 2)}
 
-Selected Seraphim template pack:
-${templatePack.brief}
+Seraphim industry brief:
+${industryBrief.brief}
 
 HTML to review:
 ${html.slice(0, 70000)}
@@ -976,8 +1143,8 @@ Rubric dimensions:
 - factualSafety
 - codeCleanliness
 
-Hard reject if it looks like Bootstrap, generic SaaS, lacks business-specific visual identity, has fewer than 8 meaningful sections, misses SEO/schema/nav/FAQ/scroll reveal, invents fake proof, is placeholder-heavy when data exists, or feels clean but not visually memorable.
-Hard reject if the page ignores the selected industry template pack and falls back to a generic landing-page structure.
+Hard reject if it looks like Bootstrap, generic SaaS, lacks business-specific visual identity, lacks enough meaningful sections for the conversion story, misses SEO/schema/nav/decision support/scroll reveal, invents fake proof, includes meta keywords, includes template-pack language, includes a Private Concept badge/seal, is placeholder-heavy when data exists, or feels clean but not visually memorable.
+Hard reject if the page appears generated from a fixed template pack, generic preset, or reusable hero/services/gallery/process/FAQ blueprint rather than Seraphim Generator's fact-led page story.
 
 Visual magnetism review:
 - Score below 8 if the first viewport is a normal centered hero with no memorable image composition.
@@ -1018,14 +1185,14 @@ async function scoreGeneratedWebsite(
   html: string,
   cleanBusinessData: CleanBusinessData,
   premiumWebsitePlan: PremiumWebsitePlan,
-  templatePack: SelectedTemplatePack,
+  industryBrief: SeraphimIndustryBrief,
 ) {
   const heuristic = heuristicQualityGate(html, cleanBusinessData);
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("qa")) {
     try {
-      const text = await generateTextWithRoute(buildQaPrompt(html, cleanBusinessData, premiumWebsitePlan, templatePack), route, {
+      const text = await generateTextWithRoute(buildQaPrompt(html, cleanBusinessData, premiumWebsitePlan, industryBrief), route, {
         temperature: 0.2,
         maxOutputTokens: 6000,
       });
@@ -1062,7 +1229,7 @@ async function reviseGeneratedWebsite(
   cleanBusinessData: CleanBusinessData,
   premiumWebsitePlan: PremiumWebsitePlan,
   qualityGate: QualityGate,
-  templatePack: SelectedTemplatePack,
+  industryBrief: SeraphimIndustryBrief,
 ) {
   const prompt = `You are an elite frontend engineer revising a weak generated landing page.
 
@@ -1077,8 +1244,11 @@ ${JSON.stringify(cleanBusinessData, null, 2)}
 Premium plan:
 ${JSON.stringify(premiumWebsitePlan, null, 2)}
 
-Selected Seraphim template pack:
-${templatePack.brief}
+Seraphim Generator doctrine:
+${SERAPHIM_GENERATOR_DOCTRINE}
+
+Seraphim industry brief:
+${industryBrief.brief}
 
 Existing HTML:
 ${html.slice(0, 90000)}
@@ -1087,7 +1257,8 @@ Revision rules:
 - Preserve verified facts exactly.
 - Do not invent testimonials, ratings, awards, certifications, prices, guarantees, addresses, phone numbers, or years in business.
 - Make it visibly more premium, custom, image-led, business-specific, and conversion-focused.
-- Rebuild around the selected Seraphim template pack's industry structure, motifs, and image strategy if the existing HTML drifted into a generic layout.
+- Rebuild around Seraphim Generator's fact ledger, industry visual thesis, page story, and conversion goal if the existing HTML drifted into a generic layout.
+- Remove template-pack language, meta keywords, fake proof surfaces, badge-like fake metrics, and Private Concept seals/badges.
 - If visual magnetism is weak, rewrite the hero, services, and showcase sections with a stronger first-screen visual hook, bolder typography scale, layered niche photography, varied section rhythm, and a distinctive motif tied to the business category.
 - Add exactly one primary Magic UI-inspired pattern translated into original CSS/JS, such as a subtle animated grid/noise/light layer, border-beam-style card highlight, shimmer CTA, bento service rhythm, progressive blur, or tactile glare hover. Do not add React, Tailwind, imports, external JavaScript, or Magic UI branding.
 - Keep the result tasteful and credible; eye-catching should come from composition, imagery, type contrast, spacing, and craft rather than gimmicks.
@@ -1122,13 +1293,7 @@ export async function POST(request: Request) {
 
   try {
     const cleanBusinessData = buildCleanBusinessData(parsed.data);
-    const selectedTemplatePack = selectTemplatePack({
-      businessType: cleanBusinessData.businessType,
-      visibleDescription: cleanBusinessData.visibleDescription,
-      services: cleanBusinessData.services,
-      products: cleanBusinessData.products,
-      targetAudience: cleanBusinessData.targetAudience,
-    });
+    const industryBrief = buildSeraphimIndustryBrief(cleanBusinessData);
     safeDebug(generationId, "clean-data", {
       companyName: cleanBusinessData.companyName,
       businessType: cleanBusinessData.businessType,
@@ -1137,12 +1302,11 @@ export async function POST(request: Request) {
       missingFields: cleanBusinessData.missingFields,
       dataConfidence: cleanBusinessData.dataConfidence,
     });
-    safeDebug(generationId, "template-pack", {
-      id: selectedTemplatePack.id,
-      name: selectedTemplatePack.name,
-      qualityTier: selectedTemplatePack.qualityTier,
-      matchedKeywords: selectedTemplatePack.matchedKeywords,
-      sourceModes: selectedTemplatePack.sources.map((source) => `${source.name}:${source.mode}`),
+    safeDebug(generationId, "seraphim-generator", {
+      authority: "only-website-generation-system",
+      industryBrief: industryBrief.id,
+      industryName: industryBrief.name,
+      matchedSignals: industryBrief.matchedSignals,
     });
 
     const liveDesignInspiration = await buildDesignInspirationBrief(parsed.data.info);
@@ -1158,7 +1322,7 @@ export async function POST(request: Request) {
       designInspiration,
       parsed.data.generationMode,
       generationId,
-      selectedTemplatePack,
+      industryBrief,
     );
     pipelineMetadata.push(planResult.metadata);
     safeDebug(generationId, "premium-plan", {
@@ -1170,19 +1334,20 @@ export async function POST(request: Request) {
     const prompt = buildPremiumWebsitePrompt(cleanBusinessData, planResult.plan, {
       designInspiration,
       generationMode: parsed.data.generationMode,
-      templatePack: selectedTemplatePack,
+      industryBrief,
     });
     safeDebug(generationId, "final-prompt", {
       length: prompt.length,
       generationMode: parsed.data.generationMode,
-      templatePack: selectedTemplatePack.id,
+      generator: "seraphim-generator",
+      industryBrief: industryBrief.id,
       sectionRoutes: getRoutesForStage("section").map((route) => `${route.provider}:${route.model}`),
     });
 
     let generation = await generateFinalHtml(prompt);
     pipelineMetadata.push(generation.metadata);
 
-    let qa = await scoreGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, selectedTemplatePack);
+    let qa = await scoreGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, industryBrief);
     pipelineMetadata.push(qa.metadata);
     let revisionCount = 0;
     safeDebug(generationId, "quality-gate", {
@@ -1192,7 +1357,7 @@ export async function POST(request: Request) {
     });
 
     if (!qa.gate.passed) {
-      const revision = await reviseGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, qa.gate, selectedTemplatePack);
+      const revision = await reviseGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, qa.gate, industryBrief);
       generation = {
         html: revision.html,
         metadata: revision.metadata,
@@ -1201,7 +1366,7 @@ export async function POST(request: Request) {
       pipelineMetadata.push(revision.metadata);
       revisionCount = 1;
 
-      qa = await scoreGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, selectedTemplatePack);
+      qa = await scoreGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, industryBrief);
       pipelineMetadata.push(qa.metadata);
       safeDebug(generationId, "quality-gate-after-revision", {
         score: qa.gate.score,
@@ -1223,7 +1388,12 @@ export async function POST(request: Request) {
           summary: planResult.plan.businessPositioning,
           sectionIds: planResult.plan.sectionList.map((section) => section.id),
           premiumPlan: planResult.plan,
-          selectedTemplatePack,
+          seraphimGenerator: {
+            authority: "only-website-generation-system",
+            industryBrief: industryBrief.id,
+            industryName: industryBrief.name,
+            matchedSignals: industryBrief.matchedSignals,
+          },
           qualityGate: qa.gate,
           revisionCount,
         },

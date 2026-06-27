@@ -1,4 +1,8 @@
-# Seraphim Template Catalog Shortlist
+# Deprecated Seraphim Template Catalog Shortlist
+
+This document is historical only. Seraphim Generator is now the only website generation system in the app. Do not wire these candidates into generation as template packs, preset layout systems, or structural blueprints.
+
+The material below may be used only as old research context for visual discussion. It must not drive generated website structure.
 
 This is the first approval pass for an ultra-premium industry template catalog. Nothing here is wired into generation yet; these are candidates for your visual approval and license triage.
 

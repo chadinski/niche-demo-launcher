@@ -17,7 +17,7 @@ The app does not bulk-send or automatically submit outreach.
 
 Screenshot extraction requires `GEMINI_API_KEY` or `OPENAI_API_KEY`. Images are sent to the server-side `/api/business-intelligence` route, then to the configured AI provider for structured business intelligence. Gemini is used first when configured. The app does not run local screenshot OCR.
 
-Website generation can optionally use `FIRECRAWL_API_KEY` to research premium landing-page references before prompting the HTML model. When configured, the server searches curated design inspiration sources, extracts visual/photo cues, and passes an abstract design brief into `/api/generate-website`. When it is not configured, generation still works with an internal premium fallback brief.
+Website generation is handled only by Seraphim Generator in `app/api/generate-website/route.ts`. Seraphim Generator builds from verified facts, an industry-specific visual thesis, a conversion brief, and QA rules. It does not use template packs, preset website generators, fixed blueprint layouts, or meta-keyword-era SEO. `FIRECRAWL_API_KEY` can optionally provide abstract inspiration and photo-direction cues, but it must not become a template source.
 
 ## Stack
 
@@ -94,7 +94,7 @@ VERCEL_TEAM_ID=
 
 ## AI Model Routing
 
-Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Website HTML generation uses the server-side AI route in `app/api/generate-website/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use. Add `FIRECRAWL_API_KEY` when you want the website generator to research premium landing-page references before building the prompt.
+Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Website HTML generation uses only the Seraphim Generator route in `app/api/generate-website/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use. Add `FIRECRAWL_API_KEY` only when you want abstract inspiration and stronger niche-matched photo direction before HTML generation.
 
 Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. Use the cheapest reliable model for extraction/planning/QA, reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable.
 
@@ -109,8 +109,9 @@ Generated concept sites:
 - include responsive layouts and accessible focus states;
 - default to `noindex, nofollow`;
 - omit canonical and production URL metadata until a real domain is known;
-- avoid fabricated reviews, awards, metrics, urgency, and guarantees;
-- label the footer as a website concept for review.
+- avoid fabricated reviews, ratings, badges, awards, metrics, urgency, prices, certifications, and guarantees;
+- do not include meta keywords, fake-proof surfaces, generic template-pack language, or prominent "Private Concept" seals;
+- may use restrained footer wording that identifies the page as a website demo concept when appropriate.
 
 ## Verification
 
