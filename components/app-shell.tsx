@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   BriefcaseBusiness,
   ChevronRight,
-  FileStack,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -26,7 +25,6 @@ const navigation = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/create", label: "Create Site", icon: Sparkles },
   { href: "/prospects", label: "Prospects", icon: Users },
-  { href: "/templates", label: "Templates", icon: FileStack },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

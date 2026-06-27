@@ -25,6 +25,7 @@ const requestSchema = z.object({
   generationId: z.string().min(1).max(80),
   info: businessInfoSchema,
   generationMode: z.string().max(80).optional().default("standard"),
+  imageName: z.string().max(180).optional().default(""),
   businessUnderstanding: z.unknown().optional(),
 });
 
@@ -49,7 +50,9 @@ type CleanBusinessData = {
   country: string;
   socialLinks: string[];
   visibleColors: string[];
+  visualEvidence: string[];
   logoDescription: string;
+  sourceImageName: string;
   targetAudience: string;
   brandTone: string;
   missingFields: string[];
@@ -302,6 +305,14 @@ function buildCleanBusinessData(input: z.infer<typeof requestSchema>): CleanBusi
   const contact = isRecord(understanding.contact) ? understanding.contact : {};
   const services = unique([...splitList(info.services), ...stringList(understanding.services)]).slice(0, 14);
   const visibleColors = unique([...splitList(info.brandColors, 8), ...stringList(theme.palette, 8)]).slice(0, 8);
+  const visualEvidence = unique([
+    ...stringList(understanding.visualClues, 14),
+    asString(theme.mood),
+    asString(theme.imageStyle),
+    asString(theme.layoutStyle),
+    asString(theme.typography),
+    ...stringList(theme.notes, 8),
+  ]).slice(0, 18);
   const missingFromUnderstanding = stringList(understanding.missingInformation, 12);
   const assumptions = stringList(understanding.assumptions, 12);
   const category = info.category.trim() || asString(industry.primaryIndustry) || asString(industry.businessModel);
@@ -341,6 +352,7 @@ function buildCleanBusinessData(input: z.infer<typeof requestSchema>): CleanBusi
     socialLinks.length ? "Social profile available" : "",
     services.length ? `Visible services/products: ${services.join(", ")}` : "",
     visibleColors.length ? `Visible colors: ${visibleColors.join(", ")}` : "",
+    visualEvidence.length ? `Screenshot/reference visual evidence: ${visualEvidence.join("; ")}` : "",
   ].filter(Boolean);
 
   return {
@@ -357,7 +369,9 @@ function buildCleanBusinessData(input: z.infer<typeof requestSchema>): CleanBusi
     country: locationParts.length > 1 ? locationParts[locationParts.length - 1] : "",
     socialLinks,
     visibleColors,
-    logoDescription: compactText([asString(theme.logo), ...stringList(theme.visualClues, 6)].filter(Boolean).join("; "), 420),
+    visualEvidence,
+    logoDescription: compactText([asString(theme.logo), ...visualEvidence].filter(Boolean).join("; "), 620),
+    sourceImageName: input.imageName || "",
     targetAudience: location ? `Customers in or near ${location} looking for ${category || "this service"}.` : `Customers looking for ${category || "this service"}.`,
     brandTone: compactText([asString(theme.mood), asString(theme.variation), modeDirection(input.generationMode)].filter(Boolean).join(" "), 520),
     missingFields,
@@ -765,6 +779,7 @@ Avoid:
 
 Required premium elements:
 - strong SEO head
+- include <meta name="generator" content="Seraphim Generator">
 - Open Graph/Twitter metadata
 - JSON-LD schema using verified info only
 - inline favicon
@@ -839,6 +854,7 @@ The result should feel like a serious designer and senior frontend engineer buil
 
 Hard requirements:
 - Include enough meaningful sections to complete the plan's page story; do not pad the page with generic sections.
+- Include data-seraphim-generator="true" on the body element so the app can verify this is fresh Seraphim output.
 - Include niche-matched imagery or rich visual treatments, with representative captions when not verified.
 - Include at least one visually distinctive first-screen motif and at least one high-impact showcase section.
 - Use every supplied verified contact path correctly: tel: for phone, mailto: for email, HTTPS links for website/social.
@@ -863,6 +879,14 @@ function normalizeHtml(html: string) {
 
   if (!/<meta\s+name=["']robots["']/i.test(output)) {
     output = output.replace(/<head[^>]*>/i, (match) => `${match}\n  <meta name="robots" content="noindex, nofollow">`);
+  }
+
+  if (!/<meta\s+name=["']generator["']\s+content=["']Seraphim Generator["']/i.test(output)) {
+    output = output.replace(/<head[^>]*>/i, (match) => `${match}\n  <meta name="generator" content="Seraphim Generator">`);
+  }
+
+  if (!/data-seraphim-generator=["']true["']/i.test(output)) {
+    output = output.replace(/<body\b([^>]*)>/i, (_match, attrs: string) => `<body${attrs} data-seraphim-generator="true">`);
   }
 
   if (!/<\/html>\s*$/i.test(output)) {
@@ -1022,6 +1046,9 @@ function hardRejectionReasons(html: string, cleanBusinessData: CleanBusinessData
   ].filter(Boolean).length;
 
   if (sectionCount < 6) reasons.push(`Only ${sectionCount} section elements found; Seraphim output needs enough meaningful sections to complete the conversion story.`);
+  if (!/<meta\s+name=["']generator["']\s+content=["']Seraphim Generator["']/i.test(html) || !/data-seraphim-generator=["']true["']/i.test(html)) {
+    reasons.push("Missing Seraphim Generator output signature.");
+  }
   if (!/<script\b[^>]*type=["']application\/ld\+json["']/i.test(html)) reasons.push("Missing JSON-LD schema.");
   if (!/<meta\s+(?:name|property)=["'](?:description|og:title|twitter:card)/i.test(html)) reasons.push("SEO/Open Graph/Twitter metadata is incomplete.");
   if (!/<nav\b/i.test(html) || !/(hamburger|menu-toggle|aria-expanded|mobile-menu)/i.test(html)) reasons.push("Missing responsive premium navigation/mobile menu behavior.");

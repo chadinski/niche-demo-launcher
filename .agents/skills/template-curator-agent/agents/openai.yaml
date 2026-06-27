@@ -1,7 +1,0 @@
-interface:
-  display_name: "Template Curator Agent"
-  short_description: "Curate premium template sources"
-  default_prompt: "Use $template-curator-agent to find premium Seraphim template candidates, capture visual evidence, score license and quality, and prepare an approval shortlist."
-
-policy:
-  allow_implicit_invocation: true
