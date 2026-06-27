@@ -26,7 +26,7 @@ export type GenerationPlan = {
   summary: string;
   sectionIds: string[];
   premiumPlan?: unknown;
-  selectedTemplatePack?: unknown;
+  seraphimGenerator?: unknown;
   qualityGate?: {
     score: number;
     passed: boolean;

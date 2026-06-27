@@ -55,11 +55,9 @@ After editing:
 
 ## Generated website quality standard
 
-The Johnsons Premium Finish website is the benchmark for overall quality, polish, structure, responsiveness, and attention to detail — not for color palette, branding, or theme.
+Seraphim Generator is the only website generation system for this app. Do not reintroduce template packs, generic preset-driven website generators, reusable blueprint layouts, or reference-template primacy.
 
-Use this file as the quality and layout reference when available:
-
-`templates/luxury-editorial-reference.html`
+The Johnsons Premium Finish website may be treated as a historical quality benchmark for polish and attention to detail only. It is not a layout source, color source, template, or required structure.
 
 For every generated website:
 
@@ -68,6 +66,7 @@ For every generated website:
 * Adapt typography, colors, imagery, spacing, and visual identity to suit the specific business and references provided.
 * Preserve the same level of premium design quality, polish, completeness, and professionalism as the Johnsons site.
 * Create websites that feel custom-designed for that business rather than reused from a single template.
+* Choose sections from the business facts, audience, offer, proof, unknowns, and primary conversion goal rather than forcing a fixed hero/services/gallery/process/FAQ rhythm.
 
 ## Quality expectations for generated websites
 
@@ -82,7 +81,7 @@ Generated websites should include, when appropriate:
 * clear value proposition
 * high-quality niche-relevant imagery
 * service or product cards
-* credibility/trust section
+* verified fact or credibility section only when real proof exists
 * about or experience section
 * transformation/storytelling section
 * gallery or visual showcase section
@@ -110,11 +109,16 @@ Do not generate basic landing pages.
 Do not generate cheap-looking generic templates.
 Do not use irrelevant images.
 Do not invent fake reviews.
+Do not invent fake ratings.
+Do not invent fake metrics.
 Do not invent fake awards.
 Do not invent fake prices.
 Do not invent fake guarantees.
 Do not invent fake certifications.
 Do not imply claims that were not provided.
+Do not add meta keywords.
+Do not add fake-proof badges, fake social proof, fake avatars, or logo marquees without real logos.
+Do not add generic "Private Concept" seals or in-page demo badges that make the client-facing site feel fake.
 
 If information is missing, phrase it carefully using wording like:
 
@@ -137,7 +141,7 @@ When generating an `index.html` website:
 * The file must include social links when provided.
 * The file must include a clear CTA.
 * The file must feel customized to the business.
-* The footer should make clear when the website is a concept/demo for review.
+* The footer may use restrained "website demo concept" wording when needed, but avoid prominent demo branding inside the page experience.
 
 ## Outreach message rules
 

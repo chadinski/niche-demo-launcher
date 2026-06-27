@@ -3,7 +3,6 @@
 import {
   generateFollowUpMessage as generateMockFollowUp,
   generateSalesMessages as generateMockMessages,
-  generateWebsiteHTML as generateMockWebsite,
   parseBusinessInfo as parseMockBusinessInfo,
 } from "@/lib/generators";
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
@@ -13,13 +12,6 @@ export async function parseBusinessInfo(rawInfo: string) {
   return {
     mode: process.env.OPENAI_API_KEY ? "ai-placeholder" : "mock",
     data: parseMockBusinessInfo(rawInfo),
-  };
-}
-
-export async function generateWebsiteHTML(info: BusinessInfo) {
-  return {
-    mode: process.env.OPENAI_API_KEY ? "ai-placeholder" : "mock",
-    html: generateMockWebsite(info),
   };
 }
 
