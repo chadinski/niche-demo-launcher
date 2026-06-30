@@ -1,5 +1,6 @@
 export type GenerationStage =
   | "extraction"
+  | "inspiration"
   | "planning"
   | "section"
   | "qa"
@@ -9,6 +10,10 @@ export type GenerationStage =
 export type AiProvider = "gemini" | "openai";
 
 const DEFAULT_FALLBACK_MODEL = "gemini-2.5-flash-lite";
+const DEFAULT_PLANNER_MODEL = "gemini-2.5-pro";
+const DEFAULT_SECTION_MODEL = "gemini-2.5-pro";
+const DEFAULT_QA_MODEL = "gemini-2.5-flash";
+const DEFAULT_INSPIRATION_MODEL = "gemini-2.5-flash";
 const DEFAULT_GEMINI_FALLBACK_MODELS = [
   "gemini-2.5-flash-lite",
   "gemini-3.1-flash-lite",
@@ -28,12 +33,20 @@ function uniqueModels(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+export const EXTRACTION_MODEL = process.env.EXTRACTION_MODEL;
+export const PLANNER_MODEL = process.env.PLANNER_MODEL || DEFAULT_PLANNER_MODEL;
+export const SECTION_MODEL = process.env.SECTION_MODEL || DEFAULT_SECTION_MODEL;
+export const QA_MODEL = process.env.QA_MODEL || DEFAULT_QA_MODEL;
+export const INSPIRATION_MODEL = process.env.INSPIRATION_MODEL || DEFAULT_INSPIRATION_MODEL;
+export const VISION_MODEL = process.env.VISION_MODEL;
+
 export const MODEL_CONFIG = {
-  extraction: process.env.EXTRACTION_MODEL,
-  planner: process.env.PLANNER_MODEL,
-  section: process.env.SECTION_MODEL,
-  qa: process.env.QA_MODEL,
-  vision: process.env.VISION_MODEL,
+  extraction: EXTRACTION_MODEL,
+  inspiration: INSPIRATION_MODEL,
+  planner: PLANNER_MODEL,
+  section: SECTION_MODEL,
+  qa: QA_MODEL,
+  vision: VISION_MODEL,
   fallback:
     process.env.FALLBACK_MODEL ||
     process.env.GEMINI_MODEL ||
@@ -51,12 +64,14 @@ export function getModelForStage(stage: GenerationStage): string {
   switch (stage) {
     case "extraction":
       return MODEL_CONFIG.extraction || MODEL_CONFIG.gemini || MODEL_CONFIG.fallback;
+    case "inspiration":
+      return MODEL_CONFIG.inspiration;
     case "planning":
-      return MODEL_CONFIG.planner || MODEL_CONFIG.fallback;
+      return MODEL_CONFIG.planner;
     case "section":
-      return MODEL_CONFIG.section || MODEL_CONFIG.openai || MODEL_CONFIG.fallback;
+      return MODEL_CONFIG.section;
     case "qa":
-      return MODEL_CONFIG.qa || MODEL_CONFIG.fallback;
+      return MODEL_CONFIG.qa;
     case "vision":
       return MODEL_CONFIG.vision || MODEL_CONFIG.gemini || MODEL_CONFIG.fallback;
     case "fallback":

@@ -2,7 +2,12 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getRoutesForStage, type ModelRoute } from "@/lib/ai/modelRouter";
+import { buildPlannerPrompt, type BusinessData, type WebsitePlan, type WebsitePlanSection } from "@/lib/ai/prompts/planner";
+import { buildQAPrompt, type SectionQAResult } from "@/lib/ai/prompts/qa";
+import { buildSectionPrompt } from "@/lib/ai/prompts/section";
+import { getRoutesForStage, runWithModelRouteRetry, type ModelRoute } from "@/lib/ai/modelRouter";
+import { buildDesignTokens, type DesignTokens } from "@/lib/design/tokens";
+import { fetchDesignInspiration } from "@/lib/inspiration/firecrawl";
 
 const businessInfoSchema = z.object({
   rawInfo: z.string().default(""),
@@ -22,19 +27,20 @@ const businessInfoSchema = z.object({
 });
 
 const requestSchema = z.object({
-  generationId: z.string().min(1).max(80),
-  info: businessInfoSchema,
+  generationId: z.string().min(1).max(80).optional(),
+  info: businessInfoSchema.optional().default(() => businessInfoSchema.parse({})),
+  business: z.object({
+    name: z.string().min(1).max(180),
+    description: z.string().max(4000).default(""),
+    targetAudience: z.string().max(1200).default(""),
+    differentiators: z.array(z.string().max(240)).default([]),
+    brandPersonality: z.string().max(600).optional(),
+  }).optional(),
+  visualPreferences: z.unknown().optional(),
   generationMode: z.string().max(80).optional().default("standard"),
   imageName: z.string().max(180).optional().default(""),
   businessUnderstanding: z.unknown().optional(),
 });
-
-type InspirationReference = {
-  title: string;
-  url: string;
-  description: string;
-  summary: string;
-};
 
 type CleanBusinessData = {
   companyName: string;
@@ -60,33 +66,6 @@ type CleanBusinessData = {
   unsafeOrUnverifiedClaims: string[];
   verifiedFacts: string[];
   rawExtractedData: string;
-};
-
-type PremiumWebsitePlan = {
-  businessPositioning: string;
-  targetCustomer: string;
-  emotionalHook: string;
-  conversionGoal: string;
-  visualHook: string;
-  visualDirection: string;
-  colorSystem: string;
-  typographyDirection: string;
-  imageDirection: string;
-  compositionRhythm: string;
-  signatureInteraction: string;
-  sectionList: Array<{
-    id: string;
-    title: string;
-    purpose: string;
-    visualTreatment: string;
-    conversionJob: string;
-  }>;
-  ctaStrategy: string;
-  trustStrategy: string;
-  missingDataPlaceholderStrategy: string;
-  seoKeywordStrategy: string;
-  animationMicrointeractionStrategy: string;
-  mobileLayoutStrategy: string;
 };
 
 type SeraphimIndustryBrief = {
@@ -178,123 +157,6 @@ function modeDirection(mode: string) {
 
 function compactText(value: string, maxLength = 800) {
   return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
-}
-
-function inspirationQuery(info: z.infer<typeof businessInfoSchema>) {
-  const category = info.category.trim() || "premium local service";
-  const location = info.location.trim();
-  const serviceKeywords = info.services
-    .split(/[,;\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 3)
-    .join(" ");
-
-  return compactText(
-    [category, serviceKeywords, location, "premium landing page design inspiration photography"].filter(Boolean).join(" "),
-    480,
-  );
-}
-
-function photoDirection(info: z.infer<typeof businessInfoSchema>) {
-  const category = info.category.trim() || "the business niche";
-  const services = info.services.trim() || "the core service or product";
-  const location = info.location.trim() || "the service area";
-
-  return [
-    `Hero image: cinematic, above-the-fold photography showing ${category} in context for ${location}; the image should explain the offer before the visitor reads the copy.`,
-    `Service imagery: close-up details of ${services}, materials, tools, finished results, or the customer experience; use real photographic texture instead of abstract gradients.`,
-    `Trust imagery: location, team, workspace, storefront, treatment room, job site, product shelf, or craft process when verified; otherwise label as representative imagery.`,
-    "Composition: use full-bleed crops, layered image cards, editorial captions, and image-led proof sections rather than text-only panels.",
-  ].join("\n");
-}
-
-function fallbackDesignInspiration(info: z.infer<typeof businessInfoSchema>) {
-  return [
-    "Live inspiration research: not configured or unavailable. Use this premium fallback brief instead.",
-    "Reference mindset: study patterns from Land-book, Lapa Ninja, Awwwards, Godly, Vercel, Stripe, Aesop, Apple, Studio Freight, Instrument, Collins, and high-end hospitality/editorial sites as abstract inspiration only.",
-    "Do not copy reference layouts, copy, trademarks, branded imagery, screenshots, or distinctive compositions.",
-    "Design cues to apply: one memorable first-viewport visual idea; real photography or photo-real scene direction; sharp editorial type scale; asymmetric section rhythm; fewer but stronger modules; image captions that build trust; proof slots that are honest when facts are missing.",
-    "Avoid: text-only hero, repeated generic card grids, decorative blobs, fake dashboards, vague badges, stock-photo mismatch, and interchangeable SaaS styling.",
-    "Photography/art direction:",
-    photoDirection(info),
-  ].join("\n");
-}
-
-function formatReferences(references: InspirationReference[], info: z.infer<typeof businessInfoSchema>) {
-  if (!references.length) return fallbackDesignInspiration(info);
-
-  const referenceLines = references
-    .map((reference, index) => {
-      const details = [reference.description, reference.summary].filter(Boolean).join(" ");
-      return `${index + 1}. ${reference.title} — ${reference.url}\n   Cues: ${compactText(details, 520) || "premium landing-page reference; infer composition, image strategy, and section rhythm without copying."}`;
-    })
-    .join("\n");
-
-  return [
-    "Live inspiration research: Firecrawl found premium landing-page references for this niche.",
-    "Use these only as abstract visual, photographic, and conversion-pattern inspiration. Do not copy layouts, copy, trademarks, branded imagery, screenshots, or distinctive compositions.",
-    referenceLines,
-    "Extracted design mandate:",
-    "- The generated site must have a premium visual thesis before copy: a hero image or image-led composition that matches the niche.",
-    "- Translate recurring reference patterns into original components: editorial hero, proof-led visual strip, services with photography, process/story section, and final CTA.",
-    "- If a real business image is not supplied, use representative HTTPS photography that matches the category and label it honestly.",
-    "Photography/art direction:",
-    photoDirection(info),
-  ].join("\n");
-}
-
-async function buildDesignInspirationBrief(info: z.infer<typeof businessInfoSchema>) {
-  const apiKey = process.env.FIRECRAWL_API_KEY;
-  if (!apiKey) return fallbackDesignInspiration(info);
-
-  try {
-    const response = await fetch("https://api.firecrawl.dev/v2/search", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query: inspirationQuery(info),
-        limit: 5,
-        sources: ["web"],
-        includeDomains: ["land-book.com", "lapa.ninja", "awwwards.com", "godly.website"],
-        country: "US",
-        timeout: 15000,
-        ignoreInvalidURLs: true,
-        scrapeOptions: {
-          formats: [{ type: "summary" }],
-          onlyMainContent: true,
-        },
-      }),
-      signal: AbortSignal.timeout(18000),
-    });
-
-    const payload = (await response.json().catch(() => null)) as {
-      success?: boolean;
-      data?: { web?: unknown[] };
-    } | null;
-
-    if (!response.ok || !payload?.success || !Array.isArray(payload.data?.web)) {
-      return fallbackDesignInspiration(info);
-    }
-
-    const references = payload.data.web
-      .filter(isRecord)
-      .map((item) => ({
-        title: compactText(asString(item.title) || "Premium landing reference", 120),
-        url: compactText(asString(item.url), 220),
-        description: compactText(asString(item.description), 360),
-        summary: compactText(asString(item.markdown) || asString(item.summary), 520),
-      }))
-      .filter((item) => item.url)
-      .slice(0, 5);
-
-    return formatReferences(references, info);
-  } catch {
-    return fallbackDesignInspiration(info);
-  }
 }
 
 function buildCleanBusinessData(input: z.infer<typeof requestSchema>): CleanBusinessData {
@@ -390,41 +252,6 @@ function safeDebug(generationId: string, label: string, data: Record<string, unk
   if (process.env.NODE_ENV === "production") return;
   console.info(`[premium-generation:${generationId}] ${label}`, data);
 }
-
-function buildMagicUiReferenceBrief(cleanBusinessData: CleanBusinessData) {
-  return [
-    "Reference library: Magic UI (https://github.com/magicuidesign/magicui).",
-    "Use Magic UI as aesthetic and interaction inspiration only. Do not copy source code, imports, React components, Tailwind classes, package names, registry commands, or Magic UI branding into the generated website.",
-    "Translate the strongest ideas into original single-file HTML/CSS/JS patterns that work without React, Tailwind, Framer Motion, shadcn, npm packages, or external JavaScript.",
-    `Business fit: choose only effects that support ${cleanBusinessData.companyName} as a ${cleanBusinessData.businessType}. Local service, hospitality, beauty, trade, care, retail, and professional businesses should feel polished and alive, not like generic AI/SaaS demos.`,
-    "Useful Magic UI pattern families to adapt:",
-    "- Hero depth: warp-background, animated-grid-pattern, retro-grid, dot/grid/hex/striped patterns, light-rays, noise-texture, and particles translated into CSS pseudo-elements, gradients, masks, and subtle keyframes.",
-    "- Layout systems: bento-grid, animated-list, progressive-blur, and visual montage translated into varied section rhythm, layered cards, asymmetric feature/service groups, and polished reveal states.",
-    "- Trust/proof movement: marquee and avatar-circles translated into slow, optional, accessible proof rails only when real logos/reviews/people exist; otherwise use static verified fact rails or clearly labeled placeholders.",
-    "- Card polish: magic-card, border-beam, shine-border, glare-hover, neon-gradient-card, and backlight translated into tasteful hover highlights, moving border sheens, light sweeps, and depth tied to the brand palette.",
-    "- Text emphasis: blur-fade, text-animate, aurora-text, line-shadow-text, text-reveal, highlighter, and animated-gradient-text translated into restrained headline accents, staggered reveals, and highlighted phrases.",
-    "- CTA polish: shiny-button, shimmer-button, ripple-button, interactive-hover-button, and pulsating-button translated into one consistent primary CTA treatment with focus-visible states and no layout shift.",
-    "Selection rules:",
-    "- Pick one primary Magic UI-inspired pattern and one supporting effect per page. Do not stack many effects in one viewport.",
-    "- Motion must clarify hierarchy or make the page feel premium; never hide essential content until JavaScript runs.",
-    "- Use CSS-only or tiny guarded vanilla JS. Include prefers-reduced-motion support.",
-    "- Effects must preserve contrast, readability, mobile performance, and no-horizontal-overflow behavior.",
-    "- Avoid confetti, cursor replacements, comic text, fake social proof, fake avatars, and developer-product visuals unless the business context truly calls for them.",
-  ].join("\n");
-}
-
-const SERAPHIM_GENERATOR_DOCTRINE = [
-  "SERAPHIM GENERATOR IS THE ONLY WEBSITE GENERATION SYSTEM.",
-  "Build from verified business facts, industry fit, conversion strategy, visual thesis, and production QA.",
-  "Do not use template packs, reusable blueprints, generic presets, fixed section recipes, or preselected layout skeletons as the source of structure.",
-  "Every page must choose its own page story based on the business: orientation, value, offer, real proof, objection handling, and conversion.",
-  "Every page must choose an industry-specific visual thesis before styling. The visual language must change materially across industries.",
-  "Never invent testimonials, ratings, awards, certifications, customer counts, prices, guarantees, locations, years in business, menu items, service claims, or performance metrics.",
-  "Do not create fake proof slots that look real. If proof is missing, either omit the proof surface or label the missing material plainly as content needed before launch.",
-  "Do not add generic 'Private Concept' seals, demo badges, fake social proof, fake avatars, meta keywords, logo marquees without real logos, or SaaS/dashboard motifs for non-software businesses.",
-  "Default output is one complete static index.html with semantic HTML, embedded CSS, minimal guarded JavaScript, no build step, no React, no Tailwind, and no external JavaScript.",
-  "Use noindex,nofollow for private demos and omit canonical URLs unless a real production domain is verified.",
-].join("\n");
 
 const industryBriefs = [
   {
@@ -559,308 +386,12 @@ function buildSeraphimIndustryBrief(cleanBusinessData: CleanBusinessData): Serap
   };
 }
 
-function fallbackPremiumWebsitePlan(
-  cleanBusinessData: CleanBusinessData,
-  designInspiration: string,
-  generationMode: string,
-  industryBrief: SeraphimIndustryBrief,
-): PremiumWebsitePlan {
-  const serviceLabel = cleanBusinessData.services.slice(0, 3).join(", ") || cleanBusinessData.businessType;
-  const imageDirection = photoDirection({
-    ...businessInfoSchema.parse({}),
-    category: cleanBusinessData.businessType,
-    services: serviceLabel,
-    location: cleanBusinessData.address,
-  });
-
-  return {
-    businessPositioning: `${cleanBusinessData.companyName} should feel like a credible, composed ${cleanBusinessData.businessType} choice with a custom local presence instead of a generic brochure. Seraphim Generator must choose a structure from the verified facts, conversion goal, and industry brief, not from a template pack or preset.`,
-    targetCustomer: cleanBusinessData.targetAudience,
-    emotionalHook: `Make the visitor feel that ${cleanBusinessData.companyName} is organized, trustworthy, and worth contacting before they compare alternatives.`,
-    conversionGoal: cleanBusinessData.phone || cleanBusinessData.email ? "Drive a direct call, email, or enquiry using verified contact paths." : "Drive a low-friction enquiry with clearly labeled demo placeholders for missing contact details.",
-    visualHook: `Create one poster-worthy first-screen idea for ${cleanBusinessData.businessType}: oversized editorial type, niche-matched hero photography, layered service detail cards, and a visible motif that could only belong to this business category.`,
-    visualDirection: `${modeDirection(generationMode)} ${industryBrief.visualThesis} Make the first 5 seconds visually magnetic: bold but tasteful scale contrast, asymmetric media, rich section rhythm, and one memorable motif tied to ${cleanBusinessData.businessType}; avoid generic card grids, text-only sections, and reusable blueprint rhythms. ${compactText(industryBrief.brief, 850)} ${compactText(designInspiration, 700)}`,
-    colorSystem: cleanBusinessData.visibleColors.length
-      ? `Elevate the visible palette (${cleanBusinessData.visibleColors.join(", ")}) with deep neutrals, soft surfaces, and one disciplined accent.`
-      : "Create a refined palette from industry cues: deep neutral base, warm surface colors, and one confident accent.",
-    typographyDirection: "Use editorial display type for major headings, a highly readable sans-serif for interface/copy, generous line-height, balanced headings, and a controlled type scale.",
-    imageDirection,
-    compositionRhythm: "Choose the fewest sections needed for the business's conversion story, then vary them deliberately. Do not force a fixed hero/services/gallery/process/FAQ rhythm. No two consecutive sections should share the same centered-heading/card-grid pattern.",
-    signatureInteraction: "Use restrained but memorable motion: reveal layers in the hero, tactile hover states on service cards, FAQ accordion, mobile nav, and reduced-motion support. Do not hide essential content behind animation.",
-    sectionList: [
-      { id: "header", title: "Sticky premium navigation", purpose: "Orient the visitor and keep contact available.", visualTreatment: "Transparent-to-solid sticky bar with compact anchors.", conversionJob: "Make the primary CTA reachable at all times." },
-      { id: "hero", title: "Cinematic hero", purpose: "Explain what the business does, for whom, and why it is worth contacting.", visualTreatment: "Poster-quality first viewport with oversized type, layered niche photography, proof cue, and one memorable visual motif.", conversionJob: "Earn attention within five seconds and make the first click or scroll feel obvious." },
-      { id: "facts", title: "Verified fact bridge", purpose: "Show only verified business facts that help the visitor decide.", visualTreatment: "Compact fact strip or editorial details rail, not fake metrics.", conversionJob: "Reduce uncertainty without fake claims." },
-      { id: "services", title: "Service architecture", purpose: "Group visible services by customer intent.", visualTreatment: "Asymmetric service cards with photography, numbered priorities, or tactile material/detail treatments instead of equal bland boxes.", conversionJob: "Help visitors find the relevant offer." },
-      { id: "difference", title: "Why this experience feels better", purpose: "Translate the business context into a differentiated customer journey.", visualTreatment: "Split editorial section with material or process imagery.", conversionJob: "Create preference." },
-      { id: "showcase", title: "Visual showcase", purpose: "Make the niche tangible through representative, honestly labeled photography.", visualTreatment: "High-impact gallery with varied image ratios, overlap, captions, and one full-bleed or near-full-bleed visual moment.", conversionJob: "Replace abstract promises with visual confidence." },
-      { id: "process", title: "Process and expectations", purpose: "Explain how to enquire, confirm availability, or book.", visualTreatment: "Numbered timeline with mobile-friendly cards.", conversionJob: "Remove friction." },
-      { id: "faq", title: "Decision-support FAQ", purpose: "Answer realistic questions using only supplied facts or clear placeholders.", visualTreatment: "Accessible accordion.", conversionJob: "Resolve objections." },
-      { id: "contact", title: "Final CTA and contact", purpose: "Give the visitor a clear next step.", visualTreatment: "High-contrast CTA band plus contact card/footer.", conversionJob: "Convert intent into contact." },
-    ],
-    ctaStrategy: "Use one primary CTA consistently, plus a secondary CTA for viewing services or confirming availability. Use tel/mailto links only when verified.",
-    trustStrategy: "Use verified facts first. If real proof is missing, omit fake proof surfaces or label missing materials plainly as content needed before launch. Do not make placeholders look like reviews, ratings, badges, awards, or metrics.",
-    missingDataPlaceholderStrategy: `Missing fields: ${cleanBusinessData.missingFields.join(", ")}. Use professional demo placeholders and labels; never present placeholders as real facts.`,
-    seoKeywordStrategy: unique([cleanBusinessData.companyName, cleanBusinessData.businessType, cleanBusinessData.city, ...cleanBusinessData.services.slice(0, 5)]).join(", "),
-    animationMicrointeractionStrategy: "Use scroll reveal, accordion interactions, mobile nav, subtle hover transforms, and reduced-motion support. Animate only opacity and transform.",
-    mobileLayoutStrategy: "Mobile-first with no horizontal overflow, strong first viewport, 44px tap targets, sticky CTA access, readable typography at 360px and 430px.",
-  };
-}
-
-function buildPlanPrompt(
-  cleanBusinessData: CleanBusinessData,
-  designInspiration: string,
-  generationMode: string,
-  industryBrief: SeraphimIndustryBrief,
-) {
-  return `You are a senior creative director and conversion strategist for premium local-business website demos.
-
-Create a business-specific PremiumWebsitePlan as JSON only. Do not return markdown.
-
-${SERAPHIM_GENERATOR_DOCTRINE}
-
-Clean business data:
-${JSON.stringify(cleanBusinessData, null, 2)}
-
-Premium landing-page inspiration research:
-${designInspiration}
-
-SERAPHIM INDUSTRY BRIEF:
-${industryBrief.brief}
-
-Generation direction: ${modeDirection(generationMode)}
-
-Return exactly this JSON shape:
-{
-  "businessPositioning": "specific positioning",
-  "targetCustomer": "specific target customer",
-  "emotionalHook": "specific emotional hook",
-  "conversionGoal": "primary conversion goal",
-  "visualHook": "one poster-worthy first-screen visual idea that fits this exact business",
-  "visualDirection": "custom visual thesis",
-  "colorSystem": "specific color system",
-  "typographyDirection": "specific type direction",
-  "imageDirection": "specific photography/art direction",
-  "compositionRhythm": "how section layouts vary so the page feels custom and eye-catching",
-  "signatureInteraction": "one restrained but memorable interaction or motion idea",
-  "sectionList": [
-    {"id":"header","title":"...","purpose":"...","visualTreatment":"...","conversionJob":"..."}
-  ],
-  "ctaStrategy": "...",
-  "trustStrategy": "...",
-  "missingDataPlaceholderStrategy": "...",
-  "seoKeywordStrategy": "...",
-  "animationMicrointeractionStrategy": "...",
-  "mobileLayoutStrategy": "..."
-}
-
-Rules:
-- Choose only the sections that advance this exact business's conversion story. Do not force a fixed hero/services/gallery/process/FAQ skeleton.
-- Use the Seraphim industry brief as context, not a template. Generate a bespoke page story from verified facts, audience, offer, proof, unknowns, and primary CTA.
-- Do not invent reviews, awards, prices, certifications, addresses, phone numbers, years in business, or guarantees.
-- Make the plan specific to the business type, visible colors, services, audience, and missing data.
-- The plan should force a custom, expensive, image-led website rather than a generic template.
-- The visual hook must be bold enough to make the page impressive in the first 5 seconds, while still believable for the business.
-- Avoid safe defaults: centered hero plus cards, bland white sections, generic blue/purple gradients, and identical section layouts.`;
-}
-
 function parseJsonObject(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] ?? text;
   const start = fenced.indexOf("{");
   const end = fenced.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("No JSON object found.");
   return JSON.parse(fenced.slice(start, end + 1)) as unknown;
-}
-
-function normalizePlan(value: unknown, fallback: PremiumWebsitePlan): PremiumWebsitePlan {
-  if (!isRecord(value)) return fallback;
-  const sectionList = Array.isArray(value.sectionList)
-    ? value.sectionList
-        .filter(isRecord)
-        .map((section, index) => ({
-          id: asString(section.id) || `section-${index + 1}`,
-          title: asString(section.title) || `Section ${index + 1}`,
-          purpose: asString(section.purpose) || "Support the conversion story.",
-          visualTreatment: asString(section.visualTreatment) || "Premium editorial layout.",
-          conversionJob: asString(section.conversionJob) || "Move the visitor toward contact.",
-        }))
-        .slice(0, 14)
-    : fallback.sectionList;
-
-  return {
-    businessPositioning: asString(value.businessPositioning) || fallback.businessPositioning,
-    targetCustomer: asString(value.targetCustomer) || fallback.targetCustomer,
-    emotionalHook: asString(value.emotionalHook) || fallback.emotionalHook,
-    conversionGoal: asString(value.conversionGoal) || fallback.conversionGoal,
-    visualHook: asString(value.visualHook) || fallback.visualHook,
-    visualDirection: asString(value.visualDirection) || fallback.visualDirection,
-    colorSystem: asString(value.colorSystem) || fallback.colorSystem,
-    typographyDirection: asString(value.typographyDirection) || fallback.typographyDirection,
-    imageDirection: asString(value.imageDirection) || fallback.imageDirection,
-    compositionRhythm: asString(value.compositionRhythm) || fallback.compositionRhythm,
-    signatureInteraction: asString(value.signatureInteraction) || fallback.signatureInteraction,
-    sectionList: sectionList.length >= 8 ? sectionList : fallback.sectionList,
-    ctaStrategy: asString(value.ctaStrategy) || fallback.ctaStrategy,
-    trustStrategy: asString(value.trustStrategy) || fallback.trustStrategy,
-    missingDataPlaceholderStrategy: asString(value.missingDataPlaceholderStrategy) || fallback.missingDataPlaceholderStrategy,
-    seoKeywordStrategy: asString(value.seoKeywordStrategy) || fallback.seoKeywordStrategy,
-    animationMicrointeractionStrategy: asString(value.animationMicrointeractionStrategy) || fallback.animationMicrointeractionStrategy,
-    mobileLayoutStrategy: asString(value.mobileLayoutStrategy) || fallback.mobileLayoutStrategy,
-  };
-}
-
-function buildPremiumWebsitePrompt(
-  cleanBusinessData: CleanBusinessData,
-  premiumWebsitePlan: PremiumWebsitePlan,
-  options: { designInspiration: string; generationMode: string; industryBrief: SeraphimIndustryBrief },
-) {
-  return `You are a senior creative director, conversion copywriter, and elite frontend engineer.
-
-Create a complete ultra-premium single-file legacy \`index.html\` website for the business below.
-
-This website must look like a custom $1,000+ website demo, not a generic AI template.
-
-${SERAPHIM_GENERATOR_DOCTRINE}
-
-BUSINESS DATA:
-${JSON.stringify(cleanBusinessData, null, 2)}
-
-PREMIUM WEBSITE PLAN:
-${JSON.stringify(premiumWebsitePlan, null, 2)}
-
-PREMIUM REFERENCE AND PHOTO RESEARCH:
-${options.designInspiration}
-
-SERAPHIM INDUSTRY BRIEF:
-${options.industryBrief.brief}
-
-GENERATION DIRECTION:
-${modeDirection(options.generationMode)}
-
-STRICT OUTPUT:
-Return only the complete \`index.html\` code.
-No markdown.
-No explanation.
-No partial snippets.
-
-TECH RULES:
-- Single file only.
-- Use HTML, CSS inside \`<style>\`, and lightweight JS inside \`<script>\`.
-- No React.
-- No build tools.
-- No external CSS.
-- No external JavaScript.
-- Remote images are allowed from reliable royalty-free sources.
-- Must open directly in a browser.
-- Seraphim Generator is the only generation system. Do not use template packs, preset layouts, reusable blueprint language, or a fixed section recipe as the page structure.
-
-DESIGN STANDARD:
-The page must feel custom, expensive, modern, high-converting, and specific to this business.
-It should also feel immediately eye-catching: a prospect should understand the offer and feel impressed within the first five seconds.
-
-Avoid:
-- generic SaaS template look
-- basic Bootstrap/card layout
-- plain white sections with simple cards
-- random stock images
-- fake testimonials
-- fake phone numbers
-- fake reviews
-- fake prices
-- fake addresses
-- fake awards
-- fake follower counts, fake review counts, fake ratings, fake statistics, or badge-like proof claims
-- filler copy
-- repeated layouts
-- weak hero sections
-- safe-but-boring compositions
-- centered heading plus three cards repeated across the page
-- decorative effects that do not connect to the niche
-
-Required premium elements:
-- strong SEO head
-- include <meta name="generator" content="Seraphim Generator">
-- Open Graph/Twitter metadata
-- JSON-LD schema using verified info only
-- inline favicon
-- CSS variables for brand design tokens
-- sticky responsive navigation
-- mobile hamburger menu
-- cinematic hero section
-- high-quality industry-specific hero imagery or custom visual composition
-- premium CTA buttons
-- verified fact surface only when it helps conversion
-- services/products/menu/offers grouped around customer intent
-- strong visual proof/showcase/story section when images or representative visuals fit the business
-- conversion-focused CTA moment
-- FAQ or decision-support section only when it answers real decision blockers
-- contact/footer section
-- footer
-- scroll reveal animation
-- hover microinteractions
-- responsive layout
-- no horizontal overflow
-- readable mobile typography
-
-COPY RULES:
-- Use verified business details exactly.
-- Use placeholders only where data is missing.
-- Clearly label missing content as content needed before launch.
-- Never present placeholder testimonials as real.
-- Do not create testimonial, rating, award, metric, or badge-style placeholders that look like proof.
-- Do not claim services/products that are not visible unless framed carefully as "ask about current availability."
-- Make the business sound elevated but believable.
-
-VISUAL RULES:
-Create a custom visual identity based on:
-- business type
-- visible brand colors
-- logo style
-- audience
-- local market
-- industry mood
-- customer pain points
-- Seraphim industry brief: ${options.industryBrief.name}
-
-The CSS must include:
-- design tokens
-- fluid typography
-- strong spacing
-- premium shadows
-- gradients or layered backgrounds where appropriate
-- card hover states
-- responsive grid logic
-- mobile nav styles
-- animation classes
-- reduced-motion support if possible
-
-VISUAL MAGNETISM STANDARD:
-- Build around the plan's visualHook, compositionRhythm, and signatureInteraction.
-- The hero must feel like a designed poster or magazine opener, not a normal landing-page block.
-- Use bold scale contrast: the h1 should be substantially larger than body text while still wrapping well on mobile.
-- Use at least one distinctive niche-specific visual motif such as layered service photos, material textures, product/service detail crops, editorial captions, map/service-area framing, before/after style framing with no fake claims, or a crafted split composition.
-- Use varied section compositions: asymmetric services, full-bleed or near-full-bleed showcase, split editorial story, process timeline, CTA band, and FAQ.
-- Include depth that feels intentional: overlapping media, image masks, tasteful gradients, inset borders, surface contrast, strong shadows, or blend treatments where appropriate.
-- Make hover states tactile and visible, but keep content stable.
-- Do not let every section share the same background, padding, heading alignment, or card style.
-- Use real HTTPS photography that visually corresponds to the business category; no random adjacent stock.
-
-QUALITY BAR:
-Before finalizing, mentally compare the result to premium reference \`index.html\` files.
-If it feels basic, rewrite it until it feels premium.
-If it feels merely clean but not eye-catching, rewrite the hero, showcase, and service section until they have stronger visual energy.
-If it feels like a reusable template/preset/blueprint, rebuild the page around this business's fact ledger, industry visual thesis, and conversion brief.
-The result should feel like a serious designer and senior frontend engineer built it.
-
-Hard requirements:
-- Include enough meaningful sections to complete the plan's page story; do not pad the page with generic sections.
-- Include data-seraphim-generator="true" on the body element so the app can verify this is fresh Seraphim output.
-- Include niche-matched imagery or rich visual treatments, with representative captions when not verified.
-- Include at least one visually distinctive first-screen motif and at least one high-impact showcase section.
-- Use every supplied verified contact path correctly: tel: for phone, mailto: for email, HTTPS links for website/social.
-- Use robots noindex,nofollow because this is a private demo.
-- Footer may say "website demo concept" in restrained wording, but do not add a generic Private Concept badge/seal or in-page demo branding that makes the client-facing site feel fake.
-- Do not include local filesystem paths, API keys, or private implementation details.`;
 }
 
 function extractHtml(text: string) {
@@ -943,11 +474,6 @@ async function generateTextWithGemini(
   return text;
 }
 
-async function generateWithGemini(prompt: string, route: ModelRoute) {
-  const text = await generateTextWithGemini(prompt, route, { temperature: 0.82, maxOutputTokens: 60000 });
-  return normalizeHtml(text);
-}
-
 async function generateTextWithOpenAI(prompt: string, route: ModelRoute, maxOutputTokens = 30000) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not configured.");
@@ -966,34 +492,143 @@ async function generateTextWithOpenAI(prompt: string, route: ModelRoute, maxOutp
   return response.output_text;
 }
 
-async function generateWithOpenAI(prompt: string, route: ModelRoute) {
-  const text = await generateTextWithOpenAI(prompt, route, 50000);
-  return normalizeHtml(text);
-}
-
 async function generateTextWithRoute(prompt: string, route: ModelRoute, options: { temperature?: number; maxOutputTokens?: number } = {}) {
   return route.provider === "gemini"
     ? generateTextWithGemini(prompt, route, options)
     : generateTextWithOpenAI(prompt, route, options.maxOutputTokens ?? 30000);
 }
 
-async function generatePremiumWebsitePlan(
-  cleanBusinessData: CleanBusinessData,
-  designInspiration: string,
-  generationMode: string,
+function generationIdFromBody(parsedId?: string) {
+  return parsedId || globalThis.crypto?.randomUUID?.() || `generation-${Date.now()}`;
+}
+
+function withLegacyInfo(data: z.infer<typeof requestSchema>): z.infer<typeof requestSchema> {
+  if (!data.business) return data;
+
+  const business = data.business;
+  const businessNotes = [
+    business.description,
+    business.targetAudience ? `Target audience: ${business.targetAudience}` : "",
+    business.brandPersonality ? `Brand personality: ${business.brandPersonality}` : "",
+    business.differentiators.length ? `Differentiators: ${business.differentiators.join(", ")}` : "",
+  ].filter(Boolean).join("\n");
+
+  return {
+    ...data,
+    info: {
+      ...data.info,
+      businessName: data.info.businessName || business.name,
+      rawInfo: [data.info.rawInfo, businessNotes].filter(Boolean).join("\n\n"),
+      notes: [data.info.notes, businessNotes].filter(Boolean).join("\n\n"),
+      painPoints: data.info.painPoints || business.targetAudience,
+      services: data.info.services || business.differentiators.join(", "),
+      category: data.info.category || business.description.split(/[.\n]/)[0]?.slice(0, 120) || "Local business",
+    },
+  };
+}
+
+function coerceVisualPreferences(value: unknown): Partial<DesignTokens> {
+  return isRecord(value) ? value as Partial<DesignTokens> : {};
+}
+
+function businessDataFromCleanData(cleanBusinessData: CleanBusinessData, structured?: BusinessData): BusinessData {
+  return {
+    name: structured?.name || cleanBusinessData.companyName,
+    description: structured?.description || cleanBusinessData.visibleDescription || cleanBusinessData.rawExtractedData,
+    targetAudience: structured?.targetAudience || cleanBusinessData.targetAudience,
+    differentiators: structured?.differentiators?.length
+      ? structured.differentiators
+      : unique([
+          ...cleanBusinessData.services.slice(0, 5),
+          ...cleanBusinessData.verifiedFacts.slice(0, 5),
+          cleanBusinessData.brandTone,
+        ]).slice(0, 8),
+    brandPersonality: structured?.brandPersonality || cleanBusinessData.brandTone,
+  };
+}
+
+function fallbackWebsitePlan(business: BusinessData, tokens: DesignTokens): WebsitePlan {
+  return {
+    colorPalette: {
+      primary: tokens.colors.primary,
+      secondary: tokens.colors.secondary,
+      accent: tokens.colors.accent,
+      neutral: tokens.colors.neutral[900] || "#0F172A",
+      rationale: "Use the configured brand palette as a premium foundation while preserving readable contrast.",
+    },
+    typography: {
+      heading: tokens.fonts.heading,
+      body: tokens.fonts.body,
+      rationale: "Use a strong heading voice with a clean body face for premium readability.",
+    },
+    layoutPhilosophy: "Build a custom, mobile-first landing page with a cinematic hero, varied section rhythm, and clear conversion momentum.",
+    visualThesis: `Make ${business.name} feel specific, credible, and visually memorable from the first viewport.`,
+    sections: [
+      { name: "Hero", goal: "Orient the visitor, communicate the offer, and present the primary CTA.", order: 1 },
+      { name: "Trust Bridge", goal: "Use verified facts and safe reassurance to reduce uncertainty.", order: 2 },
+      { name: "Services", goal: "Explain the visible services or differentiators around customer intent.", order: 3 },
+      { name: "Experience", goal: "Tell the business-specific story and emotional value.", order: 4 },
+      { name: "Showcase", goal: "Use niche-relevant visuals or representative imagery to make the offer tangible.", order: 5 },
+      { name: "FAQ", goal: "Answer practical decision blockers without inventing facts.", order: 6 },
+      { name: "Contact", goal: "End with a low-friction conversion path.", order: 7 },
+    ],
+    conversionFlow: "Attention, relevance, credibility, offer clarity, visual confidence, objection handling, contact.",
+  };
+}
+
+function normalizeWebsitePlan(value: unknown, fallback: WebsitePlan): WebsitePlan {
+  if (!isRecord(value)) return fallback;
+  const palette = isRecord(value.colorPalette) ? value.colorPalette : {};
+  const typography = isRecord(value.typography) ? value.typography : {};
+  const sections = Array.isArray(value.sections)
+    ? value.sections
+        .filter(isRecord)
+        .map((section, index) => ({
+          name: asString(section.name) || `Section ${index + 1}`,
+          goal: asString(section.goal) || "Support the conversion story.",
+          order: typeof section.order === "number" ? section.order : index + 1,
+        }))
+        .filter((section) => section.name && section.goal)
+        .slice(0, 10)
+    : fallback.sections;
+
+  return {
+    colorPalette: {
+      primary: asString(palette.primary) || fallback.colorPalette.primary,
+      secondary: asString(palette.secondary) || fallback.colorPalette.secondary,
+      accent: asString(palette.accent) || fallback.colorPalette.accent,
+      neutral: asString(palette.neutral) || fallback.colorPalette.neutral,
+      rationale: asString(palette.rationale) || fallback.colorPalette.rationale,
+    },
+    typography: {
+      heading: asString(typography.heading) || fallback.typography.heading,
+      body: asString(typography.body) || fallback.typography.body,
+      rationale: asString(typography.rationale) || fallback.typography.rationale,
+    },
+    layoutPhilosophy: asString(value.layoutPhilosophy) || fallback.layoutPhilosophy,
+    visualThesis: asString(value.visualThesis) || fallback.visualThesis,
+    sections: sections.length >= 4 ? sections.sort((a, b) => a.order - b.order) : fallback.sections,
+    conversionFlow: asString(value.conversionFlow) || fallback.conversionFlow,
+  };
+}
+
+async function generateWebsitePlanFromPrompt(
+  business: BusinessData,
+  tokens: DesignTokens,
+  inspiration: string,
   generationId: string,
-  industryBrief: SeraphimIndustryBrief,
 ) {
-  const fallback = fallbackPremiumWebsitePlan(cleanBusinessData, designInspiration, generationMode, industryBrief);
-  const prompt = buildPlanPrompt(cleanBusinessData, designInspiration, generationMode, industryBrief);
+  const fallback = fallbackWebsitePlan(business, tokens);
+  const prompt = buildPlannerPrompt(business, tokens, inspiration);
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("planning")) {
     try {
-      const text = await generateTextWithRoute(prompt, route, { temperature: 0.55, maxOutputTokens: 12000 });
-      const plan = normalizePlan(parseJsonObject(text), fallback);
+      const text = await runWithModelRouteRetry(route, () =>
+        generateTextWithRoute(prompt, route, { temperature: 0.45, maxOutputTokens: 8000 }),
+      );
       return {
-        plan,
+        plan: normalizeWebsitePlan(parseJsonObject(text), fallback),
         metadata: { stage: "planning", provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
         errors,
       };
@@ -1002,23 +637,54 @@ async function generatePremiumWebsitePlan(
     }
   }
 
-  safeDebug(generationId, "planning-fallback", { errors: errors.slice(-3) });
+  safeDebug(generationId, "planner-fallback", { errors: errors.slice(-3) });
   return {
     plan: fallback,
-    metadata: { stage: "planning", provider: "local", model: "fallback-premium-plan", fallback: true } satisfies StageMetadata,
+    metadata: { stage: "planning", provider: "local", model: "fallback-section-plan", fallback: true } satisfies StageMetadata,
     errors,
   };
 }
 
-async function generateFinalHtml(prompt: string) {
+function extractSectionFragment(text: string) {
+  const fenced = text.match(/```(?:html)?\s*([\s\S]*?)```/i)?.[1] ?? text;
+  return fenced.trim().replace(/<\/?(?:html|head|body)[^>]*>/gi, "").trim();
+}
+
+function fallbackSectionHtml(section: WebsitePlanSection, business: BusinessData) {
+  const slug = section.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "section";
+  return `<section id="${slug}" class="seraphim-section section-${slug}">
+  <div class="section-inner">
+    <p class="eyebrow">${section.name}</p>
+    <h2>${section.goal}</h2>
+    <p>${business.description || `${business.name} website section prepared from verified business details.`}</p>
+  </div>
+</section>`;
+}
+
+async function generateSectionHtmlFromPrompt(input: {
+  business: BusinessData;
+  section: WebsitePlanSection;
+  plan: WebsitePlan;
+  tokens: DesignTokens;
+  inspiration: string;
+  correctiveFeedback?: string[];
+}) {
+  const prompt = buildSectionPrompt(
+    { ...input.section, correctiveFeedback: input.correctiveFeedback },
+    input.plan,
+    input.tokens,
+    input.inspiration,
+  );
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("section")) {
     try {
-      const html = route.provider === "gemini" ? await generateWithGemini(prompt, route) : await generateWithOpenAI(prompt, route);
+      const text = await runWithModelRouteRetry(route, () =>
+        generateTextWithRoute(prompt, route, { temperature: 0.7, maxOutputTokens: 14000 }),
+      );
       return {
-        html,
-        metadata: { stage: "section", provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
+        html: extractSectionFragment(text),
+        metadata: { stage: `section:${input.section.name}`, provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
         errors,
       };
     } catch (error) {
@@ -1026,216 +692,232 @@ async function generateFinalHtml(prompt: string) {
     }
   }
 
-  throw new Error(`AI website generation could not complete. Last errors: ${errors.slice(-3).join(" | ")}`);
-}
-
-function htmlCount(html: string, pattern: RegExp) {
-  return html.match(pattern)?.length ?? 0;
-}
-
-function hardRejectionReasons(html: string, cleanBusinessData: CleanBusinessData) {
-  const reasons: string[] = [];
-  const sectionCount = htmlCount(html, /<section\b/gi);
-  const imageCount = htmlCount(html, /<img\b[^>]*https?:\/\//gi);
-  const visualMotifCount = [
-    /hero/i.test(html),
-    /(showcase|gallery|portfolio|visual)/i.test(html),
-    /(mask-image|clip-path|mix-blend-mode|backdrop-filter|object-fit|aspect-ratio)/i.test(html),
-    /(::before|::after|radial-gradient|linear-gradient)/i.test(html),
-    /(overlap|layer|stack|collage|montage|editorial|cinematic|poster)/i.test(html),
-  ].filter(Boolean).length;
-
-  if (sectionCount < 6) reasons.push(`Only ${sectionCount} section elements found; Seraphim output needs enough meaningful sections to complete the conversion story.`);
-  if (!/<meta\s+name=["']generator["']\s+content=["']Seraphim Generator["']/i.test(html) || !/data-seraphim-generator=["']true["']/i.test(html)) {
-    reasons.push("Missing Seraphim Generator output signature.");
-  }
-  if (!/<script\b[^>]*type=["']application\/ld\+json["']/i.test(html)) reasons.push("Missing JSON-LD schema.");
-  if (!/<meta\s+(?:name|property)=["'](?:description|og:title|twitter:card)/i.test(html)) reasons.push("SEO/Open Graph/Twitter metadata is incomplete.");
-  if (!/<nav\b/i.test(html) || !/(hamburger|menu-toggle|aria-expanded|mobile-menu)/i.test(html)) reasons.push("Missing responsive premium navigation/mobile menu behavior.");
-  if (!/(faq|accordion|details|aria-controls)/i.test(html)) reasons.push("Missing FAQ accordion or decision-support interaction.");
-  if (!/(reveal|intersectionobserver|data-reveal|scroll)/i.test(html)) reasons.push("Missing scroll reveal or interaction layer.");
-  if (imageCount < 2 && !/(showcase|gallery|visual|background-image|image|photo|media)/i.test(html)) reasons.push("Missing niche-matched imagery or a strong visual showcase.");
-  if (visualMotifCount < 4) reasons.push("Missing a distinctive visual motif or high-impact composition; the page may be premium but not eye-catching enough.");
-  if (!/--[a-z0-9-]+\s*:/i.test(html)) reasons.push("Missing CSS custom-property design tokens.");
-  if (/bootstrap|cdn\.jsdelivr\.net\/npm\/bootstrap|tailwind/i.test(html)) reasons.push("Looks like a framework/template instead of a bespoke single-file site.");
-  if (/template pack|selected seraphim template pack|private\s*<br>\s*concept|private concept/i.test(html)) reasons.push("Template-pack or Private Concept language leaked into the client-facing site.");
-  if (/<meta\s+name=["']keywords["']/i.test(html)) reasons.push("Meta keywords tag found; Seraphim Generator should not output meta keywords.");
-  if (!html.toLowerCase().includes(cleanBusinessData.companyName.toLowerCase().slice(0, Math.min(12, cleanBusinessData.companyName.length)))) {
-    reasons.push("Business identity is not prominent enough in the generated HTML.");
-  }
-  if (/(five-star|5-star|hundreds of|award-winning|certified|guaranteed|since 19|since 20|\b\d+ reviews\b|\b\d+\+ customers\b)/i.test(html)) {
-    reasons.push("Potential unsupported claims detected; verified proof must not be invented.");
-  }
-
-  return reasons;
-}
-
-function heuristicQualityGate(html: string, cleanBusinessData: CleanBusinessData): QualityGate {
-  const dimensions: Record<string, number> = {
-    visualPremiumFeel: 5,
-    visualMagnetism: 5,
-    brandSpecificity: 5,
-    sectionDepth: 5,
-    conversionClarity: 5,
-    seoCompleteness: 5,
-    mobileResponsiveness: 5,
-    imageQuality: 5,
-    interactionQuality: 5,
-    factualSafety: 8,
-    codeCleanliness: 6,
-  };
-
-  const sectionCount = htmlCount(html, /<section\b/gi);
-  const imageCount = htmlCount(html, /<img\b[^>]*https?:\/\//gi);
-  const hasCssTokens = /--[a-z0-9-]+\s*:/i.test(html);
-  const hasMedia = /@media\s*\(/i.test(html);
-  const hasSeo = /<title>/i.test(html) && /meta\s+name=["']description/i.test(html) && /og:title|twitter:card/i.test(html);
-  const hasSchema = /application\/ld\+json/i.test(html);
-  const hasFaq = /(faq|accordion|details|aria-controls)/i.test(html);
-  const hasReveal = /(intersectionobserver|data-reveal|reveal)/i.test(html);
-  const hasNav = /<nav\b/i.test(html) && /(aria-expanded|menu-toggle|hamburger|mobile-menu)/i.test(html);
-  const hasContact = Boolean((cleanBusinessData.phone && html.includes("tel:")) || (cleanBusinessData.email && html.includes("mailto:")) || /contact/i.test(html));
-  const visualMotifs = [
-    /(mask-image|clip-path|mix-blend-mode|backdrop-filter)/i.test(html),
-    /(aspect-ratio|object-fit)/i.test(html),
-    /(::before|::after)/i.test(html),
-    /(radial-gradient|linear-gradient)/i.test(html),
-    /(showcase|gallery|portfolio|visual)/i.test(html),
-    /(overlap|layer|stack|collage|montage|editorial|cinematic|poster)/i.test(html),
-    /font-size:\s*clamp\([^;]+(4rem|5rem|6rem|7rem|8rem|9rem|10rem)/i.test(html),
-  ];
-  const hardReasons = hardRejectionReasons(html, cleanBusinessData);
-
-  dimensions.sectionDepth = Math.min(10, 3 + sectionCount);
-  dimensions.imageQuality = Math.min(10, 3 + imageCount * 1.5 + (/(unsplash|images\.pexels|images\.food|images)/i.test(html) ? 1 : 0));
-  dimensions.seoCompleteness = [hasSeo, hasSchema, /robots/i.test(html), /theme-color/i.test(html), /favicon/i.test(html)].filter(Boolean).length * 2;
-  dimensions.mobileResponsiveness = [hasMedia, /overflow-x:\s*hidden/i.test(html), /clamp\(/i.test(html), hasNav].filter(Boolean).length * 2.5;
-  dimensions.interactionQuality = [hasFaq, hasReveal, /addEventListener/i.test(html), /prefers-reduced-motion/i.test(html)].filter(Boolean).length * 2.5;
-  dimensions.brandSpecificity = [cleanBusinessData.companyName && html.includes(cleanBusinessData.companyName), cleanBusinessData.businessType && html.toLowerCase().includes(cleanBusinessData.businessType.toLowerCase().split(" ")[0]), cleanBusinessData.services.some((service) => html.toLowerCase().includes(service.toLowerCase().split(" ")[0])), cleanBusinessData.visibleColors.some((color) => html.toLowerCase().includes(color.toLowerCase()))].filter(Boolean).length * 2.5;
-  dimensions.conversionClarity = [hasContact, /cta|call|quote|book|enquiry|availability/i.test(html), /footer/i.test(html), /button|btn/i.test(html)].filter(Boolean).length * 2.5;
-  dimensions.visualPremiumFeel = [hasCssTokens, imageCount >= 3, /hero/i.test(html), /(showcase|gallery|editorial|cinematic|surface|shadow|gradient)/i.test(html)].filter(Boolean).length * 2.5;
-  dimensions.visualMagnetism = Math.min(10, 2 + visualMotifs.filter(Boolean).length * 1.35 + (imageCount >= 4 ? 1 : 0));
-  dimensions.factualSafety = hardReasons.some((reason) => /unsupported/i.test(reason)) ? 5 : 9;
-  dimensions.codeCleanliness = [/<style[\s>]/i.test(html), /<script[\s>]/i.test(html), !/file:\/\//i.test(html), !/console\.log/i.test(html)].filter(Boolean).length * 2.5;
-
-  const average = Object.values(dimensions).reduce((sum, value) => sum + value, 0) / Object.values(dimensions).length;
-  const score = Math.max(1, Math.min(10, hardReasons.length ? Math.min(8.4, average) : average));
-
   return {
-    score: Number(score.toFixed(1)),
-    passed: score >= 8.5 && hardReasons.length === 0,
-    dimensionScores: dimensions,
-    rejectionReasons: hardReasons,
-    revisionBrief: hardReasons.length
-      ? `Revise the website to fix: ${hardReasons.join(" ")}`
-      : "Improve premium polish, image-led composition, section depth, and conversion specificity.",
-    source: "heuristic",
+    html: fallbackSectionHtml(input.section, input.business),
+    metadata: { stage: `section:${input.section.name}`, provider: "local", model: "fallback-section-html", fallback: true } satisfies StageMetadata,
+    errors,
   };
 }
 
-function buildQaPrompt(
-  html: string,
-  cleanBusinessData: CleanBusinessData,
-  premiumWebsitePlan: PremiumWebsitePlan,
-  industryBrief: SeraphimIndustryBrief,
-) {
-  return `You are a strict premium website QA reviewer.
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
-Score this generated single-file website from 1-10 against the rubric. Return JSON only.
-
-${SERAPHIM_GENERATOR_DOCTRINE}
-
-Business data:
-${JSON.stringify(cleanBusinessData, null, 2)}
-
-Premium plan:
-${JSON.stringify(premiumWebsitePlan, null, 2)}
-
-Seraphim industry brief:
-${industryBrief.brief}
-
-HTML to review:
-${html.slice(0, 70000)}
-
-Rubric dimensions:
-- visualPremiumFeel
-- visualMagnetism
-- brandSpecificity
-- sectionDepth
-- conversionClarity
-- seoCompleteness
-- mobileResponsiveness
-- imageQuality
-- interactionQuality
-- factualSafety
-- codeCleanliness
-
-Hard reject if it looks like Bootstrap, generic SaaS, lacks business-specific visual identity, lacks enough meaningful sections for the conversion story, misses SEO/schema/nav/decision support/scroll reveal, invents fake proof, includes meta keywords, includes template-pack language, includes a Private Concept badge/seal, is placeholder-heavy when data exists, or feels clean but not visually memorable.
-Hard reject if the page appears generated from a fixed template pack, generic preset, or reusable hero/services/gallery/process/FAQ blueprint rather than Seraphim Generator's fact-led page story.
-
-Visual magnetism review:
-- Score below 8 if the first viewport is a normal centered hero with no memorable image composition.
-- Score below 8 if services/showcase/process all use the same card-grid rhythm.
-- Score below 8 if imagery is present but not treated as a designed composition.
-- Score below 8 if the page has no refined reference-library-inspired effect, such as a subtle animated background, border sheen, light-ray/noise layer, bento rhythm, progressive blur, shimmer CTA, or tactile card hover.
-- Score 9+ only when the page has a strong visual hook, niche-specific photography direction, bold but controlled typography, varied section rhythm, and at least one distinctive motif inspired by the reference library but implemented as original single-file HTML/CSS/JS.
-
-Return exactly:
-{
-  "score": 8.7,
-  "passed": true,
-  "dimensionScores": {"visualPremiumFeel": 9, "visualMagnetism": 9, "brandSpecificity": 9, "sectionDepth": 9, "conversionClarity": 9, "seoCompleteness": 9, "mobileResponsiveness": 9, "imageQuality": 9, "interactionQuality": 9, "factualSafety": 9, "codeCleanliness": 9},
-  "rejectionReasons": [],
-  "revisionBrief": "specific improvement brief"
+function buildTokenCss(tokens: DesignTokens, plan: WebsitePlan) {
+  const neutral = tokens.colors.neutral;
+  return `:root {
+  --color-primary: ${plan.colorPalette.primary || tokens.colors.primary};
+  --color-secondary: ${plan.colorPalette.secondary || tokens.colors.secondary};
+  --color-accent: ${plan.colorPalette.accent || tokens.colors.accent};
+  --color-neutral: ${plan.colorPalette.neutral || neutral[900] || "#0F172A"};
+  --color-bg: ${neutral[50] || "#F8FAFC"};
+  --color-surface: #ffffff;
+  --color-text: ${neutral[900] || "#0F172A"};
+  --color-muted: ${neutral[600] || "#475569"};
+  --font-heading: ${tokens.fonts.heading};
+  --font-body: ${tokens.fonts.body};
+  --radius-sm: ${tokens.borderRadius.sm};
+  --radius-md: ${tokens.borderRadius.md};
+  --radius-lg: ${tokens.borderRadius.lg};
+  --radius-xl: ${tokens.borderRadius.xl};
+  --shadow-md: ${tokens.shadows.md};
+  --shadow-lg: ${tokens.shadows.lg};
+  --space-base: ${tokens.spacing.base};
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: inherit; }
+.seraphim-site { min-height: 100vh; }
+.seraphim-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 4vw, 3rem);
+  background: color-mix(in srgb, var(--color-bg) 88%, transparent);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-neutral) 14%, transparent);
+}
+.seraphim-brand { font-family: var(--font-heading); font-weight: 800; letter-spacing: -0.04em; }
+.seraphim-nav { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.9rem; }
+.seraphim-menu-toggle {
+  display: none;
+  border: 1px solid color-mix(in srgb, var(--color-neutral) 18%, transparent);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 0.65rem 0.9rem;
+  font: inherit;
+  cursor: pointer;
+}
+.seraphim-section { padding: clamp(4rem, 8vw, 8rem) clamp(1rem, 4vw, 3rem); }
+.section-inner { width: min(1120px, 100%); margin: 0 auto; }
+.eyebrow { color: var(--color-primary); text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.75rem; font-weight: 800; }
+h1, h2, h3 { font-family: var(--font-heading); line-height: 1.05; letter-spacing: -0.045em; }
+h1 { font-size: clamp(3rem, 9vw, 7.5rem); }
+h2 { font-size: clamp(2rem, 5vw, 4.5rem); }
+.seraphim-footer { padding: 2rem clamp(1rem, 4vw, 3rem); background: var(--color-neutral); color: white; }
+.seraphim-footer-inner { width: min(1120px, 100%); margin: 0 auto; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+button, .button, .btn, [role="button"] { min-height: 44px; }
+@media (max-width: 720px) {
+  .seraphim-header { align-items: flex-start; flex-direction: column; }
+  .seraphim-header-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .seraphim-menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+  .seraphim-nav { display: none; width: 100%; flex-direction: column; }
+  .seraphim-nav[data-open="true"] { display: flex; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }`;
 }
 
-function normalizeQualityGate(value: unknown, fallback: QualityGate): QualityGate {
-  if (!isRecord(value)) return fallback;
-  const dimensionScores = isRecord(value.dimensionScores)
-    ? Object.fromEntries(
-        Object.entries(value.dimensionScores).map(([key, score]) => [key, typeof score === "number" ? Math.max(1, Math.min(10, score)) : 5]),
-      )
-    : fallback.dimensionScores;
-  const score = typeof value.score === "number" ? Math.max(1, Math.min(10, value.score)) : fallback.score;
+function buildJsonLd(cleanBusinessData: CleanBusinessData) {
+  const data: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: cleanBusinessData.companyName,
+    description: cleanBusinessData.visibleDescription || cleanBusinessData.businessType,
+  };
+  if (cleanBusinessData.phone) data.telephone = cleanBusinessData.phone;
+  if (cleanBusinessData.email) data.email = cleanBusinessData.email;
+  if (cleanBusinessData.websiteUrl) data.url = cleanBusinessData.websiteUrl;
+  if (cleanBusinessData.address) data.address = cleanBusinessData.address;
+  if (cleanBusinessData.socialLinks.length) data.sameAs = cleanBusinessData.socialLinks;
+  return JSON.stringify(data, null, 2).replace(/</g, "\\u003c");
+}
+
+function assembleFullHtml(input: {
+  business: BusinessData;
+  cleanBusinessData: CleanBusinessData;
+  tokens: DesignTokens;
+  plan: WebsitePlan;
+  sections: string[];
+}) {
+  const title = `${input.business.name} | ${input.cleanBusinessData.businessType}`;
+  const description = compactText(input.business.description || input.plan.conversionFlow || input.cleanBusinessData.visibleDescription, 155);
+  const navLinks = input.plan.sections
+    .slice(0, 6)
+    .map((section) => {
+      const id = section.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      return `<a href="#${id}">${escapeHtml(section.name)}</a>`;
+    })
+    .join("");
+
+  return normalizeHtml(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="generator" content="Seraphim Generator">
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(description)}">
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="${escapeHtml(description)}">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="${escapeHtml(input.plan.colorPalette.primary || input.tokens.colors.primary)}">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232B5E8C'/%3E%3Ctext x='50%25' y='56%25' text-anchor='middle' font-size='32' fill='white' font-family='Arial'%3ES%3C/text%3E%3C/svg%3E">
+  <script type="application/ld+json">${buildJsonLd(input.cleanBusinessData)}</script>
+  <style>${buildTokenCss(input.tokens, input.plan)}</style>
+</head>
+<body data-seraphim-generator="true">
+  <div class="seraphim-site">
+    <header class="seraphim-header">
+      <div class="seraphim-header-row">
+        <a class="seraphim-brand" href="#">${escapeHtml(input.business.name)}</a>
+        <button class="seraphim-menu-toggle" type="button" aria-controls="seraphim-primary-nav" aria-expanded="false">Menu</button>
+      </div>
+      <nav id="seraphim-primary-nav" class="seraphim-nav" aria-label="Primary navigation">${navLinks}</nav>
+    </header>
+    <main>
+      ${input.sections.join("\n\n")}
+    </main>
+    <footer class="seraphim-footer">
+      <div class="seraphim-footer-inner">
+        <strong>${escapeHtml(input.business.name)}</strong>
+        <span>${escapeHtml(input.cleanBusinessData.phone || input.cleanBusinessData.email || "Contact details to confirm before launch")}</span>
+      </div>
+    </footer>
+  </div>
+  <script>
+    const menuToggle = document.querySelector('.seraphim-menu-toggle');
+    const primaryNav = document.querySelector('#seraphim-primary-nav');
+    menuToggle?.addEventListener('click', () => {
+      const open = primaryNav?.getAttribute('data-open') === 'true';
+      primaryNav?.setAttribute('data-open', String(!open));
+      menuToggle.setAttribute('aria-expanded', String(!open));
+    });
+    document.querySelectorAll('a[href^="#"]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        const target = document.querySelector(link.getAttribute('href'));
+        if (target) {
+          event.preventDefault();
+          target.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+          primaryNav?.setAttribute('data-open', 'false');
+          menuToggle?.setAttribute('aria-expanded', 'false');
+        }
+      });
+    });
+  </script>
+</body>
+</html>`);
+}
+
+function normalizeSectionQA(value: unknown, fallbackIssues: string[] = []): SectionQAResult {
+  if (!isRecord(value)) return { passed: fallbackIssues.length === 0, issues: fallbackIssues };
   return {
-    score: Number(score.toFixed(1)),
-    passed: Boolean(value.passed) && score >= 8.5,
-    dimensionScores,
-    rejectionReasons: stringList(value.rejectionReasons, 12),
-    revisionBrief: asString(value.revisionBrief) || fallback.revisionBrief,
-    source: "model",
+    passed: Boolean(value.passed),
+    issues: stringList(value.issues, 20),
   };
 }
 
-async function scoreGeneratedWebsite(
-  html: string,
-  cleanBusinessData: CleanBusinessData,
-  premiumWebsitePlan: PremiumWebsitePlan,
-  industryBrief: SeraphimIndustryBrief,
-) {
-  const heuristic = heuristicQualityGate(html, cleanBusinessData);
+function heuristicSectionIssues(html: string) {
+  const issues: string[] = [];
+  const visibleText = html
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ");
+  if (!/<title>/i.test(html) || !/meta\s+name=["']description/i.test(html)) issues.push("Missing core SEO metadata.");
+  if (!/data-seraphim-generator=["']true["']/i.test(html)) issues.push("Missing Seraphim output signature.");
+  if (!/<section\b/i.test(html)) issues.push("No meaningful sections were generated.");
+  if (/<meta\s+name=["']keywords["']/i.test(html)) issues.push("Meta keywords are not allowed.");
+  if (/(five-star|5-star|award-winning|guaranteed|certified|\b\d+ reviews\b|\b\d+\+ customers\b)/i.test(html)) {
+    issues.push("Potential fabricated proof or unsupported metrics found.");
+  }
+  if (/\bplaceholder\b|lorem ipsum|TODO|\[[A-Z][^\]]{2,60}\]/i.test(visibleText)) issues.push("Placeholder content found.");
+  return issues;
+}
+
+async function runSectionQA(fullHtml: string) {
+  const heuristicIssues = heuristicSectionIssues(fullHtml);
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("qa")) {
     try {
-      const text = await generateTextWithRoute(buildQaPrompt(html, cleanBusinessData, premiumWebsitePlan, industryBrief), route, {
-        temperature: 0.2,
-        maxOutputTokens: 6000,
-      });
-      const modelGate = normalizeQualityGate(parseJsonObject(text), heuristic);
-      const hardReasons = hardRejectionReasons(html, cleanBusinessData);
-      const rejectionReasons = unique([...modelGate.rejectionReasons, ...heuristic.rejectionReasons, ...hardReasons]);
-      const score = hardReasons.length ? Math.min(8.4, modelGate.score, heuristic.score) : Math.min(modelGate.score, Math.max(heuristic.score, modelGate.score - 0.6));
+      const text = await runWithModelRouteRetry(route, () =>
+        generateTextWithRoute(buildQAPrompt(fullHtml), route, { temperature: 0.15, maxOutputTokens: 3000 }),
+      );
+      const modelQa = normalizeSectionQA(parseJsonObject(text), heuristicIssues);
+      const issues = unique([...heuristicIssues, ...modelQa.issues]);
       return {
-        gate: {
-          ...modelGate,
-          score: Number(score.toFixed(1)),
-          passed: score >= 8.5 && rejectionReasons.length === 0,
-          rejectionReasons,
-          revisionBrief: rejectionReasons.length ? `Revise the website to fix: ${rejectionReasons.join(" ")}` : modelGate.revisionBrief,
-          source: "combined" as const,
-        },
+        qa: { passed: modelQa.passed && issues.length === 0, issues } satisfies SectionQAResult,
         metadata: { stage: "qa", provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
         errors,
       };
@@ -1245,57 +927,112 @@ async function scoreGeneratedWebsite(
   }
 
   return {
-    gate: heuristic,
-    metadata: { stage: "qa", provider: "local", model: "heuristic-premium-gate", fallback: true } satisfies StageMetadata,
+    qa: { passed: heuristicIssues.length === 0, issues: heuristicIssues } satisfies SectionQAResult,
+    metadata: { stage: "qa", provider: "local", model: "heuristic-section-qa", fallback: true } satisfies StageMetadata,
     errors,
   };
 }
 
-async function reviseGeneratedWebsite(
-  html: string,
-  cleanBusinessData: CleanBusinessData,
-  premiumWebsitePlan: PremiumWebsitePlan,
-  qualityGate: QualityGate,
-  industryBrief: SeraphimIndustryBrief,
-) {
-  const prompt = `You are an elite frontend engineer revising a weak generated landing page.
+function sectionNamesForIssues(sections: WebsitePlanSection[], issues: string[]) {
+  const issueText = issues.join(" ").toLowerCase();
+  const matched = sections.filter((section) => issueText.includes(section.name.toLowerCase()));
+  return matched.length ? matched : sections.slice(0, Math.min(3, sections.length));
+}
 
-Return only the complete revised index.html. No markdown.
-
-Fix these premium QA failures:
-${qualityGate.rejectionReasons.join("\n") || qualityGate.revisionBrief}
-
-Business data:
-${JSON.stringify(cleanBusinessData, null, 2)}
-
-Premium plan:
-${JSON.stringify(premiumWebsitePlan, null, 2)}
-
-Seraphim Generator doctrine:
-${SERAPHIM_GENERATOR_DOCTRINE}
-
-Seraphim industry brief:
-${industryBrief.brief}
-
-Existing HTML:
-${html.slice(0, 90000)}
-
-Revision rules:
-- Preserve verified facts exactly.
-- Do not invent testimonials, ratings, awards, certifications, prices, guarantees, addresses, phone numbers, or years in business.
-- Make it visibly more premium, custom, image-led, business-specific, and conversion-focused.
-- Rebuild around Seraphim Generator's fact ledger, industry visual thesis, page story, and conversion goal if the existing HTML drifted into a generic layout.
-- Remove template-pack language, meta keywords, fake proof surfaces, badge-like fake metrics, and Private Concept seals/badges.
-- If visual magnetism is weak, rewrite the hero, services, and showcase sections with a stronger first-screen visual hook, bolder typography scale, layered niche photography, varied section rhythm, and a distinctive motif tied to the business category.
-- Add exactly one primary Magic UI-inspired pattern translated into original CSS/JS, such as a subtle animated grid/noise/light layer, border-beam-style card highlight, shimmer CTA, bento service rhythm, progressive blur, or tactile glare hover. Do not add React, Tailwind, imports, external JavaScript, or Magic UI branding.
-- Keep the result tasteful and credible; eye-catching should come from composition, imagery, type contrast, spacing, and craft rather than gimmicks.
-- Ensure strong SEO head, JSON-LD, sticky responsive nav, cinematic hero, at least 8 sections, FAQ accordion, scroll reveal, polished footer, and no horizontal overflow.`;
-
-  const result = await generateFinalHtml(prompt);
+function qualityGateFromSectionQA(qa: SectionQAResult): QualityGate {
+  const score = qa.passed ? 9 : Math.max(5, 8 - qa.issues.length * 0.4);
   return {
-    html: result.html,
-    metadata: { ...result.metadata, stage: "revision" },
-    errors: result.errors,
+    score: Number(score.toFixed(1)),
+    passed: qa.passed,
+    dimensionScores: {
+      visualPremiumFeel: qa.passed ? 9 : 7,
+      visualMagnetism: qa.passed ? 9 : 7,
+      brandSpecificity: qa.passed ? 9 : 7,
+      sectionDepth: qa.passed ? 9 : 7,
+      conversionClarity: qa.passed ? 9 : 7,
+      seoCompleteness: qa.issues.some((issue) => /seo|meta/i.test(issue)) ? 6 : 9,
+      mobileResponsiveness: qa.issues.some((issue) => /mobile|overflow/i.test(issue)) ? 6 : 9,
+      imageQuality: qa.passed ? 9 : 7,
+      interactionQuality: qa.passed ? 9 : 7,
+      factualSafety: qa.issues.some((issue) => /fake|fabricated|unsupported/i.test(issue)) ? 5 : 9,
+      codeCleanliness: qa.passed ? 9 : 7,
+    },
+    rejectionReasons: qa.issues,
+    revisionBrief: qa.issues.length ? `Fix section QA issues: ${qa.issues.join(" ")}` : "Passed section QA.",
+    source: "combined",
+  };
+}
+
+async function runSectionGenerationPipeline(input: {
+  data: z.infer<typeof requestSchema>;
+  cleanBusinessData: CleanBusinessData;
+  generationId: string;
+}) {
+  const tokens = buildDesignTokens(coerceVisualPreferences(input.data.visualPreferences));
+  const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
+  const inspiration = await fetchDesignInspiration(input.cleanBusinessData.businessType);
+  const planResult = await generateWebsitePlanFromPrompt(business, tokens, inspiration, input.generationId);
+  const metadata: StageMetadata[] = [planResult.metadata];
+  const sectionResults = new Map<string, string>();
+
+  for (const section of planResult.plan.sections) {
+    const result = await generateSectionHtmlFromPrompt({
+      business,
+      section,
+      plan: planResult.plan,
+      tokens,
+      inspiration,
+    });
+    sectionResults.set(section.name, result.html);
+    metadata.push(result.metadata);
+  }
+
+  let html = assembleFullHtml({
+    business,
+    cleanBusinessData: input.cleanBusinessData,
+    tokens,
+    plan: planResult.plan,
+    sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
+  });
+  let qaResult = await runSectionQA(html);
+  metadata.push(qaResult.metadata);
+  let revisionCount = 0;
+
+  while (!qaResult.qa.passed && revisionCount < 2 && qaResult.qa.issues.length) {
+    revisionCount += 1;
+    const sectionsToRegenerate = sectionNamesForIssues(planResult.plan.sections, qaResult.qa.issues);
+    for (const section of sectionsToRegenerate) {
+      const result = await generateSectionHtmlFromPrompt({
+        business,
+        section,
+        plan: planResult.plan,
+        tokens,
+        inspiration,
+        correctiveFeedback: qaResult.qa.issues,
+      });
+      sectionResults.set(section.name, result.html);
+      metadata.push({ ...result.metadata, stage: `revision:${section.name}` });
+    }
+    html = assembleFullHtml({
+      business,
+      cleanBusinessData: input.cleanBusinessData,
+      tokens,
+      plan: planResult.plan,
+      sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
+    });
+    qaResult = await runSectionQA(html);
+    metadata.push({ ...qaResult.metadata, stage: `qa:retry-${revisionCount}` });
+  }
+
+  return {
+    html,
+    plan: planResult.plan,
+    qa: qaResult.qa,
+    metadata,
+    revisionCount,
+    business,
+    tokens,
+    inspiration,
   };
 }
 
@@ -1316,10 +1053,11 @@ export async function POST(request: Request) {
   }
 
   const pipelineMetadata: StageMetadata[] = [];
-  const generationId = parsed.data.generationId;
+  const generationId = generationIdFromBody(parsed.data.generationId);
 
   try {
-    const cleanBusinessData = buildCleanBusinessData(parsed.data);
+    const normalizedData = withLegacyInfo({ ...parsed.data, generationId });
+    const cleanBusinessData = buildCleanBusinessData(normalizedData);
     const industryBrief = buildSeraphimIndustryBrief(cleanBusinessData);
     safeDebug(generationId, "clean-data", {
       companyName: cleanBusinessData.companyName,
@@ -1336,95 +1074,47 @@ export async function POST(request: Request) {
       matchedSignals: industryBrief.matchedSignals,
     });
 
-    const liveDesignInspiration = await buildDesignInspirationBrief(parsed.data.info);
-    const magicUiReference = buildMagicUiReferenceBrief(cleanBusinessData);
-    const designInspiration = [liveDesignInspiration, magicUiReference].join("\n\n");
-    safeDebug(generationId, "reference-library", {
-      source: "magicuidesign/magicui",
-      mode: "single-file-html-css-js-adaptation",
-      promptLength: magicUiReference.length,
-    });
-    const planResult = await generatePremiumWebsitePlan(
+    const pipeline = await runSectionGenerationPipeline({
+      data: normalizedData,
       cleanBusinessData,
-      designInspiration,
-      parsed.data.generationMode,
       generationId,
-      industryBrief,
-    );
-    pipelineMetadata.push(planResult.metadata);
-    safeDebug(generationId, "premium-plan", {
-      model: planResult.metadata.model,
-      sectionCount: planResult.plan.sectionList.length,
-      visualDirectionLength: planResult.plan.visualDirection.length,
     });
-
-    const prompt = buildPremiumWebsitePrompt(cleanBusinessData, planResult.plan, {
-      designInspiration,
-      generationMode: parsed.data.generationMode,
-      industryBrief,
+    pipelineMetadata.push(...pipeline.metadata);
+    const qualityGate = qualityGateFromSectionQA(pipeline.qa);
+    const modelMetadata = pipeline.metadata.find((item) => item.stage.startsWith("section:")) ?? pipeline.metadata[pipeline.metadata.length - 1];
+    safeDebug(generationId, "section-pipeline", {
+      sectionCount: pipeline.plan.sections.length,
+      qaPassed: pipeline.qa.passed,
+      qaIssues: pipeline.qa.issues,
+      revisionCount: pipeline.revisionCount,
+      inspirationLength: pipeline.inspiration.length,
     });
-    safeDebug(generationId, "final-prompt", {
-      length: prompt.length,
-      generationMode: parsed.data.generationMode,
-      generator: "seraphim-generator",
-      industryBrief: industryBrief.id,
-      sectionRoutes: getRoutesForStage("section").map((route) => `${route.provider}:${route.model}`),
-    });
-
-    let generation = await generateFinalHtml(prompt);
-    pipelineMetadata.push(generation.metadata);
-
-    let qa = await scoreGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, industryBrief);
-    pipelineMetadata.push(qa.metadata);
-    let revisionCount = 0;
-    safeDebug(generationId, "quality-gate", {
-      score: qa.gate.score,
-      passed: qa.gate.passed,
-      rejectionReasons: qa.gate.rejectionReasons,
-    });
-
-    if (!qa.gate.passed) {
-      const revision = await reviseGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, qa.gate, industryBrief);
-      generation = {
-        html: revision.html,
-        metadata: revision.metadata,
-        errors: revision.errors,
-      };
-      pipelineMetadata.push(revision.metadata);
-      revisionCount = 1;
-
-      qa = await scoreGeneratedWebsite(generation.html, cleanBusinessData, planResult.plan, industryBrief);
-      pipelineMetadata.push(qa.metadata);
-      safeDebug(generationId, "quality-gate-after-revision", {
-        score: qa.gate.score,
-        passed: qa.gate.passed,
-        rejectionReasons: qa.gate.rejectionReasons,
-      });
-    }
 
     return NextResponse.json(
       {
         generationId,
-        html: generation.html,
-        modelMetadata: generation.metadata,
+        html: pipeline.html,
+        plan: pipeline.plan,
+        qa: pipeline.qa,
+        modelMetadata,
         pipelineModelMetadata: pipelineMetadata,
         cleanedBusinessData: cleanBusinessData,
         generationPlan: {
           generationId,
           stage: "planning",
-          summary: planResult.plan.businessPositioning,
-          sectionIds: planResult.plan.sectionList.map((section) => section.id),
-          premiumPlan: planResult.plan,
+          summary: pipeline.plan.layoutPhilosophy,
+          sectionIds: pipeline.plan.sections.map((section) => section.name),
+          premiumPlan: pipeline.plan,
           seraphimGenerator: {
             authority: "only-website-generation-system",
             industryBrief: industryBrief.id,
             industryName: industryBrief.name,
             matchedSignals: industryBrief.matchedSignals,
           },
-          qualityGate: qa.gate,
-          revisionCount,
+          qualityGate,
+          revisionCount: pipeline.revisionCount,
         },
-        qualityGate: qa.gate,
+        qualityGate,
       },
       { headers: noStoreHeaders },
     );

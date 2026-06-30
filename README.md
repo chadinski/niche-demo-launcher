@@ -70,11 +70,16 @@ OPENAI_API_KEY=
 GEMINI_API_KEY=
 FIRECRAWL_API_KEY=
 
+# Public default design tokens
+NEXT_PUBLIC_DEFAULT_PRIMARY_COLOR=#2B5E8C
+NEXT_PUBLIC_DEFAULT_SECONDARY_COLOR=#F4A261
+
 # Stage-based model routing
 EXTRACTION_MODEL=gemini-2.5-flash-lite
-PLANNER_MODEL=gemini-2.5-flash-lite
-SECTION_MODEL=gemini-2.5-flash
-QA_MODEL=gemini-2.5-flash-lite
+PLANNER_MODEL=gemini-2.5-pro
+SECTION_MODEL=gemini-2.5-pro
+QA_MODEL=gemini-2.5-flash
+INSPIRATION_MODEL=gemini-2.5-flash
 VISION_MODEL=gemini-2.5-flash
 FALLBACK_MODEL=gemini-2.5-flash-lite
 OPENAI_MODEL=
@@ -90,13 +95,14 @@ VERCEL_TEAM_ID=
 
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `FIRECRAWL_API_KEY` are server-only. Never expose them through `NEXT_PUBLIC_*`.
 `FIRECRAWL_API_KEY` is optional. Add it when you want generated websites to research premium landing-page references and stronger niche-matched photo direction before HTML generation.
+`NEXT_PUBLIC_DEFAULT_PRIMARY_COLOR` and `NEXT_PUBLIC_DEFAULT_SECONDARY_COLOR` set the default public design-token palette used by `lib/design/tokens.ts`.
 `VERCEL_TOKEN` is required for one-click demo deployment. `GITHUB_TOKEN` and `GITHUB_OWNER` are optional for deployment, but when present the generated `index.html` is also archived to a GitHub repository.
 
 ## AI Model Routing
 
 Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Website HTML generation uses only the Seraphim Generator route in `app/api/generate-website/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use. Add `FIRECRAWL_API_KEY` only when you want abstract inspiration and stronger niche-matched photo direction before HTML generation.
 
-Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. Use the cheapest reliable model for extraction/planning/QA, reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable.
+Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. `PLANNER_MODEL` and `SECTION_MODEL` default to `gemini-2.5-pro`; `QA_MODEL` and `INSPIRATION_MODEL` default to `gemini-2.5-flash`. Reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable. The router retries failed model calls twice with exponential backoff and temporarily opens a 60-second circuit after repeated route failures.
 
 ## Generation Isolation
 
