@@ -15,6 +15,61 @@ export type ModelRoute = {
   reason: string;
 };
 
+type CircuitState = {
+  failures: number;
+  openedAt: number | null;
+};
+
+const CIRCUIT_FAILURE_THRESHOLD = 3;
+const CIRCUIT_RESET_MS = 60_000;
+const ROUTE_RETRIES = 2;
+const BASE_RETRY_DELAY_MS = 500;
+const circuitState = new Map<string, CircuitState>();
+
+function routeKey(route: Pick<ModelRoute, "stage" | "provider" | "model">) {
+  return `${route.stage}:${route.provider}:${route.model}`;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function retryDelay(attempt: number) {
+  return BASE_RETRY_DELAY_MS * 2 ** attempt;
+}
+
+function getCircuitState(route: ModelRoute) {
+  const key = routeKey(route);
+  const state = circuitState.get(key) ?? { failures: 0, openedAt: null };
+  circuitState.set(key, state);
+  return state;
+}
+
+export function isModelRouteAvailable(route: ModelRoute) {
+  const state = getCircuitState(route);
+  if (!state.openedAt) return true;
+
+  if (Date.now() - state.openedAt >= CIRCUIT_RESET_MS) {
+    circuitState.set(routeKey(route), { failures: 0, openedAt: null });
+    return true;
+  }
+
+  return false;
+}
+
+export function recordModelRouteSuccess(route: ModelRoute) {
+  circuitState.set(routeKey(route), { failures: 0, openedAt: null });
+}
+
+export function recordModelRouteFailure(route: ModelRoute) {
+  const state = getCircuitState(route);
+  const failures = state.failures + 1;
+  circuitState.set(routeKey(route), {
+    failures,
+    openedAt: failures >= CIRCUIT_FAILURE_THRESHOLD ? Date.now() : state.openedAt,
+  });
+}
+
 function uniqueRoutes(routes: ModelRoute[]) {
   const seen = new Set<string>();
   return routes.filter((route) => {
@@ -76,11 +131,41 @@ export function getRoutesForStage(
     });
   }
 
-  return uniqueRoutes(routes);
+  return uniqueRoutes(routes).filter(isModelRouteAvailable);
 }
 
 export function logModelRoute(route: ModelRoute, generationId: string) {
   console.info(
     `[generation:${generationId}] ${route.stage} handled by ${route.provider}:${route.model}${route.fallback ? " (fallback)" : ""}`,
   );
+}
+
+export async function runWithModelRouteRetry<T>(
+  route: ModelRoute,
+  operation: (route: ModelRoute, attempt: number) => Promise<T>,
+  options: { retries?: number } = {},
+) {
+  if (!isModelRouteAvailable(route)) {
+    throw new Error(`Circuit open for ${route.provider}:${route.model} on ${route.stage}.`);
+  }
+
+  const retries = options.retries ?? ROUTE_RETRIES;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const result = await operation(route, attempt);
+      recordModelRouteSuccess(route);
+      return result;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) break;
+      await sleep(retryDelay(attempt));
+    }
+  }
+
+  recordModelRouteFailure(route);
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`${route.provider}:${route.model} failed after retries.`);
 }

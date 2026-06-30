@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getRoutesForStage, type ModelRoute } from "@/lib/ai/modelRouter";
+import { getRoutesForStage, runWithModelRouteRetry, type ModelRoute } from "@/lib/ai/modelRouter";
 
 const businessInfoSchema = z.object({
   rawInfo: z.string().default(""),
@@ -990,7 +990,9 @@ async function generatePremiumWebsitePlan(
 
   for (const route of getRoutesForStage("planning")) {
     try {
-      const text = await generateTextWithRoute(prompt, route, { temperature: 0.55, maxOutputTokens: 12000 });
+      const text = await runWithModelRouteRetry(route, () =>
+        generateTextWithRoute(prompt, route, { temperature: 0.55, maxOutputTokens: 12000 }),
+      );
       const plan = normalizePlan(parseJsonObject(text), fallback);
       return {
         plan,
@@ -1015,7 +1017,9 @@ async function generateFinalHtml(prompt: string) {
 
   for (const route of getRoutesForStage("section")) {
     try {
-      const html = route.provider === "gemini" ? await generateWithGemini(prompt, route) : await generateWithOpenAI(prompt, route);
+      const html = await runWithModelRouteRetry(route, () =>
+        route.provider === "gemini" ? generateWithGemini(prompt, route) : generateWithOpenAI(prompt, route),
+      );
       return {
         html,
         metadata: { stage: "section", provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
@@ -1219,10 +1223,12 @@ async function scoreGeneratedWebsite(
 
   for (const route of getRoutesForStage("qa")) {
     try {
-      const text = await generateTextWithRoute(buildQaPrompt(html, cleanBusinessData, premiumWebsitePlan, industryBrief), route, {
-        temperature: 0.2,
-        maxOutputTokens: 6000,
-      });
+      const text = await runWithModelRouteRetry(route, () =>
+        generateTextWithRoute(buildQaPrompt(html, cleanBusinessData, premiumWebsitePlan, industryBrief), route, {
+          temperature: 0.2,
+          maxOutputTokens: 6000,
+        }),
+      );
       const modelGate = normalizeQualityGate(parseJsonObject(text), heuristic);
       const hardReasons = hardRejectionReasons(html, cleanBusinessData);
       const rejectionReasons = unique([...modelGate.rejectionReasons, ...heuristic.rejectionReasons, ...hardReasons]);

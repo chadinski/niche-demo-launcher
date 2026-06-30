@@ -17,6 +17,7 @@ import {
 import {
   getRoutesForStage,
   logModelRoute,
+  runWithModelRouteRetry,
   type ModelRoute,
 } from "@/lib/ai/modelRouter";
 import type { BusinessInfo } from "@/lib/types";
@@ -532,10 +533,11 @@ export async function POST(request: Request) {
 
     for (const route of routes) {
       try {
-        result =
+        result = await runWithModelRouteRetry(route, async () =>
           route.provider === "gemini"
-            ? await generateWithGemini(providerInput, route)
-            : await generateWithOpenAI(providerInput, route);
+            ? generateWithGemini(providerInput, route)
+            : generateWithOpenAI(providerInput, route),
+        );
       } catch (error) {
         routeErrors.push(error instanceof Error ? error.message : `${route.provider}:${route.model} failed`);
         result = null;
