@@ -97,6 +97,22 @@ type StageMetadata = {
   fallback: boolean;
 };
 
+type GenerationPlanResponse = {
+  generationId: string;
+  stage: "planning";
+  summary: string;
+  sectionIds: string[];
+  premiumPlan: WebsitePlan;
+  seraphimGenerator: {
+    authority: string;
+    industryBrief: string;
+    industryName: string;
+    matchedSignals: string[];
+  };
+  qualityGate?: QualityGate;
+  revisionCount?: number;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -718,8 +734,18 @@ function buildTokenCss(tokens: DesignTokens, plan: WebsitePlan) {
   --color-surface: #ffffff;
   --color-text: ${neutral[900] || "#0F172A"};
   --color-muted: ${neutral[600] || "#475569"};
+  --seraphim-primary: var(--color-primary);
+  --seraphim-secondary: var(--color-secondary);
+  --seraphim-accent: var(--color-accent);
+  --seraphim-neutral: var(--color-neutral);
+  --seraphim-bg: var(--color-bg);
+  --seraphim-surface: var(--color-surface);
+  --seraphim-text: var(--color-text);
+  --seraphim-muted: var(--color-muted);
   --font-heading: ${tokens.fonts.heading};
   --font-body: ${tokens.fonts.body};
+  --seraphim-heading-font: var(--font-heading);
+  --seraphim-body-font: var(--font-body);
   --radius-sm: ${tokens.borderRadius.sm};
   --radius-md: ${tokens.borderRadius.md};
   --radius-lg: ${tokens.borderRadius.lg};
@@ -811,6 +837,13 @@ function assembleFullHtml(input: {
 }) {
   const title = `${input.business.name} | ${input.cleanBusinessData.businessType}`;
   const description = compactText(input.business.description || input.plan.conversionFlow || input.cleanBusinessData.visibleDescription, 155);
+  const bodyStyle = [
+    `--seraphim-primary:${input.plan.colorPalette.primary || input.tokens.colors.primary}`,
+    `--seraphim-secondary:${input.plan.colorPalette.secondary || input.tokens.colors.secondary}`,
+    `--seraphim-accent:${input.plan.colorPalette.accent || input.tokens.colors.accent}`,
+    `--seraphim-heading-font:${input.tokens.fonts.heading}`,
+    `--seraphim-body-font:${input.tokens.fonts.body}`,
+  ].join(";");
   const navLinks = input.plan.sections
     .slice(0, 6)
     .map((section) => {
@@ -837,7 +870,7 @@ function assembleFullHtml(input: {
   <script type="application/ld+json">${buildJsonLd(input.cleanBusinessData)}</script>
   <style>${buildTokenCss(input.tokens, input.plan)}</style>
 </head>
-<body data-seraphim-generator="true">
+<body data-seraphim-generator="true" style="${escapeHtml(bodyStyle)}">
   <div class="seraphim-site">
     <header class="seraphim-header">
       <div class="seraphim-header-row">
@@ -963,6 +996,62 @@ function qualityGateFromSectionQA(qa: SectionQAResult): QualityGate {
   };
 }
 
+function buildGenerationPlanResponse(input: {
+  generationId: string;
+  plan: WebsitePlan;
+  industryBrief: SeraphimIndustryBrief;
+  qualityGate?: QualityGate;
+  revisionCount?: number;
+}): GenerationPlanResponse {
+  return {
+    generationId: input.generationId,
+    stage: "planning",
+    summary: input.plan.layoutPhilosophy,
+    sectionIds: input.plan.sections.map((section) => section.name),
+    premiumPlan: input.plan,
+    seraphimGenerator: {
+      authority: "only-website-generation-system",
+      industryBrief: input.industryBrief.id,
+      industryName: input.industryBrief.name,
+      matchedSignals: input.industryBrief.matchedSignals,
+    },
+    qualityGate: input.qualityGate,
+    revisionCount: input.revisionCount,
+  };
+}
+
+function buildGenerationResponse(input: {
+  generationId: string;
+  pipeline: Awaited<ReturnType<typeof runSectionGenerationPipeline>>;
+  cleanBusinessData: CleanBusinessData;
+  industryBrief: SeraphimIndustryBrief;
+  pipelineMetadata: StageMetadata[];
+}) {
+  const qualityGate = qualityGateFromSectionQA(input.pipeline.qa);
+  const modelMetadata = input.pipeline.metadata.find((item) => item.stage.startsWith("section:")) ??
+    input.pipeline.metadata[input.pipeline.metadata.length - 1];
+  const generationPlan = buildGenerationPlanResponse({
+    generationId: input.generationId,
+    plan: input.pipeline.plan,
+    industryBrief: input.industryBrief,
+    qualityGate,
+    revisionCount: input.pipeline.revisionCount,
+  });
+
+  return {
+    generationId: input.generationId,
+    html: input.pipeline.html,
+    plan: input.pipeline.plan,
+    qa: input.pipeline.qa,
+    designTokens: input.pipeline.tokens,
+    modelMetadata,
+    pipelineModelMetadata: input.pipelineMetadata,
+    cleanedBusinessData: input.cleanBusinessData,
+    generationPlan,
+    qualityGate,
+  };
+}
+
 async function runSectionGenerationPipeline(input: {
   data: z.infer<typeof requestSchema>;
   cleanBusinessData: CleanBusinessData;
@@ -1036,6 +1125,122 @@ async function runSectionGenerationPipeline(input: {
   };
 }
 
+async function streamSectionGenerationPipeline(input: {
+  data: z.infer<typeof requestSchema>;
+  cleanBusinessData: CleanBusinessData;
+  industryBrief: SeraphimIndustryBrief;
+  generationId: string;
+  send: (event: Record<string, unknown>) => void;
+}) {
+  const tokens = buildDesignTokens(coerceVisualPreferences(input.data.visualPreferences));
+  const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
+  const inspiration = await fetchDesignInspiration(input.cleanBusinessData.businessType);
+  const planResult = await generateWebsitePlanFromPrompt(business, tokens, inspiration, input.generationId);
+  const metadata: StageMetadata[] = [planResult.metadata];
+  const sectionResults = new Map<string, string>();
+  const earlyGenerationPlan = buildGenerationPlanResponse({
+    generationId: input.generationId,
+    plan: planResult.plan,
+    industryBrief: input.industryBrief,
+  });
+
+  input.send({
+    type: "plan",
+    plan: planResult.plan,
+    generationPlan: earlyGenerationPlan,
+    designTokens: tokens,
+  });
+
+  for (const [index, section] of planResult.plan.sections.entries()) {
+    const result = await generateSectionHtmlFromPrompt({
+      business,
+      section,
+      plan: planResult.plan,
+      tokens,
+      inspiration,
+    });
+    sectionResults.set(section.name, result.html);
+    metadata.push(result.metadata);
+    input.send({
+      type: "section",
+      index,
+      html: result.html,
+      sectionName: section.name,
+      modelMetadata: result.metadata,
+    });
+  }
+
+  let html = assembleFullHtml({
+    business,
+    cleanBusinessData: input.cleanBusinessData,
+    tokens,
+    plan: planResult.plan,
+    sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
+  });
+  let qaResult = await runSectionQA(html);
+  metadata.push(qaResult.metadata);
+  let revisionCount = 0;
+  input.send({
+    type: "qa",
+    result: qaResult.qa,
+    qualityGate: qualityGateFromSectionQA(qaResult.qa),
+    modelMetadata: qaResult.metadata,
+  });
+
+  while (!qaResult.qa.passed && revisionCount < 2 && qaResult.qa.issues.length) {
+    revisionCount += 1;
+    const sectionsToRegenerate = sectionNamesForIssues(planResult.plan.sections, qaResult.qa.issues);
+    for (const section of sectionsToRegenerate) {
+      const index = planResult.plan.sections.findIndex((candidate) => candidate.name === section.name);
+      const result = await generateSectionHtmlFromPrompt({
+        business,
+        section,
+        plan: planResult.plan,
+        tokens,
+        inspiration,
+        correctiveFeedback: qaResult.qa.issues,
+      });
+      sectionResults.set(section.name, result.html);
+      metadata.push({ ...result.metadata, stage: `revision:${section.name}` });
+      input.send({
+        type: "section",
+        index,
+        html: result.html,
+        sectionName: section.name,
+        revision: revisionCount,
+        modelMetadata: result.metadata,
+      });
+    }
+    html = assembleFullHtml({
+      business,
+      cleanBusinessData: input.cleanBusinessData,
+      tokens,
+      plan: planResult.plan,
+      sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
+    });
+    qaResult = await runSectionQA(html);
+    metadata.push({ ...qaResult.metadata, stage: `qa:retry-${revisionCount}` });
+    input.send({
+      type: "qa",
+      result: qaResult.qa,
+      qualityGate: qualityGateFromSectionQA(qaResult.qa),
+      modelMetadata: qaResult.metadata,
+      revision: revisionCount,
+    });
+  }
+
+  return {
+    html,
+    plan: planResult.plan,
+    qa: qaResult.qa,
+    metadata,
+    revisionCount,
+    business,
+    tokens,
+    inspiration,
+  };
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const noStoreHeaders = { "Cache-Control": "no-store, no-cache, must-revalidate" };
@@ -1054,6 +1259,66 @@ export async function POST(request: Request) {
 
   const pipelineMetadata: StageMetadata[] = [];
   const generationId = generationIdFromBody(parsed.data.generationId);
+  const wantsStream = request.headers.get("accept")?.includes("text/event-stream");
+
+  if (wantsStream) {
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        const send = (event: Record<string, unknown>) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        };
+
+        try {
+          const normalizedData = withLegacyInfo({ ...parsed.data, generationId });
+          const cleanBusinessData = buildCleanBusinessData(normalizedData);
+          const industryBrief = buildSeraphimIndustryBrief(cleanBusinessData);
+          safeDebug(generationId, "stream-clean-data", {
+            companyName: cleanBusinessData.companyName,
+            businessType: cleanBusinessData.businessType,
+            services: cleanBusinessData.services.length,
+            colors: cleanBusinessData.visibleColors.length,
+            missingFields: cleanBusinessData.missingFields,
+            dataConfidence: cleanBusinessData.dataConfidence,
+          });
+
+          const pipeline = await streamSectionGenerationPipeline({
+            data: normalizedData,
+            cleanBusinessData,
+            industryBrief,
+            generationId,
+            send,
+          });
+          pipelineMetadata.push(...pipeline.metadata);
+          const responsePayload = buildGenerationResponse({
+            generationId,
+            pipeline,
+            cleanBusinessData,
+            industryBrief,
+            pipelineMetadata,
+          });
+          send({ type: "complete", ...responsePayload });
+        } catch (error) {
+          send({
+            type: "error",
+            generationId,
+            error: error instanceof Error ? error.message : "AI website generation could not complete.",
+            pipelineModelMetadata: pipelineMetadata,
+          });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        Connection: "keep-alive",
+      },
+    });
+  }
 
   try {
     const normalizedData = withLegacyInfo({ ...parsed.data, generationId });
@@ -1080,8 +1345,6 @@ export async function POST(request: Request) {
       generationId,
     });
     pipelineMetadata.push(...pipeline.metadata);
-    const qualityGate = qualityGateFromSectionQA(pipeline.qa);
-    const modelMetadata = pipeline.metadata.find((item) => item.stage.startsWith("section:")) ?? pipeline.metadata[pipeline.metadata.length - 1];
     safeDebug(generationId, "section-pipeline", {
       sectionCount: pipeline.plan.sections.length,
       qaPassed: pipeline.qa.passed,
@@ -1089,33 +1352,16 @@ export async function POST(request: Request) {
       revisionCount: pipeline.revisionCount,
       inspirationLength: pipeline.inspiration.length,
     });
+    const responsePayload = buildGenerationResponse({
+      generationId,
+      pipeline,
+      cleanBusinessData,
+      industryBrief,
+      pipelineMetadata,
+    });
 
     return NextResponse.json(
-      {
-        generationId,
-        html: pipeline.html,
-        plan: pipeline.plan,
-        qa: pipeline.qa,
-        modelMetadata,
-        pipelineModelMetadata: pipelineMetadata,
-        cleanedBusinessData: cleanBusinessData,
-        generationPlan: {
-          generationId,
-          stage: "planning",
-          summary: pipeline.plan.layoutPhilosophy,
-          sectionIds: pipeline.plan.sections.map((section) => section.name),
-          premiumPlan: pipeline.plan,
-          seraphimGenerator: {
-            authority: "only-website-generation-system",
-            industryBrief: industryBrief.id,
-            industryName: industryBrief.name,
-            matchedSignals: industryBrief.matchedSignals,
-          },
-          qualityGate,
-          revisionCount: pipeline.revisionCount,
-        },
-        qualityGate,
-      },
+      responsePayload,
       { headers: noStoreHeaders },
     );
   } catch (error) {

@@ -48,6 +48,59 @@ type ModelMetadata = {
   fallback: boolean;
 };
 
+type QualityGatePayload = {
+  score: number;
+  passed: boolean;
+  rejectionReasons: string[];
+  revisionBrief?: string;
+};
+
+type WebsiteGenerationPayload = {
+  generationId?: string;
+  html?: string;
+  modelMetadata?: ModelMetadata;
+  pipelineModelMetadata?: ModelMetadata[];
+  generationPlan?: GenerationPlan;
+  qualityGate?: QualityGatePayload;
+  error?: string;
+};
+
+type WebsiteStreamEvent =
+  | ({ type: "complete" } & WebsiteGenerationPayload)
+  | { type: "error"; error?: string; generationId?: string }
+  | { type: "plan" | "section" | "qa"; [key: string]: unknown };
+
+async function readGenerationStream(response: Response) {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Streaming response did not include a readable body.");
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let complete: WebsiteGenerationPayload | null = null;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const data = part
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      if (!data) continue;
+      const event = JSON.parse(data) as WebsiteStreamEvent;
+      if (event.type === "error") throw new Error(event.error || "Premium website regeneration failed.");
+      if (event.type === "complete") complete = event;
+    }
+  }
+
+  if (!complete) throw new Error("Premium website regeneration stream ended before completion.");
+  return complete;
+}
+
 export function ProspectDetail() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -116,29 +169,23 @@ export function ProspectDetail() {
       const response = await fetch("/api/generate-website", {
         method: "POST",
         cache: "no-store",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
         body: JSON.stringify({
           generationId: activeGenerationId,
           info,
           generationMode: "more-luxury",
+          visualPreferences: prospect.business_intelligence?.visualPreferences,
           imageName: prospect.business_intelligence?.screenshotName ?? "",
           businessUnderstanding: prospect.business_intelligence,
         }),
       });
-      const payload = (await response.json()) as {
-        generationId?: string;
-        html?: string;
-        modelMetadata?: ModelMetadata;
-        pipelineModelMetadata?: ModelMetadata[];
-        generationPlan?: GenerationPlan;
-        qualityGate?: {
-          score: number;
-          passed: boolean;
-          rejectionReasons: string[];
-          revisionBrief?: string;
-        };
-        error?: string;
-      };
+      const contentType = response.headers.get("content-type") || "";
+      const payload = contentType.includes("text/event-stream")
+        ? await readGenerationStream(response)
+        : await response.json() as WebsiteGenerationPayload;
 
       if (payload.generationId !== activeGenerationId || !response.ok || !payload.html) {
         throw new Error(payload.error || "Premium website regeneration failed.");
@@ -163,6 +210,7 @@ export function ProspectDetail() {
           ...prospect.business_intelligence,
           generationId: activeGenerationId,
           generationMode: "more-luxury",
+          visualPreferences: prospect.business_intelligence?.visualPreferences,
           generationPlan: payload.generationPlan ?? prospect.business_intelligence?.generationPlan ?? null,
           modelMetadata: nextMetadata,
         },

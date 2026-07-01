@@ -75,6 +75,7 @@ export interface BusinessIntelligence {
   screenshotDataUrl?: string;
   screenshotSaved?: boolean;
   generationMode?: string;
+  visualPreferences?: unknown;
   generationId?: string;
   extractionReviewed?: boolean;
   generationPlan?: {
@@ -97,7 +98,7 @@ export interface BusinessIntelligence {
     sectionId: string;
     type: string;
     html: string;
-    status: "success" | "failed" | "skipped";
+    status: "success" | "failed" | "skipped" | "loading";
     error?: string;
   }>;
   skippedSections?: string[];

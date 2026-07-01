@@ -104,6 +104,12 @@ Screenshot and pasted-info extraction use the server-side AI route in `app/api/b
 
 Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. `PLANNER_MODEL` and `SECTION_MODEL` default to `gemini-2.5-pro`; `QA_MODEL` and `INSPIRATION_MODEL` default to `gemini-2.5-flash`. Reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable. The router retries failed model calls twice with exponential backoff and temporarily opens a 60-second circuit after repeated route failures.
 
+## Generation UI Migration Notes
+
+The `/create` workflow now streams website generation when the browser requests `text/event-stream`. The server emits plan, section, QA, and complete events so the preview can fill in section by section; JSON responses remain supported for older callers and prospect-detail fallbacks.
+
+Design controls are available above the Generate buttons. Primary/secondary colors, heading/body fonts, and mood are saved in localStorage and sent as `visualPreferences` to the generator. Generated output includes those values as CSS custom properties, and saved prospects keep the preferences for future premium regeneration. The preview also supports **Regenerate All** and per-section **Regenerate** actions.
+
 ## Generation Isolation
 
 Every create-workspace run has a fresh `generationId`. The client sends that ID to the extraction API, aborts old requests when starting over, clears generation-only storage, and ignores late responses from old IDs. The visible **New Generation** and **Clear Current Data** controls reset screenshot, extracted facts, generated HTML, preview state, messages, section outputs, QA state, errors, and placeholders without clearing auth or prospect records.

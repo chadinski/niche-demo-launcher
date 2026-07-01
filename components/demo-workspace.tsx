@@ -112,6 +112,54 @@ type RegenerateSectionResponse = {
   error?: string;
 };
 
+type QualityGatePayload = {
+  score: number;
+  passed: boolean;
+  rejectionReasons: string[];
+  revisionBrief?: string;
+};
+
+type WebsiteGenerationResult = {
+  html: string;
+  modelMetadata?: ModelMetadata;
+  pipelineModelMetadata?: ModelMetadata[];
+  generationPlan?: GenerationPlan;
+  qualityGate?: QualityGatePayload;
+};
+
+type WebsiteStreamEvent =
+  | {
+      type: "plan";
+      plan: { sections?: Array<{ name?: string }> };
+      generationPlan?: GenerationPlan;
+      designTokens?: unknown;
+    }
+  | {
+      type: "section";
+      index: number;
+      html: string;
+      sectionName?: string;
+      revision?: number;
+      modelMetadata?: ModelMetadata;
+    }
+  | {
+      type: "qa";
+      result?: { passed: boolean; issues: string[] };
+      qualityGate?: QualityGatePayload;
+      modelMetadata?: ModelMetadata;
+      revision?: number;
+    }
+  | ({
+      type: "complete";
+      generationId?: string;
+    } & WebsiteGenerationResult)
+  | {
+      type: "error";
+      generationId?: string;
+      error?: string;
+      pipelineModelMetadata?: ModelMetadata[];
+    };
+
 const generationModes: Array<{ key: GenerationMode; label: string; directive: string }> = [
   { key: "standard", label: "Balanced", directive: "" },
   { key: "more-luxury", label: "More luxury", directive: "Generation direction: make the next website feel more luxury, editorial, premium, spacious, and refined while keeping facts accurate." },
@@ -284,6 +332,97 @@ function replaceGeneratedSectionHtml(fullHtml: string, sectionIndex: number, nex
     currentIndex += 1;
     return currentIndex === sectionIndex ? nextSectionHtml : sectionHtml;
   });
+}
+
+function escapePreviewText(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function createStreamingWebsiteHtml(input: {
+  info: BusinessInfo;
+  sectionIds: string[];
+  sections: string[];
+  preferences: DesignPreferenceValues | null;
+}) {
+  const primary = input.preferences?.primary || "#2B5E8C";
+  const secondary = input.preferences?.secondary || "#F4A261";
+  const headingFont = input.preferences?.headingFont || "Inter, ui-sans-serif, system-ui, sans-serif";
+  const bodyFont = input.preferences?.bodyFont || "Inter, ui-sans-serif, system-ui, sans-serif";
+  const title = input.info.businessName || "Streaming website preview";
+  const placeholders = input.sectionIds.map((sectionId, index) =>
+    input.sections[index] ||
+    `<section class="streaming-placeholder"><p>${escapePreviewText(sectionId)}</p><h2>Generating ${escapePreviewText(sectionId)}...</h2></section>`,
+  );
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>${escapePreviewText(title)}</title>
+  <style>
+    :root {
+      --seraphim-primary: ${primary};
+      --seraphim-secondary: ${secondary};
+      --seraphim-accent: ${secondary};
+      --seraphim-heading-font: ${headingFont};
+      --seraphim-body-font: ${bodyFont};
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f8fafc; color: #0f172a; font-family: var(--seraphim-body-font); }
+    .streaming-header { position: sticky; top: 0; z-index: 5; padding: 1rem clamp(1rem, 4vw, 3rem); border-bottom: 1px solid #e2e8f0; background: rgba(248,250,252,.92); backdrop-filter: blur(14px); font-family: var(--seraphim-heading-font); font-weight: 900; }
+    .streaming-placeholder { min-height: 280px; padding: clamp(4rem, 8vw, 7rem) clamp(1rem, 4vw, 3rem); border-bottom: 1px dashed #cbd5e1; background: linear-gradient(135deg, color-mix(in srgb, var(--seraphim-primary) 9%, #fff), color-mix(in srgb, var(--seraphim-secondary) 12%, #fff)); }
+    .streaming-placeholder p { margin: 0 0 .75rem; color: var(--seraphim-primary); text-transform: uppercase; letter-spacing: .14em; font-size: .72rem; font-weight: 900; }
+    .streaming-placeholder h2 { max-width: 780px; margin: 0; font-family: var(--seraphim-heading-font); font-size: clamp(2rem, 5vw, 4.5rem); line-height: 1; letter-spacing: -.05em; }
+  </style>
+</head>
+<body>
+  <header class="streaming-header">${escapePreviewText(title)}</header>
+  <main>${placeholders.join("\n")}</main>
+</body>
+</html>`;
+}
+
+async function readServerSentEvents(
+  response: Response,
+  onEvent: (event: WebsiteStreamEvent) => void,
+) {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Streaming response did not include a readable body.");
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const data = part
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      if (!data) continue;
+      onEvent(JSON.parse(data) as WebsiteStreamEvent);
+    }
+  }
+
+  if (buffer.trim()) {
+    const data = buffer
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+    if (data) onEvent(JSON.parse(data) as WebsiteStreamEvent);
+  }
 }
 
 function sectionOutputsFromHtml(
@@ -753,7 +892,10 @@ export function DemoWorkspace() {
       const response = await fetch("/api/generate-website", {
         method: "POST",
         cache: "no-store",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
         body: JSON.stringify({
           generationId: activeGenerationId,
           info: sourceInfo,
@@ -763,45 +905,152 @@ export function DemoWorkspace() {
           businessUnderstanding,
         }),
       });
-      const payload = (await response.json()) as {
-        generationId?: string;
-        html?: string;
-        modelMetadata?: ModelMetadata;
-        pipelineModelMetadata?: ModelMetadata[];
-        generationPlan?: GenerationPlan;
-        qualityGate?: {
-          score: number;
-          passed: boolean;
-          rejectionReasons: string[];
-          revisionBrief?: string;
+      const contentType = response.headers.get("content-type") || "";
+
+      if (!contentType.includes("text/event-stream")) {
+        const payload = (await response.json()) as WebsiteGenerationResult & {
+          generationId?: string;
+          error?: string;
         };
-        error?: string;
-      };
 
-      if (payload.generationId !== activeGenerationId || !isActiveGeneration(activeGenerationId)) {
-        if (process.env.NODE_ENV !== "production") {
-          console.debug(`[generation:${activeGenerationId}] ignored stale website generation response`);
+        if (payload.generationId !== activeGenerationId || !isActiveGeneration(activeGenerationId)) {
+          if (process.env.NODE_ENV !== "production") {
+            console.debug(`[generation:${activeGenerationId}] ignored stale website generation response`);
+          }
+          return null;
         }
-        return null;
+
+        if (!response.ok || !payload.html) {
+          throw new Error(payload.error || "AI website generation failed.");
+        }
+
+        if (!payload.generationPlan?.seraphimGenerator) {
+          throw new Error("Website generation did not return a Seraphim Generator plan. Clear the run and regenerate.");
+        }
+
+        return {
+          html: payload.html,
+          modelMetadata: payload.modelMetadata,
+          pipelineModelMetadata: payload.pipelineModelMetadata,
+          generationPlan: payload.generationPlan,
+          qualityGate: payload.qualityGate,
+        };
       }
 
-      if (!response.ok || !payload.html) {
-        throw new Error(payload.error || "AI website generation failed.");
+      if (!response.ok) {
+        throw new Error("AI website generation stream failed.");
       }
 
-      if (!payload.generationPlan?.seraphimGenerator) {
+      const streamResult: { current: WebsiteGenerationResult | null } = { current: null };
+      let streamPlan: GenerationPlan | null = null;
+      let streamSectionIds: string[] = [];
+      let streamSections: string[] = [];
+      const streamMetadata: ModelMetadata[] = [];
+
+      await readServerSentEvents(response, (event) => {
+        if (!isActiveGeneration(activeGenerationId)) return;
+
+        if (event.type === "error") {
+          throw new Error(event.error || "AI website generation failed.");
+        }
+
+        if (event.type === "plan") {
+          streamPlan = event.generationPlan ?? {
+            generationId: activeGenerationId,
+            stage: "planning",
+            summary: "Streaming website generation plan",
+            sectionIds: event.plan.sections?.map((section, index) => section.name || `Section ${index + 1}`) ?? [],
+            premiumPlan: event.plan,
+          };
+          streamSectionIds = streamPlan.sectionIds.length
+            ? streamPlan.sectionIds
+            : event.plan.sections?.map((section, index) => section.name || `Section ${index + 1}`) ?? [];
+          streamSections = new Array(streamSectionIds.length).fill("");
+          setGenerationPlan(streamPlan);
+          setSectionOutputs(
+            streamSectionIds.map((sectionId) => ({
+              generationId: activeGenerationId,
+              sectionId,
+              type: "custom",
+              html: "",
+              status: "loading",
+            })),
+          );
+          setHtml(createStreamingWebsiteHtml({
+            info: sourceInfo,
+            sectionIds: streamSectionIds,
+            sections: streamSections,
+            preferences: visualPrefs,
+          }));
+          return;
+        }
+
+        if (event.type === "section") {
+          if (!streamSectionIds.length) {
+            streamSectionIds = [`Section ${event.index + 1}`];
+            streamSections = new Array(event.index + 1).fill("");
+          }
+          streamSectionIds[event.index] = event.sectionName || streamSectionIds[event.index] || `Section ${event.index + 1}`;
+          streamSections[event.index] = event.html;
+          if (event.modelMetadata) streamMetadata.push(event.modelMetadata);
+          setSectionOutputs((current) => {
+            const next = current.length ? [...current] : streamSectionIds.map((sectionId) => ({
+              generationId: activeGenerationId,
+              sectionId,
+              type: "custom" as const,
+              html: "",
+              status: "loading" as const,
+            }));
+            next[event.index] = {
+              generationId: activeGenerationId,
+              sectionId: streamSectionIds[event.index],
+              type: "custom",
+              html: event.html,
+              status: "success",
+            };
+            return next;
+          });
+          setHtml(createStreamingWebsiteHtml({
+            info: sourceInfo,
+            sectionIds: streamSectionIds,
+            sections: streamSections,
+            preferences: visualPrefs,
+          }));
+          return;
+        }
+
+        if (event.type === "qa") {
+          if (event.modelMetadata) streamMetadata.push(event.modelMetadata);
+          if (event.qualityGate && streamPlan) {
+            setGenerationPlan({ ...streamPlan, qualityGate: event.qualityGate, revisionCount: event.revision });
+          }
+          return;
+        }
+
+        if (event.type === "complete") {
+          if (event.generationId !== activeGenerationId) return;
+          streamResult.current = {
+            html: event.html,
+            modelMetadata: event.modelMetadata,
+            pipelineModelMetadata: event.pipelineModelMetadata?.length ? event.pipelineModelMetadata : streamMetadata,
+            generationPlan: event.generationPlan,
+            qualityGate: event.qualityGate,
+          };
+        }
+      });
+
+      const streamedResult = streamResult.current;
+      if (!streamedResult) {
+        throw new Error("AI website generation stream ended before completion.");
+      }
+
+      if (!streamedResult.generationPlan?.seraphimGenerator) {
         throw new Error("Website generation did not return a Seraphim Generator plan. Clear the run and regenerate.");
       }
 
-      return {
-        html: payload.html,
-        modelMetadata: payload.modelMetadata,
-        pipelineModelMetadata: payload.pipelineModelMetadata,
-        generationPlan: payload.generationPlan,
-        qualityGate: payload.qualityGate,
-      };
+      return streamedResult;
     },
-    [businessUnderstanding, designTokenPreferences, generationMode, imageFile, isActiveGeneration],
+    [businessUnderstanding, designTokenPreferences, generationMode, imageFile, isActiveGeneration, visualPrefs],
   );
 
   const requireGenerationReady = useCallback(() => {
@@ -979,6 +1228,7 @@ export function DemoWorkspace() {
         screenshotDataUrl: canPersistScreenshot ? imageDataUrl : "",
         screenshotSaved: canPersistScreenshot,
         generationMode,
+        visualPreferences: designTokenPreferences,
         extractionReviewed,
         generationPlan: prospectGenerationPlan,
         sectionOutputs: prospectSectionOutputs,
@@ -1717,6 +1967,12 @@ export function DemoWorkspace() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {html ? (
+                  <Button variant="outline" onClick={handleGenerateWebsite} loading={busy === "website"} disabled={generationDisabled}>
+                    <Sparkles className="size-4" />
+                    Regenerate All
+                  </Button>
+                ) : null}
                 <Button variant="outline" onClick={() => resetGenerationState("Started a clean generation")}>
                   <RotateCcw className="size-4" />
                   New Generation
@@ -1760,7 +2016,7 @@ export function DemoWorkspace() {
                     <code>{html}</code>
                   </pre>
                 )}
-                {sectionOutputs.some((section) => section.type !== "full-page" && section.status === "success") ? (
+                {sectionOutputs.some((section) => section.type !== "full-page") ? (
                   <div className="border-t border-[#e9eaf0] bg-white p-4 sm:p-5">
                     <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                       <div>
@@ -1772,7 +2028,7 @@ export function DemoWorkspace() {
                     </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                       {sectionOutputs.map((section, index) =>
-                        section.type !== "full-page" && section.status === "success" ? (
+                        section.type !== "full-page" ? (
                           <div
                             key={`${section.sectionId}-${index}`}
                             className="flex items-center justify-between gap-3 rounded-xl border border-[#ececf2] bg-[#fafafd] p-3"
@@ -1782,14 +2038,14 @@ export function DemoWorkspace() {
                                 {section.sectionId}
                               </div>
                               <div className="mt-0.5 text-[0.68rem] font-semibold text-[#8a90a2]">
-                                Section {index + 1}
+                                {section.status === "loading" ? "Generating..." : `Section ${index + 1}`}
                               </div>
                             </div>
                             <Button
                               variant="outline"
                               onClick={() => handleRegenerateSection(index)}
-                              loading={regeneratingSectionIndex === index}
-                              disabled={regeneratingSectionIndex !== null || actionInProgress}
+                              loading={regeneratingSectionIndex === index || section.status === "loading"}
+                              disabled={section.status !== "success" || regeneratingSectionIndex !== null || actionInProgress}
                             >
                               <RotateCcw className="size-4" />
                               Regenerate
