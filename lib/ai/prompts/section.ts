@@ -24,6 +24,18 @@ ${JSON.stringify(plan, null, 2)}
 DESIGN TOKENS:
 ${JSON.stringify(tokens, null, 2)}
 
+AVAILABLE CSS CUSTOM PROPERTIES IN THE FINAL PAGE:
+- var(--seraphim-primary)
+- var(--seraphim-secondary)
+- var(--seraphim-accent)
+- var(--seraphim-neutral)
+- var(--seraphim-bg)
+- var(--seraphim-surface)
+- var(--seraphim-text)
+- var(--seraphim-muted)
+- var(--seraphim-heading-font)
+- var(--seraphim-body-font)
+
 VISUAL THESIS:
 ${plan.visualThesis || plan.layoutPhilosophy}
 
@@ -37,6 +49,7 @@ SECTION RULES:
 - Use semantic HTML with one root <section> element.
 - Use Tailwind-style utility classes where useful for spacing, typography, grid, color, and responsive behavior.
 - You may include a scoped <style> tag inside the section only for custom effects that Tailwind-style classes cannot express.
+- Prefer the available CSS custom properties for colors and fonts so regenerated sections stay aligned with user design preferences.
 - Keep class names and CSS original; do not copy any external template.
 - Include accessible headings, alt text for images, and keyboard-safe interactive controls if needed.
 - Use verified-safe wording only. No fake testimonials, fake metrics, fake review counts, fake awards, fake guarantees, fake prices, or fake certifications.

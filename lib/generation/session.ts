@@ -40,7 +40,7 @@ export type SectionOutput = {
   sectionId: string;
   type: SectionType;
   html: string;
-  status: "success" | "failed" | "skipped";
+  status: "success" | "failed" | "skipped" | "loading";
   error?: string;
 };
 
