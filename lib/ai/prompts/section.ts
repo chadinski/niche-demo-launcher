@@ -1,5 +1,6 @@
 import type { DesignTokens } from "@/lib/design/tokens";
 import type { WebsitePlan, WebsitePlanSection } from "@/lib/ai/prompts/planner";
+import type { Archetype } from "@/lib/archetypes";
 
 export type SectionPromptDefinition = WebsitePlanSection & {
   correctiveFeedback?: string[];
@@ -10,8 +11,12 @@ export function buildSectionPrompt(
   plan: WebsitePlan,
   tokens: DesignTokens,
   inspiration = "",
+  archetype?: Archetype,
 ): string {
   return `You are Seraphim Generator's elite section designer and frontend engineer.
+
+SYSTEM NOTE:
+Use the same level of polish as the HappyFeet PetWorld site: clear visual hierarchy, engaging copy, interactive elements (mobile menu, accordion, scroll-reveal), and mobile responsiveness. The HTML must be self-contained, accessible, and include appropriate micro-interactions.
 
 Generate one complete website section fragment for the section below.
 
@@ -23,6 +28,15 @@ ${JSON.stringify(plan, null, 2)}
 
 DESIGN TOKENS:
 ${JSON.stringify(tokens, null, 2)}
+
+ARCHETYPE:
+${archetype ? JSON.stringify({
+    id: archetype.id,
+    name: archetype.name,
+    sectionOrder: archetype.sectionOrder,
+    tone: archetype.tone,
+    qaChecks: archetype.qaChecks,
+  }, null, 2) : "No explicit archetype selected. Follow the plan, tokens, and business facts."}
 
 AVAILABLE CSS CUSTOM PROPERTIES IN THE FINAL PAGE:
 - var(--seraphim-primary)

@@ -6,6 +6,7 @@ import { getRoutesForStage, runWithModelRouteRetry, type ModelRoute } from "@/li
 import { buildSectionPrompt } from "@/lib/ai/prompts/section";
 import type { WebsitePlan, WebsitePlanSection } from "@/lib/ai/prompts/planner";
 import type { DesignTokens } from "@/lib/design/tokens";
+import { getArchetypeById } from "@/lib/archetypes";
 
 const regenerateSectionSchema = z.object({
   sectionIndex: z.number().int().min(0),
@@ -13,6 +14,7 @@ const regenerateSectionSchema = z.object({
   designTokens: z.unknown(),
   originalHtml: z.string().optional().default(""),
   feedback: z.string().optional().default(""),
+  archetypeId: z.string().min(1).max(80).optional(),
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -204,6 +206,7 @@ export async function POST(request: Request) {
 
   const plan = normalizePlan(parsed.data.plan);
   const designTokens = normalizeTokens(parsed.data.designTokens);
+  const archetype = parsed.data.archetypeId ? getArchetypeById(parsed.data.archetypeId) : undefined;
   const section = plan.sections[parsed.data.sectionIndex];
 
   if (!section) {
@@ -223,7 +226,7 @@ export async function POST(request: Request) {
   ].filter(Boolean).join("\n\n");
 
   try {
-    const prompt = buildSectionPrompt(sectionDef, plan, designTokens, context);
+    const prompt = buildSectionPrompt(sectionDef, plan, designTokens, context, archetype);
     const result = await generateSection(prompt);
     return NextResponse.json({
       html: result.html,

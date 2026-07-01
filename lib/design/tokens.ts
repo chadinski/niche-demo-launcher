@@ -1,3 +1,5 @@
+import type { Archetype } from "@/lib/archetypes";
+
 export interface DesignTokens {
   colors: {
     primary: string;
@@ -21,6 +23,18 @@ export interface DesignTokens {
   };
   shadows: Record<string, string>;
 }
+
+export type DesignTokenPreferences = {
+  colors?: Partial<DesignTokens["colors"]> & {
+    neutral?: Record<string, string>;
+  };
+  fonts?: Partial<DesignTokens["fonts"]>;
+  spacing?: Partial<DesignTokens["spacing"]> & {
+    scale?: Record<string, string>;
+  };
+  borderRadius?: Partial<DesignTokens["borderRadius"]>;
+  shadows?: Record<string, string>;
+};
 
 const defaultNeutralPalette = {
   50: "#F8FAFC",
@@ -83,7 +97,7 @@ function defaultDesignTokens(): DesignTokens {
   };
 }
 
-export function buildDesignTokens(preferences: Partial<DesignTokens> = {}): DesignTokens {
+export function buildDesignTokens(preferences: DesignTokenPreferences = {}): DesignTokens {
   const defaults = defaultDesignTokens();
 
   return {
@@ -115,5 +129,58 @@ export function buildDesignTokens(preferences: Partial<DesignTokens> = {}): Desi
       ...defaults.shadows,
       ...preferences.shadows,
     },
+  };
+}
+
+export function buildDesignTokensFromArchetype(
+  archetype?: Archetype,
+  userOverrides: DesignTokenPreferences = {},
+): DesignTokens {
+  return buildDesignTokens(mergeDesignTokenPreferences(archetype?.designTokens ?? {}, userOverrides));
+}
+
+function mergeDesignTokenPreferences(
+  base: DesignTokenPreferences,
+  overrides: DesignTokenPreferences,
+): DesignTokenPreferences {
+  return {
+    colors: base.colors || overrides.colors
+      ? {
+          ...base.colors,
+          ...overrides.colors,
+          neutral: {
+            ...base.colors?.neutral,
+            ...overrides.colors?.neutral,
+          },
+        }
+      : undefined,
+    fonts: base.fonts || overrides.fonts
+      ? {
+          ...base.fonts,
+          ...overrides.fonts,
+        }
+      : undefined,
+    spacing: base.spacing || overrides.spacing
+      ? {
+          ...base.spacing,
+          ...overrides.spacing,
+          scale: {
+            ...base.spacing?.scale,
+            ...overrides.spacing?.scale,
+          },
+        }
+      : undefined,
+    borderRadius: base.borderRadius || overrides.borderRadius
+      ? {
+          ...base.borderRadius,
+          ...overrides.borderRadius,
+        }
+      : undefined,
+    shadows: base.shadows || overrides.shadows
+      ? {
+          ...base.shadows,
+          ...overrides.shadows,
+        }
+      : undefined,
   };
 }

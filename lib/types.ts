@@ -75,6 +75,7 @@ export interface BusinessIntelligence {
   screenshotDataUrl?: string;
   screenshotSaved?: boolean;
   generationMode?: string;
+  archetypeId?: string;
   visualPreferences?: unknown;
   generationId?: string;
   extractionReviewed?: boolean;
@@ -84,6 +85,13 @@ export interface BusinessIntelligence {
     summary: string;
     sectionIds: string[];
     premiumPlan?: unknown;
+    archetype?: {
+      id: string;
+      name: string;
+      tone: string;
+      sectionOrder: string[];
+      qaChecks: string[];
+    };
     seraphimGenerator?: unknown;
     qualityGate?: {
       score: number;

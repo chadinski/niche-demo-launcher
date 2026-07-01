@@ -14,6 +14,7 @@ export type DesignPreferenceValues = {
 
 type DesignPreferencesProps = {
   onChange: (preferences: DesignPreferenceValues) => void;
+  value?: DesignPreferenceValues | null;
 };
 
 type SelectOption = {
@@ -69,11 +70,26 @@ function isDesignPreferenceValues(value: unknown): value is DesignPreferenceValu
   );
 }
 
-export function DesignPreferences({ onChange }: DesignPreferencesProps) {
+function samePreferences(left: DesignPreferenceValues, right: DesignPreferenceValues) {
+  return (
+    left.primary === right.primary &&
+    left.secondary === right.secondary &&
+    left.headingFont === right.headingFont &&
+    left.bodyFont === right.bodyFont &&
+    left.mood === right.mood
+  );
+}
+
+export function DesignPreferences({ onChange, value }: DesignPreferencesProps) {
   const [preferences, setPreferences] = useState<DesignPreferenceValues>(defaultPreferences);
   const hasLoaded = useRef(false);
 
   useEffect(() => {
+    if (value) {
+      hasLoaded.current = true;
+      onChange(value);
+      return;
+    }
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
@@ -92,13 +108,22 @@ export function DesignPreferences({ onChange }: DesignPreferencesProps) {
       onChange(defaultPreferences);
     }
     hasLoaded.current = true;
-  }, [onChange]);
+  }, [onChange, value]);
+
+  useEffect(() => {
+    if (!value || samePreferences(value, preferences)) return;
+    queueMicrotask(() => {
+      setPreferences(value);
+      hasLoaded.current = true;
+    });
+  }, [preferences, value]);
 
   useEffect(() => {
     if (!hasLoaded.current) return;
+    if (value && !samePreferences(value, preferences)) return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
     onChange(preferences);
-  }, [onChange, preferences]);
+  }, [onChange, preferences, value]);
 
   const updatePreferences = (patch: Partial<DesignPreferenceValues>) => {
     setPreferences((current) => ({ ...current, ...patch }));
