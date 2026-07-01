@@ -16,7 +16,9 @@
     "next": "16.2.9",
     "openai": "^6.44.0",
     "react": "19.2.7",
+    "react-colorful": "^5.7.0",
     "react-dom": "19.2.7",
+    "react-select": "^5.10.2",
     "sonner": "^2.0.7",
     "zod": "^4.4.3"
   },
