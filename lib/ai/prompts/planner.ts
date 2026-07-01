@@ -1,4 +1,5 @@
 import type { DesignTokens } from "@/lib/design/tokens";
+import type { Archetype } from "@/lib/archetypes";
 
 export interface BusinessData {
   name: string;
@@ -37,6 +38,7 @@ export function buildPlannerPrompt(
   business: BusinessData,
   tokens: DesignTokens,
   inspiration = "",
+  archetype?: Archetype,
 ): string {
   return `You are Seraphim Generator's senior website strategist.
 
@@ -48,8 +50,21 @@ ${JSON.stringify(business, null, 2)}
 DESIGN TOKENS:
 ${JSON.stringify(tokens, null, 2)}
 
+ARCHETYPE:
+${archetype ? JSON.stringify({
+    id: archetype.id,
+    name: archetype.name,
+    industries: archetype.industries,
+    preferredSectionOrder: archetype.sectionOrder,
+    tone: archetype.tone,
+    qaChecks: archetype.qaChecks,
+  }, null, 2) : "No explicit archetype selected. Use the business facts and design tokens to create a custom plan."}
+
 DESIGN INSPIRATION:
 ${inspiration || "No external inspiration supplied. Build from the business facts and design tokens."}
+
+REFERENCE QUALITY:
+Follow the structure and quality of the HappyFeet PetWorld example (a friendly local business). Adapt content to the given business and archetype.
 
 Return exactly this JSON shape:
 {
@@ -75,6 +90,8 @@ Return exactly this JSON shape:
 
 Rules:
 - Plan 6 to 9 meaningful sections, not filler.
+- When an archetype is supplied, use its preferred section order as the structural spine, but adapt or rename sections for the actual business.
+- Match the supplied archetype tone without turning it into generic template copy.
 - Include sections only when they support the business facts, customer decision, or conversion path.
 - Do not invent testimonials, reviews, ratings, metrics, awards, prices, certifications, guarantees, years in business, or unsupported locations.
 - Avoid generic SaaS/template language.

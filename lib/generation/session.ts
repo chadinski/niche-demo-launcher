@@ -25,6 +25,13 @@ export type GenerationPlan = {
   summary: string;
   sectionIds: string[];
   premiumPlan?: unknown;
+  archetype?: {
+    id: string;
+    name: string;
+    tone: string;
+    sectionOrder: string[];
+    qaChecks: string[];
+  };
   seraphimGenerator?: unknown;
   qualityGate?: {
     score: number;

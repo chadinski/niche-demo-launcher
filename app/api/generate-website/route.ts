@@ -6,7 +6,8 @@ import { buildPlannerPrompt, type BusinessData, type WebsitePlan, type WebsitePl
 import { buildQAPrompt, type SectionQAResult } from "@/lib/ai/prompts/qa";
 import { buildSectionPrompt } from "@/lib/ai/prompts/section";
 import { getRoutesForStage, runWithModelRouteRetry, type ModelRoute } from "@/lib/ai/modelRouter";
-import { buildDesignTokens, type DesignTokens } from "@/lib/design/tokens";
+import { getArchetypeById, getArchetypeForIndustry, type Archetype } from "@/lib/archetypes";
+import { buildDesignTokensFromArchetype, type DesignTokenPreferences, type DesignTokens } from "@/lib/design/tokens";
 import { fetchDesignInspiration } from "@/lib/inspiration/firecrawl";
 
 const businessInfoSchema = z.object({
@@ -40,6 +41,7 @@ const requestSchema = z.object({
   generationMode: z.string().max(80).optional().default("standard"),
   imageName: z.string().max(180).optional().default(""),
   businessUnderstanding: z.unknown().optional(),
+  archetypeId: z.string().min(1).max(80).optional(),
 });
 
 type CleanBusinessData = {
@@ -103,6 +105,13 @@ type GenerationPlanResponse = {
   summary: string;
   sectionIds: string[];
   premiumPlan: WebsitePlan;
+  archetype?: {
+    id: string;
+    name: string;
+    tone: string;
+    sectionOrder: string[];
+    qaChecks: string[];
+  };
   seraphimGenerator: {
     authority: string;
     industryBrief: string;
@@ -543,8 +552,28 @@ function withLegacyInfo(data: z.infer<typeof requestSchema>): z.infer<typeof req
   };
 }
 
-function coerceVisualPreferences(value: unknown): Partial<DesignTokens> {
-  return isRecord(value) ? value as Partial<DesignTokens> : {};
+function coerceVisualPreferences(value: unknown): DesignTokenPreferences {
+  return isRecord(value) ? value as DesignTokenPreferences : {};
+}
+
+function resolveArchetype(data: z.infer<typeof requestSchema>, cleanBusinessData: CleanBusinessData): Archetype {
+  const selected = data.archetypeId ? getArchetypeById(data.archetypeId) : undefined;
+  if (selected) return selected;
+
+  const industrySignals = unique([
+    cleanBusinessData.businessType,
+    data.info.category,
+    ...cleanBusinessData.services,
+    ...cleanBusinessData.products,
+    cleanBusinessData.visibleDescription,
+    cleanBusinessData.targetAudience,
+  ]);
+
+  return getArchetypeForIndustry(industrySignals.join(" "));
+}
+
+function buildTokensForGeneration(archetype: Archetype, preferences: unknown): DesignTokens {
+  return buildDesignTokensFromArchetype(archetype, coerceVisualPreferences(preferences));
 }
 
 function businessDataFromCleanData(cleanBusinessData: CleanBusinessData, structured?: BusinessData): BusinessData {
@@ -563,7 +592,25 @@ function businessDataFromCleanData(cleanBusinessData: CleanBusinessData, structu
   };
 }
 
-function fallbackWebsitePlan(business: BusinessData, tokens: DesignTokens): WebsitePlan {
+function fallbackWebsitePlan(business: BusinessData, tokens: DesignTokens, archetype?: Archetype): WebsitePlan {
+  const fallbackSections = archetype?.sectionOrder.length
+    ? archetype.sectionOrder.slice(0, 9).map((name, index) => ({
+        name,
+        goal: index === 0
+          ? "Orient the visitor, communicate the offer, and present the primary CTA."
+          : `Support the ${archetype.name} conversion story with a premium ${name.toLowerCase()} section.`,
+        order: index + 1,
+      }))
+    : [
+        { name: "Hero", goal: "Orient the visitor, communicate the offer, and present the primary CTA.", order: 1 },
+        { name: "Trust Bridge", goal: "Use verified facts and safe reassurance to reduce uncertainty.", order: 2 },
+        { name: "Services", goal: "Explain the visible services or differentiators around customer intent.", order: 3 },
+        { name: "Experience", goal: "Tell the business-specific story and emotional value.", order: 4 },
+        { name: "Showcase", goal: "Use niche-relevant visuals or representative imagery to make the offer tangible.", order: 5 },
+        { name: "FAQ", goal: "Answer practical decision blockers without inventing facts.", order: 6 },
+        { name: "Contact", goal: "End with a low-friction conversion path.", order: 7 },
+      ];
+
   return {
     colorPalette: {
       primary: tokens.colors.primary,
@@ -577,18 +624,14 @@ function fallbackWebsitePlan(business: BusinessData, tokens: DesignTokens): Webs
       body: tokens.fonts.body,
       rationale: "Use a strong heading voice with a clean body face for premium readability.",
     },
-    layoutPhilosophy: "Build a custom, mobile-first landing page with a cinematic hero, varied section rhythm, and clear conversion momentum.",
+    layoutPhilosophy: archetype?.tone
+      ? `Build a custom, mobile-first landing page with ${archetype.tone}`
+      : "Build a custom, mobile-first landing page with a cinematic hero, varied section rhythm, and clear conversion momentum.",
     visualThesis: `Make ${business.name} feel specific, credible, and visually memorable from the first viewport.`,
-    sections: [
-      { name: "Hero", goal: "Orient the visitor, communicate the offer, and present the primary CTA.", order: 1 },
-      { name: "Trust Bridge", goal: "Use verified facts and safe reassurance to reduce uncertainty.", order: 2 },
-      { name: "Services", goal: "Explain the visible services or differentiators around customer intent.", order: 3 },
-      { name: "Experience", goal: "Tell the business-specific story and emotional value.", order: 4 },
-      { name: "Showcase", goal: "Use niche-relevant visuals or representative imagery to make the offer tangible.", order: 5 },
-      { name: "FAQ", goal: "Answer practical decision blockers without inventing facts.", order: 6 },
-      { name: "Contact", goal: "End with a low-friction conversion path.", order: 7 },
-    ],
-    conversionFlow: "Attention, relevance, credibility, offer clarity, visual confidence, objection handling, contact.",
+    sections: fallbackSections,
+    conversionFlow: archetype
+      ? `Attention, ${archetype.name.toLowerCase()} relevance, credibility, offer clarity, visual confidence, objection handling, contact.`
+      : "Attention, relevance, credibility, offer clarity, visual confidence, objection handling, contact.",
   };
 }
 
@@ -633,9 +676,10 @@ async function generateWebsitePlanFromPrompt(
   tokens: DesignTokens,
   inspiration: string,
   generationId: string,
+  archetype?: Archetype,
 ) {
-  const fallback = fallbackWebsitePlan(business, tokens);
-  const prompt = buildPlannerPrompt(business, tokens, inspiration);
+  const fallback = fallbackWebsitePlan(business, tokens, archetype);
+  const prompt = buildPlannerPrompt(business, tokens, inspiration, archetype);
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("planning")) {
@@ -683,6 +727,7 @@ async function generateSectionHtmlFromPrompt(input: {
   plan: WebsitePlan;
   tokens: DesignTokens;
   inspiration: string;
+  archetype?: Archetype;
   correctiveFeedback?: string[];
 }) {
   const prompt = buildSectionPrompt(
@@ -690,6 +735,7 @@ async function generateSectionHtmlFromPrompt(input: {
     input.plan,
     input.tokens,
     input.inspiration,
+    input.archetype,
   );
   const errors: string[] = [];
 
@@ -928,8 +974,10 @@ function heuristicSectionIssues(html: string) {
     .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
     .replace(/<[^>]+>/g, " ");
   if (!/<title>/i.test(html) || !/meta\s+name=["']description/i.test(html)) issues.push("Missing core SEO metadata.");
+  if (!/<script[^>]+type=["']application\/ld\+json["']/i.test(html)) issues.push("Missing JSON-LD schema.");
   if (!/data-seraphim-generator=["']true["']/i.test(html)) issues.push("Missing Seraphim output signature.");
   if (!/<section\b/i.test(html)) issues.push("No meaningful sections were generated.");
+  if ((html.match(/<section\b/gi) ?? []).length < 6) issues.push("Generated page has fewer than 6 meaningful sections.");
   if (/<meta\s+name=["']keywords["']/i.test(html)) issues.push("Meta keywords are not allowed.");
   if (/(five-star|5-star|award-winning|guaranteed|certified|\b\d+ reviews\b|\b\d+\+ customers\b)/i.test(html)) {
     issues.push("Potential fabricated proof or unsupported metrics found.");
@@ -938,14 +986,14 @@ function heuristicSectionIssues(html: string) {
   return issues;
 }
 
-async function runSectionQA(fullHtml: string) {
+async function runSectionQA(fullHtml: string, archetype?: Archetype) {
   const heuristicIssues = heuristicSectionIssues(fullHtml);
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("qa")) {
     try {
       const text = await runWithModelRouteRetry(route, () =>
-        generateTextWithRoute(buildQAPrompt(fullHtml), route, { temperature: 0.15, maxOutputTokens: 3000 }),
+        generateTextWithRoute(buildQAPrompt(fullHtml, archetype), route, { temperature: 0.15, maxOutputTokens: 3000 }),
       );
       const modelQa = normalizeSectionQA(parseJsonObject(text), heuristicIssues);
       const issues = unique([...heuristicIssues, ...modelQa.issues]);
@@ -1000,6 +1048,7 @@ function buildGenerationPlanResponse(input: {
   generationId: string;
   plan: WebsitePlan;
   industryBrief: SeraphimIndustryBrief;
+  archetype?: Archetype;
   qualityGate?: QualityGate;
   revisionCount?: number;
 }): GenerationPlanResponse {
@@ -1009,6 +1058,13 @@ function buildGenerationPlanResponse(input: {
     summary: input.plan.layoutPhilosophy,
     sectionIds: input.plan.sections.map((section) => section.name),
     premiumPlan: input.plan,
+    archetype: input.archetype ? {
+      id: input.archetype.id,
+      name: input.archetype.name,
+      tone: input.archetype.tone,
+      sectionOrder: input.archetype.sectionOrder,
+      qaChecks: input.archetype.qaChecks,
+    } : undefined,
     seraphimGenerator: {
       authority: "only-website-generation-system",
       industryBrief: input.industryBrief.id,
@@ -1034,6 +1090,7 @@ function buildGenerationResponse(input: {
     generationId: input.generationId,
     plan: input.pipeline.plan,
     industryBrief: input.industryBrief,
+    archetype: input.pipeline.archetype,
     qualityGate,
     revisionCount: input.pipeline.revisionCount,
   });
@@ -1047,8 +1104,18 @@ function buildGenerationResponse(input: {
     modelMetadata,
     pipelineModelMetadata: input.pipelineMetadata,
     cleanedBusinessData: input.cleanBusinessData,
+    archetype: input.pipeline.archetype ? {
+      id: input.pipeline.archetype.id,
+      name: input.pipeline.archetype.name,
+      tone: input.pipeline.archetype.tone,
+      sectionOrder: input.pipeline.archetype.sectionOrder,
+      qaChecks: input.pipeline.archetype.qaChecks,
+    } : undefined,
     generationPlan,
     qualityGate,
+    warning: input.pipeline.qa.passed
+      ? undefined
+      : "Generated website returned the best available attempt after archetype QA retries.",
   };
 }
 
@@ -1057,10 +1124,11 @@ async function runSectionGenerationPipeline(input: {
   cleanBusinessData: CleanBusinessData;
   generationId: string;
 }) {
-  const tokens = buildDesignTokens(coerceVisualPreferences(input.data.visualPreferences));
+  const archetype = resolveArchetype(input.data, input.cleanBusinessData);
+  const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences);
   const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
   const inspiration = await fetchDesignInspiration(input.cleanBusinessData.businessType);
-  const planResult = await generateWebsitePlanFromPrompt(business, tokens, inspiration, input.generationId);
+  const planResult = await generateWebsitePlanFromPrompt(business, tokens, inspiration, input.generationId, archetype);
   const metadata: StageMetadata[] = [planResult.metadata];
   const sectionResults = new Map<string, string>();
 
@@ -1071,6 +1139,7 @@ async function runSectionGenerationPipeline(input: {
       plan: planResult.plan,
       tokens,
       inspiration,
+      archetype,
     });
     sectionResults.set(section.name, result.html);
     metadata.push(result.metadata);
@@ -1083,7 +1152,7 @@ async function runSectionGenerationPipeline(input: {
     plan: planResult.plan,
     sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
   });
-  let qaResult = await runSectionQA(html);
+  let qaResult = await runSectionQA(html, archetype);
   metadata.push(qaResult.metadata);
   let revisionCount = 0;
 
@@ -1097,6 +1166,7 @@ async function runSectionGenerationPipeline(input: {
         plan: planResult.plan,
         tokens,
         inspiration,
+        archetype,
         correctiveFeedback: qaResult.qa.issues,
       });
       sectionResults.set(section.name, result.html);
@@ -1109,7 +1179,7 @@ async function runSectionGenerationPipeline(input: {
       plan: planResult.plan,
       sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
     });
-    qaResult = await runSectionQA(html);
+    qaResult = await runSectionQA(html, archetype);
     metadata.push({ ...qaResult.metadata, stage: `qa:retry-${revisionCount}` });
   }
 
@@ -1121,6 +1191,7 @@ async function runSectionGenerationPipeline(input: {
     revisionCount,
     business,
     tokens,
+    archetype,
     inspiration,
   };
 }
@@ -1132,16 +1203,18 @@ async function streamSectionGenerationPipeline(input: {
   generationId: string;
   send: (event: Record<string, unknown>) => void;
 }) {
-  const tokens = buildDesignTokens(coerceVisualPreferences(input.data.visualPreferences));
+  const archetype = resolveArchetype(input.data, input.cleanBusinessData);
+  const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences);
   const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
   const inspiration = await fetchDesignInspiration(input.cleanBusinessData.businessType);
-  const planResult = await generateWebsitePlanFromPrompt(business, tokens, inspiration, input.generationId);
+  const planResult = await generateWebsitePlanFromPrompt(business, tokens, inspiration, input.generationId, archetype);
   const metadata: StageMetadata[] = [planResult.metadata];
   const sectionResults = new Map<string, string>();
   const earlyGenerationPlan = buildGenerationPlanResponse({
     generationId: input.generationId,
     plan: planResult.plan,
     industryBrief: input.industryBrief,
+    archetype,
   });
 
   input.send({
@@ -1149,6 +1222,13 @@ async function streamSectionGenerationPipeline(input: {
     plan: planResult.plan,
     generationPlan: earlyGenerationPlan,
     designTokens: tokens,
+    archetype: {
+      id: archetype.id,
+      name: archetype.name,
+      tone: archetype.tone,
+      sectionOrder: archetype.sectionOrder,
+      qaChecks: archetype.qaChecks,
+    },
   });
 
   for (const [index, section] of planResult.plan.sections.entries()) {
@@ -1158,6 +1238,7 @@ async function streamSectionGenerationPipeline(input: {
       plan: planResult.plan,
       tokens,
       inspiration,
+      archetype,
     });
     sectionResults.set(section.name, result.html);
     metadata.push(result.metadata);
@@ -1177,7 +1258,7 @@ async function streamSectionGenerationPipeline(input: {
     plan: planResult.plan,
     sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
   });
-  let qaResult = await runSectionQA(html);
+  let qaResult = await runSectionQA(html, archetype);
   metadata.push(qaResult.metadata);
   let revisionCount = 0;
   input.send({
@@ -1198,6 +1279,7 @@ async function streamSectionGenerationPipeline(input: {
         plan: planResult.plan,
         tokens,
         inspiration,
+        archetype,
         correctiveFeedback: qaResult.qa.issues,
       });
       sectionResults.set(section.name, result.html);
@@ -1218,7 +1300,7 @@ async function streamSectionGenerationPipeline(input: {
       plan: planResult.plan,
       sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
     });
-    qaResult = await runSectionQA(html);
+    qaResult = await runSectionQA(html, archetype);
     metadata.push({ ...qaResult.metadata, stage: `qa:retry-${revisionCount}` });
     input.send({
       type: "qa",
@@ -1237,6 +1319,7 @@ async function streamSectionGenerationPipeline(input: {
     revisionCount,
     business,
     tokens,
+    archetype,
     inspiration,
   };
 }
@@ -1280,6 +1363,10 @@ export async function POST(request: Request) {
             colors: cleanBusinessData.visibleColors.length,
             missingFields: cleanBusinessData.missingFields,
             dataConfidence: cleanBusinessData.dataConfidence,
+          });
+          safeDebug(generationId, "archetype", {
+            requested: normalizedData.archetypeId || "auto",
+            selected: resolveArchetype(normalizedData, cleanBusinessData).id,
           });
 
           const pipeline = await streamSectionGenerationPipeline({
@@ -1337,6 +1424,10 @@ export async function POST(request: Request) {
       industryBrief: industryBrief.id,
       industryName: industryBrief.name,
       matchedSignals: industryBrief.matchedSignals,
+    });
+    safeDebug(generationId, "archetype", {
+      requested: normalizedData.archetypeId || "auto",
+      selected: resolveArchetype(normalizedData, cleanBusinessData).id,
     });
 
     const pipeline = await runSectionGenerationPipeline({

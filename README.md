@@ -110,6 +110,8 @@ The `/create` workflow now streams website generation when the browser requests 
 
 Design controls are available above the Generate buttons. Primary/secondary colors, heading/body fonts, and mood are saved in localStorage and sent as `visualPreferences` to the generator. Generated output includes those values as CSS custom properties, and saved prospects keep the preferences for future premium regeneration. The preview also supports **Regenerate All** and per-section **Regenerate** actions.
 
+Business type archetypes are now available in `/create` as an optional **Business Type** selector. The selector applies industry-matched design tokens, preferred section rhythm, tone guidance, and QA checks from `lib/archetypes/index.ts`; if no archetype is selected, the generation API auto-detects one from the supplied business category/services and falls back to Friendly Local. Existing JSON and streaming API consumers remain backward-compatible because `archetypeId` is optional.
+
 ## Generation Isolation
 
 Every create-workspace run has a fresh `generationId`. The client sends that ID to the extraction API, aborts old requests when starting over, clears generation-only storage, and ignores late responses from old IDs. The visible **New Generation** and **Clear Current Data** controls reset screenshot, extracted facts, generated HTML, preview state, messages, section outputs, QA state, errors, and placeholders without clearing auth or prospect records.

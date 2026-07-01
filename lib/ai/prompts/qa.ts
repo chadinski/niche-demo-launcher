@@ -1,9 +1,15 @@
+import type { Archetype } from "@/lib/archetypes";
+
 export interface SectionQAResult {
   passed: boolean;
   issues: string[];
 }
 
-export function buildQAPrompt(fullHtml: string): string {
+export function buildQAPrompt(fullHtml: string, archetype?: Archetype): string {
+  const archetypeRules = archetype?.qaChecks.length
+    ? archetype.qaChecks.map((check) => `- ${check}`).join("\n")
+    : "- No archetype-specific QA checks supplied.";
+
   return `You are Seraphim Generator's strict QA auditor.
 
 Review the complete generated HTML below and return strict JSON only:
@@ -13,6 +19,10 @@ Review the complete generated HTML below and return strict JSON only:
 }
 
 QA RULES:
+- Strong SEO basics must exist: title, meta description, robots noindex, theme color, Open Graph/Twitter metadata where practical, and JSON-LD using verified facts only.
+- At least 6 meaningful sections must exist.
+- The page must be mobile responsive with no horizontal overflow.
+- No placeholder text, lorem ipsum, TODO labels, or unresolved bracketed content may appear as final copy.
 - No placeholders presented as final content.
 - No fake testimonials, fake reviews, fake ratings, fake follower counts, fake metrics, fake awards, fake prices, fake guarantees, fake certifications, or unsupported years in business.
 - No generic template-pack language, meta keywords, or fake proof badges.
@@ -24,6 +34,9 @@ QA RULES:
 - SEO basics must exist: title, description, robots noindex, Open Graph/Twitter metadata when practical, and JSON-LD using verified facts only.
 - Images must be niche-relevant and must not imply actual business photography unless verified.
 - Code should be complete standalone HTML with embedded CSS and minimal guarded JS.
+
+ARCHETYPE QA CHECKS:
+${archetypeRules}
 
 HTML:
 ${fullHtml.slice(0, 90000)}`;

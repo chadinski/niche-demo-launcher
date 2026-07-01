@@ -68,6 +68,8 @@ import { generateBusinessIntelligence } from "@/lib/automation/business-intellig
 import { nextFollowUpDate, statusAfterMilestone } from "@/lib/automation/follow-ups";
 import { scoreLead } from "@/lib/automation/lead-scoring";
 import { auditWebsite } from "@/lib/automation/quality-audit";
+import { ARCHETYPES, getArchetypeById, type Archetype } from "@/lib/archetypes";
+import { buildDesignTokensFromArchetype } from "@/lib/design/tokens";
 import type {
   BusinessInfo,
   MessageTone,
@@ -321,6 +323,26 @@ function designTokensFromPreferences(preferences: DesignPreferenceValues | null)
   };
 }
 
+function moodFromArchetype(archetype: Archetype): DesignPreferenceValues["mood"] {
+  const tone = archetype.tone.toLowerCase();
+  if (tone.includes("luxury") || tone.includes("elegant") || tone.includes("editorial")) return "Luxury";
+  if (tone.includes("playful") || tone.includes("friendly") || tone.includes("warm")) return "Playful";
+  if (tone.includes("minimal") || tone.includes("precise") || tone.includes("calm")) return "Minimal";
+  return "Professional";
+}
+
+function designPreferencesFromArchetype(archetype: Archetype): DesignPreferenceValues {
+  const tokens = buildDesignTokensFromArchetype(archetype);
+
+  return {
+    primary: tokens.colors.primary,
+    secondary: tokens.colors.secondary,
+    headingFont: tokens.fonts.heading,
+    bodyFont: tokens.fonts.body,
+    mood: moodFromArchetype(archetype),
+  };
+}
+
 function extractGeneratedSectionHtmls(fullHtml: string) {
   return [...fullHtml.matchAll(/<section\b[\s\S]*?<\/section>/gi)].map((match) => match[0]);
 }
@@ -486,6 +508,7 @@ export function DemoWorkspace() {
   const [generationErrors, setGenerationErrors] = useState<GenerationError[]>([]);
   const [modelMetadata, setModelMetadata] = useState<ModelMetadata[]>([]);
   const [visualPrefs, setVisualPrefs] = useState<DesignPreferenceValues | null>(null);
+  const [selectedArchetypeId, setSelectedArchetypeId] = useState("");
   const [regeneratingSectionIndex, setRegeneratingSectionIndex] = useState<number | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const generationIdRef = useRef(generationId);
@@ -638,6 +661,7 @@ export function DemoWorkspace() {
     setSkippedSections([]);
     setGenerationErrors([]);
     setModelMetadata([]);
+    setSelectedArchetypeId("");
     setRegeneratingSectionIndex(null);
     if (imageInputRef.current) imageInputRef.current.value = "";
 
@@ -679,6 +703,17 @@ export function DemoWorkspace() {
     },
     [businessUnderstanding, info, messages, tone],
   );
+
+  const handleArchetypeChange = useCallback((archetypeId: string) => {
+    setSelectedArchetypeId(archetypeId);
+
+    const archetype = archetypeId ? getArchetypeById(archetypeId) : undefined;
+    if (!archetype) return;
+
+    const nextPreferences = designPreferencesFromArchetype(archetype);
+    setVisualPrefs(nextPreferences);
+    toast.success(`${archetype.name} design direction applied`);
+  }, []);
 
   const runAction = async (
     action: BusyAction,
@@ -901,6 +936,7 @@ export function DemoWorkspace() {
           info: sourceInfo,
           generationMode,
           visualPreferences: designTokenPreferences,
+          archetypeId: selectedArchetypeId || undefined,
           imageName: imageFile?.name || "",
           businessUnderstanding,
         }),
@@ -1050,7 +1086,7 @@ export function DemoWorkspace() {
 
       return streamedResult;
     },
-    [businessUnderstanding, designTokenPreferences, generationMode, imageFile, isActiveGeneration, visualPrefs],
+    [businessUnderstanding, designTokenPreferences, generationMode, imageFile, isActiveGeneration, selectedArchetypeId, visualPrefs],
   );
 
   const requireGenerationReady = useCallback(() => {
@@ -1228,6 +1264,7 @@ export function DemoWorkspace() {
         screenshotDataUrl: canPersistScreenshot ? imageDataUrl : "",
         screenshotSaved: canPersistScreenshot,
         generationMode,
+        archetypeId: selectedArchetypeId || undefined,
         visualPreferences: designTokenPreferences,
         extractionReviewed,
         generationPlan: prospectGenerationPlan,
@@ -1409,6 +1446,7 @@ export function DemoWorkspace() {
           sectionIndex,
           plan: generationPlan.premiumPlan ?? generationPlan,
           designTokens: designTokenPreferences ?? {},
+          archetypeId: selectedArchetypeId || undefined,
           originalHtml: section.html,
           feedback: `Regenerate only the ${section.sectionId} section. Make it more eye-catching, premium, business-specific, and consistent with the existing page.`,
         }),
@@ -1827,8 +1865,26 @@ export function DemoWorkspace() {
               title="Generate"
               description="Generate only after extracted facts are reviewed and approved."
             />
+            <label className="mt-5 block">
+              <span className="field-label">Business Type</span>
+              <select
+                className="field-input"
+                value={selectedArchetypeId}
+                onChange={(event) => handleArchetypeChange(event.target.value)}
+              >
+                <option value="">Auto-detect from business facts</option>
+                {ARCHETYPES.map((archetype) => (
+                  <option key={archetype.id} value={archetype.id}>
+                    {archetype.name}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[0.7rem] leading-5 text-[#7d8496]">
+                Archetypes set the section rhythm, visual tone, and QA checks while your exact business facts stay protected.
+              </span>
+            </label>
             <div className="mt-5">
-              <DesignPreferences onChange={setVisualPrefs} />
+              <DesignPreferences onChange={setVisualPrefs} value={visualPrefs} />
             </div>
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               <Button variant="outline" onClick={handleGenerateWebsite} loading={busy === "website"} disabled={generationDisabled}>
