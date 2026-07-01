@@ -41,6 +41,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { DesignPreferences, type DesignPreferenceValues } from "@/components/DesignPreferences";
 import { deployGeneratedWebsite } from "@/app/deployment-actions";
 import { PageHeading } from "@/components/page-heading";
 import { Button, Card, SectionLabel } from "@/components/ui";
@@ -102,6 +103,13 @@ type ModelMetadata = {
   provider: string;
   model: string;
   fallback: boolean;
+};
+
+type RegenerateSectionResponse = {
+  html?: string;
+  sectionIndex?: number;
+  modelMetadata?: ModelMetadata;
+  error?: string;
 };
 
 const generationModes: Array<{ key: GenerationMode; label: string; directive: string }> = [
@@ -236,6 +244,73 @@ function generationDirective(mode: GenerationMode, understanding: BusinessUnders
   return [themeDirective, modeDirective].filter(Boolean).join("\n");
 }
 
+function visualPreferenceDirective(preferences: DesignPreferenceValues | null) {
+  if (!preferences) return "";
+
+  return [
+    `Selected visual mood: ${preferences.mood}.`,
+    `Selected primary color: ${preferences.primary}.`,
+    `Selected secondary color: ${preferences.secondary}.`,
+    `Selected heading font stack: ${preferences.headingFont}.`,
+    `Selected body font stack: ${preferences.bodyFont}.`,
+  ].join(" ");
+}
+
+function designTokensFromPreferences(preferences: DesignPreferenceValues | null) {
+  if (!preferences) return undefined;
+
+  return {
+    colors: {
+      primary: preferences.primary,
+      secondary: preferences.secondary,
+      accent: preferences.secondary,
+    },
+    fonts: {
+      heading: preferences.headingFont,
+      body: preferences.bodyFont,
+    },
+    mood: preferences.mood,
+  };
+}
+
+function extractGeneratedSectionHtmls(fullHtml: string) {
+  return [...fullHtml.matchAll(/<section\b[\s\S]*?<\/section>/gi)].map((match) => match[0]);
+}
+
+function replaceGeneratedSectionHtml(fullHtml: string, sectionIndex: number, nextSectionHtml: string) {
+  let currentIndex = -1;
+
+  return fullHtml.replace(/<section\b[\s\S]*?<\/section>/gi, (sectionHtml) => {
+    currentIndex += 1;
+    return currentIndex === sectionIndex ? nextSectionHtml : sectionHtml;
+  });
+}
+
+function sectionOutputsFromHtml(
+  activeGenerationId: string,
+  fullHtml: string,
+  plan: GenerationPlan,
+): SectionOutput[] {
+  const fragments = extractGeneratedSectionHtmls(fullHtml);
+  if (!fragments.length) {
+    return [{
+      generationId: activeGenerationId,
+      sectionId: "full-website",
+      type: "full-page",
+      html: fullHtml,
+      status: "success",
+    }];
+  }
+
+  return fragments.map((fragment, index) => ({
+    generationId: activeGenerationId,
+    sectionId: plan.sectionIds[index] || `section-${index + 1}`,
+    type: "custom",
+    html: fragment,
+    status: "success",
+  }));
+}
+
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -271,6 +346,8 @@ export function DemoWorkspace() {
   const [skippedSections, setSkippedSections] = useState<string[]>([]);
   const [generationErrors, setGenerationErrors] = useState<GenerationError[]>([]);
   const [modelMetadata, setModelMetadata] = useState<ModelMetadata[]>([]);
+  const [visualPrefs, setVisualPrefs] = useState<DesignPreferenceValues | null>(null);
+  const [regeneratingSectionIndex, setRegeneratingSectionIndex] = useState<number | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const generationIdRef = useRef(generationId);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -293,6 +370,10 @@ export function DemoWorkspace() {
   const readinessChecks = useMemo(
     () => buildReadinessChecks(info, html, messages, qualityAudit),
     [info, html, messages, qualityAudit],
+  );
+  const designTokenPreferences = useMemo(
+    () => designTokensFromPreferences(visualPrefs),
+    [visualPrefs],
   );
   const launchReadiness = useMemo(
     () => readinessScore(readinessChecks),
@@ -418,6 +499,7 @@ export function DemoWorkspace() {
     setSkippedSections([]);
     setGenerationErrors([]);
     setModelMetadata([]);
+    setRegeneratingSectionIndex(null);
     if (imageInputRef.current) imageInputRef.current.value = "";
 
     if (process.env.NODE_ENV !== "production") {
@@ -438,6 +520,7 @@ export function DemoWorkspace() {
     setSkippedSections([]);
     setGenerationErrors([]);
     setModelMetadata([]);
+    setRegeneratingSectionIndex(null);
     clearGenerationStorage();
   }, []);
 
@@ -655,13 +738,15 @@ export function DemoWorkspace() {
 
   const buildGenerationInfo = useCallback(() => {
     const directive = generationDirective(generationMode, businessUnderstanding);
+    const visualDirective = visualPreferenceDirective(visualPrefs);
+    const generationContext = [directive, visualDirective].filter(Boolean).join("\n");
 
     return {
       ...info,
-      rawInfo: [info.rawInfo, directive].filter(Boolean).join("\n\n"),
-      notes: [info.notes, directive].filter(Boolean).join("\n\n"),
+      rawInfo: [info.rawInfo, generationContext].filter(Boolean).join("\n\n"),
+      notes: [info.notes, generationContext].filter(Boolean).join("\n\n"),
     };
-  }, [businessUnderstanding, generationMode, info]);
+  }, [businessUnderstanding, generationMode, info, visualPrefs]);
 
   const requestAIWebsiteHTML = useCallback(
     async (sourceInfo: BusinessInfo, activeGenerationId: string) => {
@@ -673,6 +758,7 @@ export function DemoWorkspace() {
           generationId: activeGenerationId,
           info: sourceInfo,
           generationMode,
+          visualPreferences: designTokenPreferences,
           imageName: imageFile?.name || "",
           businessUnderstanding,
         }),
@@ -715,7 +801,7 @@ export function DemoWorkspace() {
         qualityGate: payload.qualityGate,
       };
     },
-    [businessUnderstanding, generationMode, imageFile, isActiveGeneration],
+    [businessUnderstanding, designTokenPreferences, generationMode, imageFile, isActiveGeneration],
   );
 
   const requireGenerationReady = useCallback(() => {
@@ -745,13 +831,7 @@ export function DemoWorkspace() {
           summary: `${nextInfo.businessName} ${nextInfo.category} website plan`,
           sectionIds: ["full-website"],
         };
-        const nextSectionOutputs: SectionOutput[] = [{
-          generationId: activeGenerationId,
-          sectionId: "full-website",
-          type: "full-page",
-          html: nextHtml,
-          status: "success",
-        }];
+        const nextSectionOutputs = sectionOutputsFromHtml(activeGenerationId, nextHtml, nextPlan);
         setGenerationPlan(nextPlan);
         setSectionOutputs(nextSectionOutputs);
         setSkippedSections([]);
@@ -813,13 +893,7 @@ export function DemoWorkspace() {
           summary: `${nextInfo.businessName} ${nextInfo.category} website and outreach plan`,
           sectionIds: ["full-website"],
         };
-        const nextSectionOutputs: SectionOutput[] = [{
-          generationId: activeGenerationId,
-          sectionId: "full-website",
-          type: "full-page",
-          html: nextHtml,
-          status: "success",
-        }];
+        const nextSectionOutputs = sectionOutputsFromHtml(activeGenerationId, nextHtml, nextPlan);
         setGenerationPlan(nextPlan);
         setSectionOutputs(nextSectionOutputs);
         setSkippedSections([]);
@@ -1060,6 +1134,69 @@ export function DemoWorkspace() {
       toast.info(`Deployment setup required: ${(result.missing ?? []).join(", ")}`);
     } else {
       toast.error(result.message);
+    }
+  };
+
+  const handleRegenerateSection = async (sectionIndex: number) => {
+    if (!html || !generationPlan) {
+      toast.error("Generate a website before regenerating a section.");
+      return;
+    }
+
+    const section = sectionOutputs[sectionIndex];
+    if (!section || section.type === "full-page") {
+      toast.error("This generated site does not expose individual sections yet.");
+      return;
+    }
+
+    setRegeneratingSectionIndex(sectionIndex);
+    try {
+      const response = await fetch("/api/regenerate-section", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sectionIndex,
+          plan: generationPlan.premiumPlan ?? generationPlan,
+          designTokens: designTokenPreferences ?? {},
+          originalHtml: section.html,
+          feedback: `Regenerate only the ${section.sectionId} section. Make it more eye-catching, premium, business-specific, and consistent with the existing page.`,
+        }),
+      });
+      const payload = (await response.json()) as RegenerateSectionResponse;
+
+      if (!response.ok || !payload.html) {
+        throw new Error(payload.error || "Section regeneration failed.");
+      }
+
+      const nextHtml = replaceGeneratedSectionHtml(html, sectionIndex, payload.html);
+      const nextSectionOutputs = sectionOutputs.map((item, index) =>
+        index === sectionIndex
+          ? { ...item, html: payload.html ?? item.html, status: "success" as const }
+          : item,
+      );
+      const nextAudit = auditWebsite(nextHtml, info);
+      const nextModelMetadata = payload.modelMetadata
+        ? [...modelMetadata, payload.modelMetadata]
+        : modelMetadata;
+
+      setHtml(nextHtml);
+      setSectionOutputs(nextSectionOutputs);
+      setModelMetadata(nextModelMetadata);
+      setOutputTab("preview");
+
+      if (prospectId) {
+        updateProspect(prospectId, {
+          generated_website_html: nextHtml,
+          website_quality_audit: nextAudit,
+        });
+      }
+
+      toast.success(`${section.sectionId} regenerated`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Section regeneration failed.");
+    } finally {
+      setRegeneratingSectionIndex(null);
     }
   };
 
@@ -1440,6 +1577,9 @@ export function DemoWorkspace() {
               title="Generate"
               description="Generate only after extracted facts are reviewed and approved."
             />
+            <div className="mt-5">
+              <DesignPreferences onChange={setVisualPrefs} />
+            </div>
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               <Button variant="outline" onClick={handleGenerateWebsite} loading={busy === "website"} disabled={generationDisabled}>
                 <Globe2 className="size-4" />
@@ -1620,6 +1760,46 @@ export function DemoWorkspace() {
                     <code>{html}</code>
                   </pre>
                 )}
+                {sectionOutputs.some((section) => section.type !== "full-page" && section.status === "success") ? (
+                  <div className="border-t border-[#e9eaf0] bg-white p-4 sm:p-5">
+                    <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                      <div>
+                        <h3 className="text-sm font-extrabold">Section regeneration</h3>
+                        <p className="mt-1 text-xs text-[#858b9d]">
+                          Improve one section at a time while preserving the rest of the generated page.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {sectionOutputs.map((section, index) =>
+                        section.type !== "full-page" && section.status === "success" ? (
+                          <div
+                            key={`${section.sectionId}-${index}`}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-[#ececf2] bg-[#fafafd] p-3"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate text-xs font-extrabold text-ink-950">
+                                {section.sectionId}
+                              </div>
+                              <div className="mt-0.5 text-[0.68rem] font-semibold text-[#8a90a2]">
+                                Section {index + 1}
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              onClick={() => handleRegenerateSection(index)}
+                              loading={regeneratingSectionIndex === index}
+                              disabled={regeneratingSectionIndex !== null || actionInProgress}
+                            >
+                              <RotateCcw className="size-4" />
+                              Regenerate
+                            </Button>
+                          </div>
+                        ) : null,
+                      )}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="grid gap-3 border-t border-[#e9eaf0] p-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end sm:p-5">
                   <div>
                     <label className="field-label" htmlFor="demo-url-output">Live site URL</label>
