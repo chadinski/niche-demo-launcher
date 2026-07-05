@@ -3,11 +3,29 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { buildPlannerPrompt, type BusinessData, type WebsitePlan, type WebsitePlanSection } from "@/lib/ai/prompts/planner";
-import { buildQAPrompt, type SectionQAResult } from "@/lib/ai/prompts/qa";
 import { buildSectionPrompt } from "@/lib/ai/prompts/section";
+import { buildCreativeDirectorPrompt } from "@/lib/ai/prompts/creative-director";
+import { buildDesignSystemPrompt } from "@/lib/ai/prompts/design-system";
+import { buildPageContractPrompt } from "@/lib/ai/prompts/page-contract";
+import { buildVisualQAPrompt } from "@/lib/ai/prompts/visual-qa";
 import { getRoutesForStage, runWithModelRouteRetry, type ModelRoute } from "@/lib/ai/modelRouter";
-import { buildDesignTokens, type DesignTokens } from "@/lib/design/tokens";
+import {
+  DEFAULT_CREATIVE_CONTRACT,
+  DEFAULT_DESIGN_SYSTEM_CONTRACT,
+  parseCreativeContract,
+  parseDesignSystemContract,
+  parsePageContract,
+  parseVisualQAResult,
+  type CreativeContract,
+  type DesignSystemContract,
+  type PageContract,
+  type SectionContract,
+  type VisualQAResult,
+} from "@/lib/ai/site-contract-schema";
+import { getArchetypeById, getArchetypeForIndustry, type Archetype } from "@/lib/archetypes";
+import { buildDesignTokensFromArchetype, type DesignTokenPreferences, type DesignTokens } from "@/lib/design/tokens";
 import { fetchDesignInspiration } from "@/lib/inspiration/firecrawl";
+import { getPremiumReferenceBrief } from "@/lib/reference/premium-reference-library";
 
 const businessInfoSchema = z.object({
   rawInfo: z.string().default(""),
@@ -39,7 +57,9 @@ const requestSchema = z.object({
   visualPreferences: z.unknown().optional(),
   generationMode: z.string().max(80).optional().default("standard"),
   imageName: z.string().max(180).optional().default(""),
+  sourceImageDataUrl: z.string().max(18_000_000).optional().default(""),
   businessUnderstanding: z.unknown().optional(),
+  archetypeId: z.string().min(1).max(80).optional(),
 });
 
 type CleanBusinessData = {
@@ -59,6 +79,7 @@ type CleanBusinessData = {
   visualEvidence: string[];
   logoDescription: string;
   sourceImageName: string;
+  sourceImageDataUrl: string;
   targetAudience: string;
   brandTone: string;
   missingFields: string[];
@@ -81,6 +102,8 @@ type SeraphimIndustryBrief = {
   brief: string;
 };
 
+type PremiumReferenceBrief = ReturnType<typeof getPremiumReferenceBrief>;
+
 type QualityGate = {
   score: number;
   passed: boolean;
@@ -97,18 +120,31 @@ type StageMetadata = {
   fallback: boolean;
 };
 
+type SectionQAResult = VisualQAResult;
+
 type GenerationPlanResponse = {
   generationId: string;
   stage: "planning";
   summary: string;
   sectionIds: string[];
   premiumPlan: WebsitePlan;
+  creativeContract?: CreativeContract;
+  designSystem?: DesignSystemContract;
+  pageContract?: PageContract;
+  archetype?: {
+    id: string;
+    name: string;
+    tone: string;
+    sectionOrder: string[];
+    qaChecks: string[];
+  };
   seraphimGenerator: {
     authority: string;
     industryBrief: string;
     industryName: string;
     matchedSignals: string[];
   };
+  premiumReferenceBrief?: PremiumReferenceBrief;
   qualityGate?: QualityGate;
   revisionCount?: number;
 };
@@ -123,6 +159,19 @@ function asString(value: unknown) {
 
 function unique(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function explicitPageCategoryFromText(value: string) {
+  const match = value
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\s*Page\s*[^\w\s]+\s*([^\n\r]+)/i))
+    .find((candidate): candidate is RegExpMatchArray => Boolean(candidate));
+  if (!match) return "";
+  return match[1]
+    .replace(/\s{2,}.*/, "")
+    .replace(/[|•].*$/, "")
+    .trim()
+    .slice(0, 120);
 }
 
 function splitList(value: string, limit = 12) {
@@ -193,7 +242,14 @@ function buildCleanBusinessData(input: z.infer<typeof requestSchema>): CleanBusi
   ]).slice(0, 18);
   const missingFromUnderstanding = stringList(understanding.missingInformation, 12);
   const assumptions = stringList(understanding.assumptions, 12);
-  const category = info.category.trim() || asString(industry.primaryIndustry) || asString(industry.businessModel);
+  const sourceTextForCategory = [
+    info.rawInfo,
+    asString(understanding.rawOcrText),
+    asString(understanding.cleanedText),
+    asString(understanding.reportMarkdown),
+  ].join("\n");
+  const explicitCategory = explicitPageCategoryFromText(sourceTextForCategory);
+  const category = explicitCategory || info.category.trim() || asString(industry.primaryIndustry) || asString(industry.businessModel);
   const location = info.location.trim() || asString(contact.location);
   const locationParts = location.split(",").map((part) => part.trim()).filter(Boolean);
   const phone = info.phone.trim() || asString(contact.phone);
@@ -250,6 +306,9 @@ function buildCleanBusinessData(input: z.infer<typeof requestSchema>): CleanBusi
     visualEvidence,
     logoDescription: compactText([asString(theme.logo), ...visualEvidence].filter(Boolean).join("; "), 620),
     sourceImageName: input.imageName || "",
+    sourceImageDataUrl: /^data:image\/(?:png|jpe?g|webp|gif);base64,/i.test(input.sourceImageDataUrl)
+      ? input.sourceImageDataUrl
+      : "",
     targetAudience: location ? `Customers in or near ${location} looking for ${category || "this service"}.` : `Customers looking for ${category || "this service"}.`,
     brandTone: compactText([asString(theme.mood), asString(theme.variation), modeDirection(input.generationMode)].filter(Boolean).join(" "), 520),
     missingFields,
@@ -450,7 +509,7 @@ function normalizeHtml(html: string) {
 async function generateTextWithGemini(
   prompt: string,
   route: ModelRoute,
-  options: { temperature?: number; maxOutputTokens?: number } = {},
+  options: { temperature?: number; maxOutputTokens?: number; responseMimeType?: "text/plain" | "application/json" } = {},
 ) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
@@ -469,7 +528,7 @@ async function generateTextWithGemini(
           temperature: options.temperature ?? 0.78,
           topP: 0.92,
           maxOutputTokens: options.maxOutputTokens ?? 50000,
-          responseMimeType: "text/plain",
+          responseMimeType: options.responseMimeType ?? "text/plain",
         },
       }),
     },
@@ -508,7 +567,11 @@ async function generateTextWithOpenAI(prompt: string, route: ModelRoute, maxOutp
   return response.output_text;
 }
 
-async function generateTextWithRoute(prompt: string, route: ModelRoute, options: { temperature?: number; maxOutputTokens?: number } = {}) {
+async function generateTextWithRoute(
+  prompt: string,
+  route: ModelRoute,
+  options: { temperature?: number; maxOutputTokens?: number; responseMimeType?: "text/plain" | "application/json" } = {},
+) {
   return route.provider === "gemini"
     ? generateTextWithGemini(prompt, route, options)
     : generateTextWithOpenAI(prompt, route, options.maxOutputTokens ?? 30000);
@@ -543,8 +606,28 @@ function withLegacyInfo(data: z.infer<typeof requestSchema>): z.infer<typeof req
   };
 }
 
-function coerceVisualPreferences(value: unknown): Partial<DesignTokens> {
-  return isRecord(value) ? value as Partial<DesignTokens> : {};
+function coerceVisualPreferences(value: unknown): DesignTokenPreferences {
+  return isRecord(value) ? value as DesignTokenPreferences : {};
+}
+
+function resolveArchetype(data: z.infer<typeof requestSchema>, cleanBusinessData: CleanBusinessData): Archetype {
+  const selected = data.archetypeId ? getArchetypeById(data.archetypeId) : undefined;
+  if (selected) return selected;
+
+  const industrySignals = unique([
+    cleanBusinessData.businessType,
+    data.info.category,
+    ...cleanBusinessData.services,
+    ...cleanBusinessData.products,
+    cleanBusinessData.visibleDescription,
+    cleanBusinessData.targetAudience,
+  ]);
+
+  return getArchetypeForIndustry(industrySignals.join(" "));
+}
+
+function buildTokensForGeneration(archetype: Archetype, preferences: unknown): DesignTokens {
+  return buildDesignTokensFromArchetype(archetype, coerceVisualPreferences(preferences));
 }
 
 function businessDataFromCleanData(cleanBusinessData: CleanBusinessData, structured?: BusinessData): BusinessData {
@@ -563,7 +646,25 @@ function businessDataFromCleanData(cleanBusinessData: CleanBusinessData, structu
   };
 }
 
-function fallbackWebsitePlan(business: BusinessData, tokens: DesignTokens): WebsitePlan {
+function fallbackWebsitePlan(business: BusinessData, tokens: DesignTokens, archetype?: Archetype): WebsitePlan {
+  const fallbackSections = archetype?.sectionOrder.length
+    ? archetype.sectionOrder.slice(0, 9).map((name, index) => ({
+        name,
+        goal: index === 0
+          ? "Orient the visitor, communicate the offer, and present the primary CTA."
+          : `Create a premium ${name.toLowerCase()} section that helps visitors understand why this business is worth contacting.`,
+        order: index + 1,
+      }))
+    : [
+        { name: "Hero", goal: "Orient the visitor, communicate the offer, and present the primary CTA.", order: 1 },
+        { name: "Trust Bridge", goal: "Use verified facts and safe reassurance to reduce uncertainty.", order: 2 },
+        { name: "Services", goal: "Explain the visible services or differentiators around customer intent.", order: 3 },
+        { name: "Experience", goal: "Tell the business-specific story and emotional value.", order: 4 },
+        { name: "Showcase", goal: "Use niche-relevant visuals or representative imagery to make the offer tangible.", order: 5 },
+        { name: "FAQ", goal: "Answer practical decision blockers without inventing facts.", order: 6 },
+        { name: "Contact", goal: "End with a low-friction conversion path.", order: 7 },
+      ];
+
   return {
     colorPalette: {
       primary: tokens.colors.primary,
@@ -577,18 +678,14 @@ function fallbackWebsitePlan(business: BusinessData, tokens: DesignTokens): Webs
       body: tokens.fonts.body,
       rationale: "Use a strong heading voice with a clean body face for premium readability.",
     },
-    layoutPhilosophy: "Build a custom, mobile-first landing page with a cinematic hero, varied section rhythm, and clear conversion momentum.",
+    layoutPhilosophy: archetype?.tone
+      ? `Build a custom, mobile-first landing page with ${archetype.tone}`
+      : "Build a custom, mobile-first landing page with a cinematic hero, varied section rhythm, and clear conversion momentum.",
     visualThesis: `Make ${business.name} feel specific, credible, and visually memorable from the first viewport.`,
-    sections: [
-      { name: "Hero", goal: "Orient the visitor, communicate the offer, and present the primary CTA.", order: 1 },
-      { name: "Trust Bridge", goal: "Use verified facts and safe reassurance to reduce uncertainty.", order: 2 },
-      { name: "Services", goal: "Explain the visible services or differentiators around customer intent.", order: 3 },
-      { name: "Experience", goal: "Tell the business-specific story and emotional value.", order: 4 },
-      { name: "Showcase", goal: "Use niche-relevant visuals or representative imagery to make the offer tangible.", order: 5 },
-      { name: "FAQ", goal: "Answer practical decision blockers without inventing facts.", order: 6 },
-      { name: "Contact", goal: "End with a low-friction conversion path.", order: 7 },
-    ],
-    conversionFlow: "Attention, relevance, credibility, offer clarity, visual confidence, objection handling, contact.",
+    sections: fallbackSections,
+    conversionFlow: archetype
+      ? `Attention, ${archetype.name.toLowerCase()} relevance, credibility, offer clarity, visual confidence, objection handling, contact.`
+      : "Attention, relevance, credibility, offer clarity, visual confidence, objection handling, contact.",
   };
 }
 
@@ -601,7 +698,7 @@ function normalizeWebsitePlan(value: unknown, fallback: WebsitePlan): WebsitePla
         .filter(isRecord)
         .map((section, index) => ({
           name: asString(section.name) || `Section ${index + 1}`,
-          goal: asString(section.goal) || "Support the conversion story.",
+          goal: asString(section.goal) || "Help visitors understand the offer and next step.",
           order: typeof section.order === "number" ? section.order : index + 1,
         }))
         .filter((section) => section.name && section.goal)
@@ -628,14 +725,374 @@ function normalizeWebsitePlan(value: unknown, fallback: WebsitePlan): WebsitePla
   };
 }
 
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "section";
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function fallbackCreativeContract(cleanBusinessData: CleanBusinessData, industryBrief: SeraphimIndustryBrief, archetype: Archetype): CreativeContract {
+  return parseCreativeContract({
+    ...DEFAULT_CREATIVE_CONTRACT,
+    businessIdentity: {
+      name: cleanBusinessData.companyName,
+      industry: cleanBusinessData.businessType,
+      audience: cleanBusinessData.targetAudience,
+      offerSummary: cleanBusinessData.visibleDescription || cleanBusinessData.services.join(", ") || cleanBusinessData.businessType,
+      verifiedFacts: cleanBusinessData.verifiedFacts,
+      missingFacts: cleanBusinessData.missingFields,
+      forbiddenClaims: cleanBusinessData.unsafeOrUnverifiedClaims,
+    },
+    creativeThesis: {
+      ...DEFAULT_CREATIVE_CONTRACT.creativeThesis,
+      oneSentenceDirection: industryBrief.visualThesis,
+      brandMood: cleanBusinessData.brandTone || archetype.tone,
+      visualMetaphor: industryBrief.visualThesis,
+      emotionalTarget: "Confidence that this business is credible, specific, and easy to contact.",
+      customerDecisionMoment: "The visitor is deciding whether to call, message, or enquire.",
+      premiumSignals: archetype.qaChecks,
+      localSignals: [cleanBusinessData.address, cleanBusinessData.city, cleanBusinessData.businessType].filter(Boolean),
+    },
+    layoutStrategy: {
+      layoutArchetype: archetype.name,
+      heroComposition: "Business-specific hero with clear offer, one primary CTA, and niche-relevant visual composition.",
+      sectionRhythm: "Use varied section compositions while preserving a clear visitor journey.",
+      conversionPath: industryBrief.pageStory.join(" -> "),
+      mobileStrategy: "Mobile-first, clear tap targets, no horizontal overflow, and contact actions easy to reach.",
+      scrollExperience: "Subtle reveal with essential content visible without animation.",
+    },
+    visualRules: {
+      colorLogic: `Use the selected ${archetype.name} palette with verified brand colors where present.`,
+      typographyLogic: "Use expressive headings with a readable body stack.",
+      spacingLogic: "Use generous but purposeful spacing with compact mobile rhythm.",
+      surfaceLogic: "Use surfaces to separate proof, services, FAQ, and contact areas.",
+      imageryLogic: industryBrief.imageStrategy.join(" "),
+      iconographyLogic: "Use simple, consistent icons only when they clarify scanning.",
+      motionLogic: "Use subtle hover and reveal effects with reduced-motion support.",
+    },
+    copyRules: {
+      tone: archetype.tone,
+      voice: "Specific, believable, helpful, and conversion-aware.",
+      ctaStyle: cleanBusinessData.phone ? "Call-first with supporting message/enquiry path." : "Contact/enquiry-first with missing details handled honestly.",
+      trustLanguage: "Use verified business facts and conservative reassurance only.",
+      wordsToUse: ["ask about", "contact to confirm", cleanBusinessData.businessType].filter(Boolean),
+      wordsToAvoid: ["award-winning", "trusted by thousands", "best-in-class", "transform your business"],
+    },
+    sectionRules: archetype.sectionOrder.slice(0, 8).map((name, index) => ({
+      id: slugify(name),
+      name,
+      goal: index === 0 ? "Introduce the offer, audience, and primary next step in plain customer language." : `Help visitors understand the ${name.toLowerCase()} information they need before contacting.`,
+      customerQuestionAnswered: index === 0 ? "Is this the right business for my need?" : `What should I know about ${name.toLowerCase()} before contacting?`,
+      requiredContent: index === 0 ? ["business name", "offer", "primary CTA"] : ["verified business detail or safe ask-about language"],
+      visualTreatment: `Use the ${archetype.name} design language with a distinct ${name.toLowerCase()} composition.`,
+      ctaRole: index === 0 || index >= archetype.sectionOrder.length - 2 ? "Primary conversion support" : "Contextual support only",
+      mustAvoid: ["fake proof", "unsupported claims", "placeholder text"],
+    })),
+  });
+}
+
+function fallbackDesignSystemContract(tokens: DesignTokens): DesignSystemContract {
+  return parseDesignSystemContract({
+    ...DEFAULT_DESIGN_SYSTEM_CONTRACT,
+    tokens: {
+      ...DEFAULT_DESIGN_SYSTEM_CONTRACT.tokens,
+      colors: {
+        ...DEFAULT_DESIGN_SYSTEM_CONTRACT.tokens.colors,
+        primary: tokens.colors.primary,
+        secondary: tokens.colors.secondary,
+        accent: tokens.colors.accent,
+        bg: tokens.colors.neutral[50] || "#F8FAFC",
+        text: tokens.colors.neutral[900] || "#0F172A",
+        muted: tokens.colors.neutral[600] || "#475569",
+      },
+      fonts: {
+        heading: tokens.fonts.heading,
+        body: tokens.fonts.body,
+      },
+      radius: tokens.borderRadius,
+      shadows: {
+        ...DEFAULT_DESIGN_SYSTEM_CONTRACT.tokens.shadows,
+        card: tokens.shadows.lg || tokens.shadows.md || "0 20px 50px rgb(15 23 42 / 0.12)",
+      },
+    },
+    components: DEFAULT_DESIGN_SYSTEM_CONTRACT.components,
+  }, {
+    ...DEFAULT_DESIGN_SYSTEM_CONTRACT,
+    tokens: {
+      ...DEFAULT_DESIGN_SYSTEM_CONTRACT.tokens,
+      colors: DEFAULT_DESIGN_SYSTEM_CONTRACT.tokens.colors,
+      fonts: DEFAULT_DESIGN_SYSTEM_CONTRACT.tokens.fonts,
+    },
+  });
+}
+
+function sectionContractFromPlanSection(section: WebsitePlanSection, creativeContract: CreativeContract, index: number): SectionContract {
+  const matchingRule = creativeContract.sectionRules.find((rule) =>
+    rule.id === slugify(section.name) || rule.name.toLowerCase() === section.name.toLowerCase(),
+  );
+  if (matchingRule) {
+    return {
+      ...matchingRule,
+      id: slugify(matchingRule.id || matchingRule.name),
+    };
+  }
+
+  return {
+    id: slugify(section.name),
+    name: section.name,
+    goal: section.goal,
+    customerQuestionAnswered: index === 0 ? "Is this the right business for my need?" : "What should I understand before contacting?",
+    requiredContent: ["verified business facts", "business-specific copy"],
+    visualTreatment: "Use a distinct composition that obeys the design system.",
+    ctaRole: index === 0 ? "Primary conversion action" : "Support the conversion path",
+    mustAvoid: ["fake proof", "unsupported claims", "placeholder text", "dead Tailwind utility classes"],
+  };
+}
+
+function fallbackPageContract(
+  creativeContract: CreativeContract,
+  designSystem: DesignSystemContract,
+  websitePlan: WebsitePlan,
+): PageContract {
+  const sections = websitePlan.sections.map((section, index) => sectionContractFromPlanSection(section, creativeContract, index));
+  return parsePageContract({
+    creativeContract,
+    designSystem,
+    sections,
+    globalCss: "",
+    metadataRules: [
+      "Use noindex/nofollow for demos.",
+      "Use verified JSON-LD only.",
+      "Do not add meta keywords.",
+      "Do not invent canonical or production URLs.",
+    ],
+    qaChecklist: [
+      "Follows Creative Contract",
+      "Uses Design System classes with embedded CSS",
+      "No fake claims",
+      "No placeholders",
+      "Clear CTA and contact path",
+      "No horizontal overflow",
+      "Section rhythm varies across the page",
+    ],
+  });
+}
+
+function referenceSectionBlueprints(creativeContract: CreativeContract): SectionContract[] {
+  const businessName = creativeContract.businessIdentity.name || "the business";
+  return [
+    {
+      id: "hero",
+      name: "Hero",
+      goal: "Make the offer, audience, brand feeling, and primary next step obvious in the first viewport.",
+      customerQuestionAnswered: `Is ${businessName} the right choice for what I need?`,
+      requiredContent: ["business name", "offer summary", "primary CTA", "one strong business-specific visual idea"],
+      visualTreatment: "Cinematic, above-the-fold composition with layered media, confident typography, and visible contact action.",
+      ctaRole: "Primary conversion action.",
+      mustAvoid: ["vague slogan", "fake proof", "generic dashboard or SaaS composition"],
+    },
+    {
+      id: "trust-bridge",
+      name: "Trust Bridge",
+      goal: "Translate verified facts into immediate reassurance without inventing proof.",
+      customerQuestionAnswered: "What real details make this business credible enough to contact?",
+      requiredContent: ["verified location, category, contact method, social link, or safe missing-detail language"],
+      visualTreatment: "Compact proof strip or editorial fact row with strong spacing and contrast.",
+      ctaRole: "Support the hero CTA with low-friction reassurance.",
+      mustAvoid: ["fake reviews", "fake ratings", "fake years in business"],
+    },
+    {
+      id: "offers",
+      name: "Offers",
+      goal: "Explain what visitors can ask about or buy using only verified services/products.",
+      customerQuestionAnswered: "What can this business help me with?",
+      requiredContent: ["verified services/products or safe ask-about language", "customer-facing benefit copy"],
+      visualTreatment: "Varied service architecture, not a generic equal-card grid.",
+      ctaRole: "Encourage a specific call, message, visit, or enquiry.",
+      mustAvoid: ["invented services", "unsupported package names", "fake pricing"],
+    },
+    {
+      id: "signature-experience",
+      name: "Signature Experience",
+      goal: "Create the memorable visual/emotional moment that makes the site feel custom.",
+      customerQuestionAnswered: "What does the experience of choosing this business feel like?",
+      requiredContent: ["industry-specific visual metaphor", "business tone", "one strong editorial composition"],
+      visualTreatment: "Full-width or split visual feature with layered surfaces, media frame, or representative CSS art.",
+      ctaRole: "Keep CTA secondary; this section builds desire and confidence.",
+      mustAvoid: ["plain text only", "blank mockups", "stock-looking proof claims"],
+    },
+    {
+      id: "why-it-matters",
+      name: "Why It Matters",
+      goal: "Connect the offer to customer pain points and practical outcomes without hype.",
+      customerQuestionAnswered: "Why should I care enough to contact now?",
+      requiredContent: ["customer concern", "business-specific value", "safe proof or reassurance"],
+      visualTreatment: "Problem/solution split, editorial list, or contrast panel.",
+      ctaRole: "Support the primary CTA after meaningful persuasion.",
+      mustAvoid: ["transform your business", "solutions for every need", "best-in-class"],
+    },
+    {
+      id: "process",
+      name: "Process",
+      goal: "Reduce uncertainty by showing what happens after the visitor reaches out.",
+      customerQuestionAnswered: "What should I expect when I contact this business?",
+      requiredContent: ["call/message/visit step", "confirm details step", "next action step"],
+      visualTreatment: "Timeline, stepped cards, or anchored sequence with mobile-safe rhythm.",
+      ctaRole: "Make contact feel easy and low-risk.",
+      mustAvoid: ["fake booking/payment features", "fake guarantees", "unsupported emergency claims"],
+    },
+    {
+      id: "showcase",
+      name: "Showcase",
+      goal: "Provide a visual proof-adjacent moment while clearly avoiding invented real proof.",
+      customerQuestionAnswered: "Can I picture the quality, atmosphere, product, or service style?",
+      requiredContent: ["representative visual direction", "honest label when real photos are not available"],
+      visualTreatment: "Gallery, media collage, product/atmosphere panel, or crafted visual frame.",
+      ctaRole: "Lead toward contact after visual confidence is built.",
+      mustAvoid: ["fake before/after", "fake staff/customers", "unlabeled invented project photos"],
+    },
+    {
+      id: "faq",
+      name: "FAQ",
+      goal: "Answer obvious decision blockers with factual, useful answers.",
+      customerQuestionAnswered: "What should I know before calling, visiting, or booking?",
+      requiredContent: ["3 to 5 useful questions", "verified answers or safe contact-to-confirm wording"],
+      visualTreatment: "Accessible accordion or details list with premium spacing.",
+      ctaRole: "Remove friction before the final CTA.",
+      mustAvoid: ["trivial SEO filler", "unsupported policies", "invented hours/prices"],
+    },
+    {
+      id: "contact",
+      name: "Contact",
+      goal: "Make the real next step unmistakable and functional.",
+      customerQuestionAnswered: "How do I contact this business now?",
+      requiredContent: ["verified phone/email/address/social/contact fallback", "primary CTA", "alternate contact route"],
+      visualTreatment: "High-contrast contact panel with tap-friendly actions and footer bridge.",
+      ctaRole: "Primary conversion close.",
+      mustAvoid: ["fake form submission", "invented contact details", "dead buttons"],
+    },
+  ];
+}
+
+function strengthenPageContractWithReferences(pageContract: PageContract, premiumReferenceBrief: PremiumReferenceBrief) {
+  const targetCount = Math.min(9, Math.max(7, premiumReferenceBrief.benchmark.minSections || 7));
+  if (pageContract.sections.length >= targetCount) return pageContract;
+
+  const existing = new Set(pageContract.sections.map((section) => slugify(section.id || section.name)));
+  const additions = referenceSectionBlueprints(pageContract.creativeContract)
+    .filter((section) => !existing.has(slugify(section.id || section.name)))
+    .slice(0, targetCount - pageContract.sections.length);
+
+  return parsePageContract({
+    ...pageContract,
+    sections: [...pageContract.sections, ...additions],
+    qaChecklist: unique([
+      ...pageContract.qaChecklist,
+      `At least ${targetCount} meaningful sections to match the local premium reference floor.`,
+      "A memorable industry-specific visual section beyond service cards.",
+      "FAQ and contact support must be present unless factually impossible.",
+    ]),
+  }, pageContract);
+}
+
+async function generateCreativeContract(input: {
+  cleanBusinessData: CleanBusinessData;
+  industryBrief: SeraphimIndustryBrief;
+  visualPreferences?: unknown;
+  generationMode?: string;
+  archetype: Archetype;
+  generationId: string;
+  premiumReferenceBrief: PremiumReferenceBrief;
+}) {
+  const fallback = fallbackCreativeContract(input.cleanBusinessData, input.industryBrief, input.archetype);
+  const prompt = buildCreativeDirectorPrompt(input);
+  const errors: string[] = [];
+
+  for (const route of getRoutesForStage("creative")) {
+    try {
+      const text = await runWithModelRouteRetry(route, () =>
+        generateTextWithRoute(prompt, route, { temperature: 0.48, maxOutputTokens: 9000 }),
+      );
+      return {
+        creativeContract: parseCreativeContract(text, fallback),
+        metadata: { stage: "creative", provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
+        errors,
+      };
+    } catch (error) {
+      errors.push(`${route.provider}:${route.model}: ${error instanceof Error ? error.message : "failed"}`);
+    }
+  }
+
+  safeDebug(input.generationId, "creative-contract-fallback", { errors: errors.slice(-3) });
+  return {
+    creativeContract: fallback,
+    metadata: { stage: "creative", provider: "local", model: "fallback-creative-contract", fallback: true } satisfies StageMetadata,
+    errors,
+  };
+}
+
+async function generateDesignSystemContract(input: {
+  creativeContract: CreativeContract;
+  tokens: DesignTokens;
+  visualPreferences?: unknown;
+  generationId: string;
+  premiumReferenceBrief: PremiumReferenceBrief;
+}) {
+  const fallback = fallbackDesignSystemContract(input.tokens);
+  const prompt = buildDesignSystemPrompt({
+    creativeContract: input.creativeContract,
+    designTokens: input.tokens,
+    visualPreferences: input.visualPreferences,
+    premiumReferenceBrief: input.premiumReferenceBrief,
+  });
+  const errors: string[] = [];
+
+  for (const route of getRoutesForStage("design-system")) {
+    try {
+      const text = await runWithModelRouteRetry(route, () =>
+        generateTextWithRoute(prompt, route, { temperature: 0.35, maxOutputTokens: 10000 }),
+      );
+      return {
+        designSystem: parseDesignSystemContract(text, fallback),
+        metadata: { stage: "design-system", provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
+        errors,
+      };
+    } catch (error) {
+      errors.push(`${route.provider}:${route.model}: ${error instanceof Error ? error.message : "failed"}`);
+    }
+  }
+
+  safeDebug(input.generationId, "design-system-fallback", { errors: errors.slice(-3) });
+  return {
+    designSystem: fallback,
+    metadata: { stage: "design-system", provider: "local", model: "fallback-design-system", fallback: true } satisfies StageMetadata,
+    errors,
+  };
+}
+
 async function generateWebsitePlanFromPrompt(
   business: BusinessData,
   tokens: DesignTokens,
   inspiration: string,
   generationId: string,
+  archetype?: Archetype,
+  creativeContract?: CreativeContract,
+  designSystem?: DesignSystemContract,
+  premiumReferenceBrief?: PremiumReferenceBrief,
 ) {
-  const fallback = fallbackWebsitePlan(business, tokens);
-  const prompt = buildPlannerPrompt(business, tokens, inspiration);
+  const fallback = fallbackWebsitePlan(business, tokens, archetype);
+  const prompt = [
+    buildPlannerPrompt(business, tokens, inspiration, archetype, premiumReferenceBrief),
+    "LOCAL PREMIUM REFERENCE INTELLIGENCE:",
+    JSON.stringify(premiumReferenceBrief ?? {}, null, 2),
+    "CREATIVE CONTRACT:",
+    JSON.stringify(creativeContract ?? {}, null, 2),
+    "DESIGN SYSTEM CONTRACT:",
+    JSON.stringify(designSystem ?? {}, null, 2),
+    "The website plan must obey the Creative Contract and should use section names that can map to the Page Contract.",
+  ].join("\n\n");
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("planning")) {
@@ -661,36 +1118,101 @@ async function generateWebsitePlanFromPrompt(
   };
 }
 
+async function generatePageContract(input: {
+  creativeContract: CreativeContract;
+  designSystem: DesignSystemContract;
+  websitePlan: WebsitePlan;
+  generationId: string;
+  premiumReferenceBrief: PremiumReferenceBrief;
+}) {
+  const fallback = fallbackPageContract(input.creativeContract, input.designSystem, input.websitePlan);
+  const prompt = buildPageContractPrompt(input);
+  const errors: string[] = [];
+
+  for (const route of getRoutesForStage("page-contract")) {
+    try {
+      const text = await runWithModelRouteRetry(route, () =>
+        generateTextWithRoute(prompt, route, { temperature: 0.35, maxOutputTokens: 12000 }),
+      );
+      return {
+        pageContract: parsePageContract(text, fallback),
+        metadata: { stage: "page-contract", provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
+        errors,
+      };
+    } catch (error) {
+      errors.push(`${route.provider}:${route.model}: ${error instanceof Error ? error.message : "failed"}`);
+    }
+  }
+
+  safeDebug(input.generationId, "page-contract-fallback", { errors: errors.slice(-3) });
+  return {
+    pageContract: fallback,
+    metadata: { stage: "page-contract", provider: "local", model: "fallback-page-contract", fallback: true } satisfies StageMetadata,
+    errors,
+  };
+}
+
 function extractSectionFragment(text: string) {
   const fenced = text.match(/```(?:html)?\s*([\s\S]*?)```/i)?.[1] ?? text;
   return fenced.trim().replace(/<\/?(?:html|head|body)[^>]*>/gi, "").trim();
 }
 
-function fallbackSectionHtml(section: WebsitePlanSection, business: BusinessData) {
-  const slug = section.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "section";
+function customerFacingFallbackHeading(section: SectionContract, business: BusinessData) {
+  const sectionName = section.name.toLowerCase();
+  if (sectionName.includes("hero")) return `${business.name} makes the next step clear`;
+  if (sectionName.includes("trust")) return `A clearer way to choose ${business.name}`;
+  if (sectionName.includes("service") || sectionName.includes("offer")) return `What ${business.name} can help with`;
+  if (sectionName.includes("process") || sectionName.includes("journey")) return "What to expect before you reach out";
+  if (sectionName.includes("faq")) return "Questions worth answering before you contact us";
+  if (sectionName.includes("contact") || sectionName.includes("cta") || sectionName.includes("appointment")) return `Start a conversation with ${business.name}`;
+  if (sectionName.includes("gallery") || sectionName.includes("showcase")) return `A closer look at the ${business.name} experience`;
+  return `${business.name}, presented with clarity and care`;
+}
+
+function internalSectionSummary(section: SectionContract) {
+  return `${section.name} section, id ${section.id}.`;
+}
+
+function fallbackSectionHtml(section: SectionContract, business: BusinessData) {
+  const slug = slugify(section.id || section.name);
+  const heading = customerFacingFallbackHeading(section, business);
   return `<section id="${slug}" class="seraphim-section section-${slug}">
-  <div class="section-inner">
-    <p class="eyebrow">${section.name}</p>
-    <h2>${section.goal}</h2>
-    <p>${business.description || `${business.name} website section prepared from verified business details.`}</p>
+  <div class="seraphim-container section-inner">
+    <p class="seraphim-eyebrow eyebrow">${escapeHtml(section.name)}</p>
+    <h2 class="seraphim-heading">${escapeHtml(heading)}</h2>
+    <p class="seraphim-body-text">${escapeHtml(business.description || `${business.name} is ready for a clearer, more useful customer conversation.`)}</p>
   </div>
 </section>`;
 }
 
 async function generateSectionHtmlFromPrompt(input: {
   business: BusinessData;
-  section: WebsitePlanSection;
+  cleanBusinessData: CleanBusinessData;
+  section: SectionContract;
   plan: WebsitePlan;
   tokens: DesignTokens;
   inspiration: string;
+  creativeContract: CreativeContract;
+  designSystem: DesignSystemContract;
+  pageContract: PageContract;
+  previousSectionSummary?: string;
+  nextSectionSummary?: string;
+  archetype?: Archetype;
   correctiveFeedback?: string[];
+  premiumReferenceBrief: PremiumReferenceBrief;
 }) {
-  const prompt = buildSectionPrompt(
-    { ...input.section, correctiveFeedback: input.correctiveFeedback },
-    input.plan,
-    input.tokens,
-    input.inspiration,
-  );
+  const prompt = buildSectionPrompt({
+    business: input.business,
+    cleanBusinessData: input.cleanBusinessData,
+    creativeContract: input.creativeContract,
+    designSystem: input.designSystem,
+    pageContract: input.pageContract,
+    sectionContract: { ...input.section, correctiveFeedback: input.correctiveFeedback },
+    previousSectionSummary: input.previousSectionSummary,
+    nextSectionSummary: input.nextSectionSummary,
+    correctiveFeedback: input.correctiveFeedback,
+    premiumReferenceBrief: input.premiumReferenceBrief,
+  });
   const errors: string[] = [];
 
   for (const route of getRoutesForStage("section")) {
@@ -698,9 +1220,10 @@ async function generateSectionHtmlFromPrompt(input: {
       const text = await runWithModelRouteRetry(route, () =>
         generateTextWithRoute(prompt, route, { temperature: 0.7, maxOutputTokens: 14000 }),
       );
+      const html = sanitizeGeneratedMedia(extractSectionFragment(text), input.cleanBusinessData, input.section);
       return {
-        html: extractSectionFragment(text),
-        metadata: { stage: `section:${input.section.name}`, provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
+        html,
+        metadata: { stage: `section:${input.section.id || input.section.name}`, provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
         errors,
       };
     } catch (error) {
@@ -710,7 +1233,7 @@ async function generateSectionHtmlFromPrompt(input: {
 
   return {
     html: fallbackSectionHtml(input.section, input.business),
-    metadata: { stage: `section:${input.section.name}`, provider: "local", model: "fallback-section-html", fallback: true } satisfies StageMetadata,
+    metadata: { stage: `section:${input.section.id || input.section.name}`, provider: "local", model: "fallback-section-html", fallback: true } satisfies StageMetadata,
     errors,
   };
 }
@@ -723,17 +1246,206 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;");
 }
 
-function buildTokenCss(tokens: DesignTokens, plan: WebsitePlan) {
+function escapeAttribute(value: string) {
+  return escapeHtml(value).replace(/'/g, "&#39;");
+}
+
+function attributeValue(tag: string, name: string) {
+  const match = tag.match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, "i"));
+  return match?.[1]?.trim() || "";
+}
+
+function mediaKind(cleanBusinessData: CleanBusinessData) {
+  const source = [
+    cleanBusinessData.businessType,
+    cleanBusinessData.visibleDescription,
+    cleanBusinessData.services.join(" "),
+    cleanBusinessData.visualEvidence.join(" "),
+  ].join(" ").toLowerCase();
+
+  if (/\b(food|restaurant|cafe|kitchen|dining|menu|jerk|grill|catering)\b/.test(source)) return "food";
+  if (/\b(auto|car|vehicle|detailing|mechanic|tire|tyre|garage|wash)\b/.test(source)) return "auto";
+  if (/\b(home|plumb|electric|contractor|repair|painting|cleaning|locksmith|handy)\b/.test(source)) return "home";
+  if (/\b(pet|groom|animal|store)\b/.test(source)) return "pet";
+  if (/\b(health|wellness|clinic|dental|medical|therapy|care)\b/.test(source)) return "care";
+  return "local";
+}
+
+function generatedMediaSvg(cleanBusinessData: CleanBusinessData, label: string, variant = 0) {
+  const kind = mediaKind(cleanBusinessData);
+  const title = escapeHtml(label || cleanBusinessData.companyName || cleanBusinessData.businessType);
+  const motifs: Record<string, string> = {
+    food: `<circle cx="660" cy="270" r="156" fill="rgba(255,255,255,.28)"/><circle cx="660" cy="270" r="92" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="16"/><path d="M184 420c130-118 248-142 354-72 84 56 167 55 249-3" fill="none" stroke="rgba(255,255,255,.62)" stroke-width="24" stroke-linecap="round"/>`,
+    auto: `<path d="M150 352h540c44 0 82 25 100 65l26 58H96l29-65c17-36 28-58 25-58Z" fill="rgba(255,255,255,.22)"/><circle cx="238" cy="488" r="52" fill="none" stroke="rgba(255,255,255,.72)" stroke-width="18"/><circle cx="682" cy="488" r="52" fill="none" stroke="rgba(255,255,255,.72)" stroke-width="18"/><path d="M250 270h260l95 82H184l66-82Z" fill="rgba(255,255,255,.18)"/>`,
+    home: `<path d="M180 420 460 210l280 210v190H560V472H360v138H180V420Z" fill="rgba(255,255,255,.20)"/><path d="M128 432 460 178l332 254" fill="none" stroke="rgba(255,255,255,.72)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/><path d="M615 222v98" stroke="rgba(255,255,255,.55)" stroke-width="24" stroke-linecap="round"/>`,
+    pet: `<circle cx="430" cy="358" r="74" fill="rgba(255,255,255,.24)"/><circle cx="318" cy="298" r="42" fill="rgba(255,255,255,.35)"/><circle cx="392" cy="244" r="42" fill="rgba(255,255,255,.35)"/><circle cx="478" cy="244" r="42" fill="rgba(255,255,255,.35)"/><circle cx="552" cy="298" r="42" fill="rgba(255,255,255,.35)"/><path d="M190 520c160-74 340-70 540 12" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="22" stroke-linecap="round"/>`,
+    care: `<path d="M460 184c96 108 168 205 168 306 0 96-75 170-168 170s-168-74-168-170c0-101 72-198 168-306Z" fill="rgba(255,255,255,.20)"/><path d="M460 335v194M363 432h194" stroke="rgba(255,255,255,.70)" stroke-width="26" stroke-linecap="round"/>`,
+    local: `<path d="M128 500c116-138 219-192 310-162 108 36 149 158 292 80 56-31 96-74 120-128" fill="none" stroke="rgba(255,255,255,.58)" stroke-width="28" stroke-linecap="round"/><circle cx="660" cy="230" r="92" fill="rgba(255,255,255,.18)"/>`,
+  };
+  const hue = Math.abs([...cleanBusinessData.companyName].reduce((sum, char) => sum + char.charCodeAt(0), 0) + variant * 37) % 360;
+  const accentHue = (hue + 42) % 360;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 640" role="img" aria-label="${title}">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="hsl(${hue} 78% 28%)"/>
+      <stop offset="48%" stop-color="hsl(${accentHue} 74% 42%)"/>
+      <stop offset="100%" stop-color="hsl(${(hue + 84) % 360} 72% 24%)"/>
+    </linearGradient>
+    <radialGradient id="r" cx=".74" cy=".18" r=".82">
+      <stop offset="0%" stop-color="rgba(255,255,255,.48)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+  </defs>
+  <rect width="920" height="640" rx="42" fill="url(#g)"/>
+  <rect width="920" height="640" rx="42" fill="url(#r)"/>
+  <path d="M-40 550c160-94 298-118 414-72 138 54 262 36 372-54 70-57 139-86 207-86" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="96" stroke-linecap="round"/>
+  ${motifs[kind]}
+  <text x="64" y="94" fill="rgba(255,255,255,.92)" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="4">${escapeHtml(cleanBusinessData.businessType || "Business visual").toUpperCase()}</text>
+</svg>`;
+
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function isUnreliableImageSrc(src: string) {
+  const value = src.trim();
+  if (!value) return true;
+  if (/^data:image\//i.test(value)) return false;
+  if (/^https:\/\/images\.unsplash\.com\//i.test(value)) return false;
+  if (/^https?:\/\//i.test(value)) {
+    return /placeholder|placehold|dummyimage|fakeimg|loremflickr|picsum|via\.placeholder/i.test(value);
+  }
+  return true;
+}
+
+function reliableMediaImg(cleanBusinessData: CleanBusinessData, alt: string, variant = 0, preferSourceImage = false) {
+  const label = alt || `${cleanBusinessData.companyName} visual direction`;
+  const source = preferSourceImage && cleanBusinessData.sourceImageDataUrl
+    ? cleanBusinessData.sourceImageDataUrl
+    : generatedMediaSvg(cleanBusinessData, label, variant);
+  const sourceClass = source === cleanBusinessData.sourceImageDataUrl ? " seraphim-source-photo" : "";
+  return `<img class="seraphim-generated-photo${sourceClass}" src="${source}" alt="${escapeAttribute(label)}" loading="lazy" decoding="async">`;
+}
+
+function sanitizeGeneratedMedia(html: string, cleanBusinessData: CleanBusinessData, section: SectionContract) {
+  let imageIndex = 0;
+  const preferSourceImage = Boolean(cleanBusinessData.sourceImageDataUrl && /hero|showcase|gallery|signature|experience|atmosphere|visual|media/i.test(`${section.id} ${section.name}`));
+  return html.replace(/<img\b[^>]*>/gi, (tag) => {
+    const src = attributeValue(tag, "src");
+    if (!isUnreliableImageSrc(src)) return tag;
+    const alt = attributeValue(tag, "alt") || `${cleanBusinessData.companyName} ${section.name} visual`;
+    imageIndex += 1;
+    return reliableMediaImg(cleanBusinessData, alt, imageIndex, preferSourceImage && imageIndex === 1);
+  });
+}
+
+function ensureSourceImageFeatured(sections: string[], cleanBusinessData: CleanBusinessData) {
+  if (!cleanBusinessData.sourceImageDataUrl) return sections;
+  const joined = sections.join("\n");
+  if (joined.includes("seraphim-source-photo") || joined.includes(cleanBusinessData.sourceImageDataUrl.slice(0, 80))) return sections;
+
+  const sourceFrame = `<figure class="seraphim-source-proof-frame">
+  <img class="seraphim-generated-photo seraphim-source-photo" src="${cleanBusinessData.sourceImageDataUrl}" alt="${escapeAttribute(`${cleanBusinessData.companyName} supplied business screenshot`)}" loading="eager" decoding="async">
+  <figcaption>Visual reference from the supplied business screenshot. Replace with approved brand photography before launch.</figcaption>
+</figure>`;
+
+  const targetIndex = sections.findIndex((section) => /<section\b[^>]*(?:id=["'](?:hero|showcase|signature|experience|atmosphere|visual|media)|class=["'][^"']*hero)/i.test(section));
+  const index = targetIndex >= 0 ? targetIndex : 0;
+  return sections.map((section, sectionIndex) => {
+    if (sectionIndex !== index) return section;
+    return section.replace(/<\/section>\s*$/i, `${sourceFrame}\n</section>`);
+  });
+}
+
+function buildReferenceQualityCss() {
+  return `
+/* Local premium reference primitives: these are reusable CSS foundations, not fixed templates. */
+.seraphim-premium-shell{position:relative;isolation:isolate;overflow:hidden;background:
+  radial-gradient(circle at 12% 8%,color-mix(in srgb,var(--seraphim-secondary) 24%,transparent),transparent 32rem),
+  radial-gradient(circle at 88% 12%,color-mix(in srgb,var(--seraphim-primary) 18%,transparent),transparent 36rem),
+  linear-gradient(135deg,color-mix(in srgb,var(--seraphim-bg) 92%,white),var(--seraphim-bg));}
+.seraphim-premium-shell::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background-image:
+  linear-gradient(color-mix(in srgb,var(--seraphim-border) 46%,transparent) 1px,transparent 1px),
+  linear-gradient(90deg,color-mix(in srgb,var(--seraphim-border) 46%,transparent) 1px,transparent 1px);
+  background-size:72px 72px;mask-image:linear-gradient(to bottom,black,transparent 72%);opacity:.38;}
+.seraphim-editorial-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:clamp(1.25rem,3vw,3.5rem);align-items:center;}
+.seraphim-editorial-grid[data-align="start"]{align-items:start;}
+.seraphim-copy-stack{display:grid;gap:clamp(.8rem,1.4vw,1.25rem);max-width:68ch;}
+.seraphim-copy-stack>*,.seraphim-card>*{margin-block:0;}
+.seraphim-kicker{display:inline-flex;width:max-content;align-items:center;gap:.5rem;border:1px solid color-mix(in srgb,var(--seraphim-primary) 25%,transparent);border-radius:999px;padding:.42rem .72rem;background:color-mix(in srgb,var(--seraphim-primary) 9%,white);color:var(--seraphim-primary);font-size:.72rem;font-weight:850;letter-spacing:.12em;text-transform:uppercase;}
+.seraphim-display{margin:0;font-family:var(--seraphim-heading-font);font-size:clamp(2.8rem,8vw,7.4rem);line-height:.93;letter-spacing:-.07em;text-wrap:balance;}
+.seraphim-lede{max-width:62ch;color:var(--seraphim-muted);font-size:clamp(1.05rem,1.5vw,1.28rem);line-height:1.72;}
+.seraphim-action-row{display:flex;flex-wrap:wrap;gap:.8rem;align-items:center;margin-top:clamp(.4rem,1vw,1rem);}
+.seraphim-button,.seraphim-button-primary,.seraphim-button-secondary{display:inline-flex;align-items:center;justify-content:center;gap:.55rem;min-height:46px;border-radius:999px;padding:.86rem 1.15rem;text-decoration:none;font-weight:850;line-height:1;border:1px solid transparent;transition:transform .22s ease,box-shadow .22s ease,background .22s ease,border-color .22s ease,color .22s ease;}
+.seraphim-button-primary{background:var(--seraphim-primary);color:white;box-shadow:0 18px 46px color-mix(in srgb,var(--seraphim-primary) 28%,transparent);}
+.seraphim-button-secondary{background:color-mix(in srgb,var(--seraphim-surface) 86%,transparent);color:var(--seraphim-text);border-color:color-mix(in srgb,var(--seraphim-border) 82%,transparent);}
+.seraphim-button:hover,.seraphim-button-primary:hover,.seraphim-button-secondary:hover{transform:translateY(-2px);}
+.seraphim-button:focus-visible,.seraphim-button-primary:focus-visible,.seraphim-button-secondary:focus-visible{outline:3px solid color-mix(in srgb,var(--seraphim-accent) 44%,transparent);outline-offset:3px;}
+.seraphim-hero-media{position:relative;min-height:clamp(22rem,44vw,42rem);border-radius:clamp(1.3rem,3vw,2.6rem);overflow:hidden;background:linear-gradient(145deg,color-mix(in srgb,var(--seraphim-primary) 22%,#111827),color-mix(in srgb,var(--seraphim-accent) 20%,#020617));box-shadow:0 32px 90px rgb(2 6 23 / .22);}
+.seraphim-hero-media::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 28% 20%,rgb(255 255 255 / .22),transparent 18rem),linear-gradient(135deg,transparent,color-mix(in srgb,var(--seraphim-secondary) 22%,transparent));mix-blend-mode:screen;}
+.seraphim-hero-media::after{content:"";position:absolute;inset:auto 8% 8% 8%;height:34%;border-radius:1.5rem;background:linear-gradient(180deg,rgb(255 255 255 / .24),rgb(255 255 255 / .08));border:1px solid rgb(255 255 255 / .22);backdrop-filter:blur(18px);}
+.seraphim-media-label{position:absolute;left:clamp(1rem,3vw,2rem);right:clamp(1rem,3vw,2rem);bottom:clamp(1rem,3vw,2rem);z-index:2;color:white;display:grid;gap:.45rem;}
+.seraphim-media-label strong{font-family:var(--seraphim-heading-font);font-size:clamp(1.2rem,2.6vw,2.1rem);line-height:1;letter-spacing:-.04em;}
+.seraphim-media-label span{max-width:42ch;color:rgb(255 255 255 / .78);}
+.seraphim-proof-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;padding:clamp(.85rem,1.8vw,1.15rem);border:1px solid color-mix(in srgb,var(--seraphim-border) 82%,transparent);border-radius:var(--seraphim-radius-xl);background:color-mix(in srgb,var(--seraphim-surface) 86%,transparent);box-shadow:0 16px 50px rgb(15 23 42 / .08);}
+.seraphim-proof-item{display:grid;gap:.2rem;padding:.9rem;border-radius:var(--seraphim-radius-lg);background:linear-gradient(180deg,color-mix(in srgb,var(--seraphim-bg) 84%,white),color-mix(in srgb,var(--seraphim-bg) 96%,white));}
+.seraphim-proof-item strong{font-family:var(--seraphim-heading-font);font-size:clamp(1rem,1.5vw,1.25rem);letter-spacing:-.03em;}
+.seraphim-proof-item span{color:var(--seraphim-muted);font-size:.92rem;}
+.seraphim-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr));gap:clamp(.9rem,2vw,1.4rem);}
+.seraphim-card{position:relative;overflow:hidden;border:1px solid color-mix(in srgb,var(--seraphim-border) 86%,transparent);border-radius:var(--seraphim-radius-xl);padding:clamp(1.1rem,2.2vw,1.65rem);background:linear-gradient(180deg,color-mix(in srgb,var(--seraphim-surface) 98%,white),color-mix(in srgb,var(--seraphim-bg) 82%,white));box-shadow:0 18px 58px rgb(15 23 42 / .08);transition:transform .22s ease,border-color .22s ease,box-shadow .22s ease;}
+.seraphim-card::before{content:"";position:absolute;inset:0 0 auto;height:4px;background:linear-gradient(90deg,var(--seraphim-primary),var(--seraphim-secondary),var(--seraphim-accent));opacity:.82;}
+.seraphim-card:hover{transform:translateY(-4px);border-color:color-mix(in srgb,var(--seraphim-primary) 32%,var(--seraphim-border));box-shadow:0 24px 70px rgb(15 23 42 / .12);}
+.seraphim-card h3{margin:.2rem 0 .55rem;font-size:clamp(1.15rem,2vw,1.55rem);}
+.seraphim-card p{color:var(--seraphim-muted);line-height:1.68;}
+.seraphim-feature-band{position:relative;overflow:hidden;border-radius:clamp(1.5rem,4vw,3rem);padding:clamp(1.4rem,4vw,3.5rem);background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-primary) 92%,#111827),color-mix(in srgb,var(--seraphim-accent) 58%,#111827));color:white;box-shadow:0 30px 90px rgb(2 6 23 / .22);}
+.seraphim-feature-band::after{content:"";position:absolute;inset:auto -8% -28% auto;width:42%;aspect-ratio:1;border-radius:999px;background:rgb(255 255 255 / .16);filter:blur(4px);}
+.seraphim-feature-band .seraphim-body-text,.seraphim-feature-band p{color:rgb(255 255 255 / .78);}
+.seraphim-timeline{display:grid;gap:.85rem;counter-reset:step;}
+.seraphim-step{counter-increment:step;display:grid;grid-template-columns:auto minmax(0,1fr);gap:1rem;align-items:start;padding:1rem;border:1px solid color-mix(in srgb,var(--seraphim-border) 80%,transparent);border-radius:var(--seraphim-radius-lg);background:var(--seraphim-surface);}
+.seraphim-step::before{content:counter(step,decimal-leading-zero);display:grid;place-items:center;width:2.5rem;aspect-ratio:1;border-radius:50%;background:var(--seraphim-primary);color:white;font-weight:900;font-size:.8rem;}
+.seraphim-showcase-grid{display:grid;grid-template-columns:1fr;gap:1rem;}
+.seraphim-showcase-tile{min-height:15rem;border-radius:var(--seraphim-radius-xl);overflow:hidden;background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-primary) 24%,white),color-mix(in srgb,var(--seraphim-secondary) 24%,white));border:1px solid color-mix(in srgb,var(--seraphim-border) 82%,transparent);box-shadow:0 18px 60px rgb(15 23 42 / .09);}
+.seraphim-faq-list{display:grid;gap:.75rem;max-width:880px;margin-inline:auto;}
+.seraphim-faq-list details,.seraphim-faq-item{border:1px solid color-mix(in srgb,var(--seraphim-border) 85%,transparent);border-radius:var(--seraphim-radius-lg);background:var(--seraphim-surface);box-shadow:0 14px 42px rgb(15 23 42 / .06);overflow:hidden;}
+.seraphim-faq-list summary{cursor:pointer;padding:1rem 1.15rem;font-weight:850;list-style:none;}
+.seraphim-faq-list summary::-webkit-details-marker{display:none;}
+.seraphim-faq-list details p,.seraphim-faq-answer{padding:0 1.15rem 1.1rem;margin:0;color:var(--seraphim-muted);}
+.seraphim-contact-panel{display:grid;gap:1rem;border-radius:clamp(1.4rem,4vw,2.6rem);padding:clamp(1.25rem,4vw,3rem);background:var(--seraphim-neutral);color:white;box-shadow:0 28px 90px rgb(2 6 23 / .28);}
+.seraphim-contact-panel a{color:inherit;}
+.seraphim-contact-methods{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:.8rem;}
+.seraphim-contact-method{border:1px solid rgb(255 255 255 / .18);border-radius:var(--seraphim-radius-lg);padding:1rem;background:rgb(255 255 255 / .08);}
+.seraphim-mobile-cta{position:fixed;left:1rem;right:1rem;bottom:max(1rem,env(safe-area-inset-bottom));z-index:30;display:none;align-items:center;justify-content:center;min-height:52px;border-radius:999px;background:var(--seraphim-primary);color:white;text-decoration:none;font-weight:900;box-shadow:0 20px 52px color-mix(in srgb,var(--seraphim-primary) 35%,transparent);}
+.seraphim-source-proof-frame{width:min(1120px,calc(100% - 2rem));margin:clamp(1.5rem,4vw,3rem) auto 0;display:grid;gap:.65rem;border-radius:var(--seraphim-radius-xl);padding:clamp(.55rem,1.4vw,.85rem);background:linear-gradient(180deg,color-mix(in srgb,var(--seraphim-surface) 92%,white),color-mix(in srgb,var(--seraphim-bg) 90%,white));border:1px solid color-mix(in srgb,var(--seraphim-border) 82%,transparent);box-shadow:0 24px 80px rgb(15 23 42 / .12);}
+.seraphim-source-proof-frame .seraphim-source-photo{max-height:clamp(22rem,54vw,42rem);object-fit:cover;object-position:top center;border-radius:calc(var(--seraphim-radius-xl) - .35rem);box-shadow:none;}
+.seraphim-source-proof-frame figcaption{padding:.2rem .35rem .35rem;color:var(--seraphim-muted);font-size:.82rem;line-height:1.45;}
+@media (min-width:760px){.seraphim-editorial-grid{grid-template-columns:minmax(0,1.02fr) minmax(18rem,.98fr);}.seraphim-editorial-grid[data-flip="true"]>*:first-child{order:2}.seraphim-proof-strip{grid-template-columns:repeat(4,minmax(0,1fr));}.seraphim-showcase-grid{grid-template-columns:1.2fr .8fr;}.seraphim-showcase-tile:nth-child(1){grid-row:span 2;min-height:32rem;}}
+@media (max-width:720px){.seraphim-display{font-size:clamp(2.55rem,16vw,4.6rem);}.seraphim-proof-strip{grid-template-columns:1fr;}.seraphim-action-row>*{width:100%;}.seraphim-mobile-cta{display:flex;}body:has(.seraphim-mobile-cta){padding-bottom:5rem;}.seraphim-hero-media{min-height:22rem;border-radius:1.35rem;}.seraphim-feature-band{border-radius:1.35rem;}}
+@media (prefers-reduced-motion:no-preference){.seraphim-reveal,.reveal{opacity:0;transform:translateY(18px);animation:seraphimRise .7s ease forwards;}.seraphim-card:hover .seraphim-generated-photo{transform:scale(1.025);}@keyframes seraphimRise{to{opacity:1;transform:translateY(0);}}}
+`;
+}
+
+function buildTokenCss(tokens: DesignTokens, plan: WebsitePlan, designSystem?: DesignSystemContract, pageContract?: PageContract) {
   const neutral = tokens.colors.neutral;
+  const contractColors = designSystem?.tokens.colors ?? {};
+  const contractFonts = designSystem?.tokens.fonts ?? {};
+  const contractSpacing = designSystem?.tokens.spacing ?? {};
+  const contractRadius = designSystem?.tokens.radius ?? {};
+  const contractShadows = designSystem?.tokens.shadows ?? {};
+  const contractGradients = designSystem?.tokens.gradients ?? {};
+  const contractBorders = designSystem?.tokens.borders ?? {};
+  const componentCss = designSystem
+    ? Object.values(designSystem.components).map((component) => component.css).filter(Boolean).join("\n")
+    : "";
+
   return `:root {
-  --color-primary: ${plan.colorPalette.primary || tokens.colors.primary};
-  --color-secondary: ${plan.colorPalette.secondary || tokens.colors.secondary};
-  --color-accent: ${plan.colorPalette.accent || tokens.colors.accent};
-  --color-neutral: ${plan.colorPalette.neutral || neutral[900] || "#0F172A"};
-  --color-bg: ${neutral[50] || "#F8FAFC"};
-  --color-surface: #ffffff;
-  --color-text: ${neutral[900] || "#0F172A"};
-  --color-muted: ${neutral[600] || "#475569"};
+  --color-primary: ${contractColors.primary || plan.colorPalette.primary || tokens.colors.primary};
+  --color-secondary: ${contractColors.secondary || plan.colorPalette.secondary || tokens.colors.secondary};
+  --color-accent: ${contractColors.accent || plan.colorPalette.accent || tokens.colors.accent};
+  --color-neutral: ${contractColors.neutral || plan.colorPalette.neutral || neutral[900] || "#0F172A"};
+  --color-bg: ${contractColors.bg || neutral[50] || "#F8FAFC"};
+  --color-surface: ${contractColors.surface || "#ffffff"};
+  --color-text: ${contractColors.text || neutral[900] || "#0F172A"};
+  --color-muted: ${contractColors.muted || neutral[600] || "#475569"};
+  --color-border: ${contractColors.border || neutral[200] || "#E2E8F0"};
   --seraphim-primary: var(--color-primary);
   --seraphim-secondary: var(--color-secondary);
   --seraphim-accent: var(--color-accent);
@@ -742,17 +1454,28 @@ function buildTokenCss(tokens: DesignTokens, plan: WebsitePlan) {
   --seraphim-surface: var(--color-surface);
   --seraphim-text: var(--color-text);
   --seraphim-muted: var(--color-muted);
-  --font-heading: ${tokens.fonts.heading};
-  --font-body: ${tokens.fonts.body};
+  --seraphim-border: var(--color-border);
+  --font-heading: ${contractFonts.heading || tokens.fonts.heading};
+  --font-body: ${contractFonts.body || tokens.fonts.body};
   --seraphim-heading-font: var(--font-heading);
   --seraphim-body-font: var(--font-body);
-  --radius-sm: ${tokens.borderRadius.sm};
-  --radius-md: ${tokens.borderRadius.md};
-  --radius-lg: ${tokens.borderRadius.lg};
-  --radius-xl: ${tokens.borderRadius.xl};
+  --radius-sm: ${contractRadius.sm || tokens.borderRadius.sm};
+  --radius-md: ${contractRadius.md || tokens.borderRadius.md};
+  --radius-lg: ${contractRadius.lg || tokens.borderRadius.lg};
+  --radius-xl: ${contractRadius.xl || tokens.borderRadius.xl};
+  --seraphim-radius-sm: var(--radius-sm);
+  --seraphim-radius-md: var(--radius-md);
+  --seraphim-radius-lg: var(--radius-lg);
+  --seraphim-radius-xl: var(--radius-xl);
   --shadow-md: ${tokens.shadows.md};
   --shadow-lg: ${tokens.shadows.lg};
-  --space-base: ${tokens.spacing.base};
+  --seraphim-shadow-card: ${contractShadows.card || tokens.shadows.lg || tokens.shadows.md};
+  --seraphim-gradient-hero: ${contractGradients.hero || "linear-gradient(135deg, color-mix(in srgb, var(--seraphim-primary) 14%, white), white)"};
+  --seraphim-border-subtle: ${contractBorders.subtle || "1px solid var(--seraphim-border)"};
+  --space-base: ${contractSpacing.base || tokens.spacing.base};
+  --seraphim-section-space: ${contractSpacing.section || "clamp(4rem, 8vw, 8rem)"};
+  --seraphim-container: ${contractSpacing.container || "min(1120px, calc(100% - 2rem))"};
+  --seraphim-gap: ${contractSpacing.gap || "clamp(1rem, 2vw, 2rem)"};
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -766,7 +1489,35 @@ body {
 }
 img { max-width: 100%; height: auto; display: block; }
 a { color: inherit; }
+main > section {
+  max-width: 100vw;
+  overflow: hidden;
+}
+main > section:not(.seraphim-section) {
+  padding-inline: clamp(1rem, 4vw, 3rem);
+}
+main > section > :where(div, article, header, figure):first-child:not(.seraphim-source-proof-frame) {
+  max-width: min(1200px, 100%);
+}
+main :where(h1, h2, h3, p, a, button) {
+  overflow-wrap: anywhere;
+}
+.seraphim-generated-photo {
+  width: 100%;
+  min-height: clamp(18rem, 38vw, 34rem);
+  aspect-ratio: 16 / 11;
+  object-fit: cover;
+  border-radius: var(--seraphim-radius-xl);
+  box-shadow: var(--seraphim-shadow-card);
+  background: var(--seraphim-gradient-hero);
+}
+.seraphim-image-frame .seraphim-generated-photo,
+picture .seraphim-generated-photo {
+  height: 100%;
+}
 .seraphim-site { min-height: 100vh; }
+.seraphim-skip-link { position: absolute; left: 1rem; top: 1rem; z-index: 999; transform: translateY(-140%); background: var(--seraphim-text); color: white; padding: .75rem 1rem; border-radius: .75rem; }
+.seraphim-skip-link:focus { transform: translateY(0); }
 .seraphim-header {
   position: sticky;
   top: 0;
@@ -801,6 +1552,7 @@ h2 { font-size: clamp(2rem, 5vw, 4.5rem); }
 .seraphim-footer { padding: 2rem clamp(1rem, 4vw, 3rem); background: var(--color-neutral); color: white; }
 .seraphim-footer-inner { width: min(1120px, 100%); margin: 0 auto; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 button, .button, .btn, [role="button"] { min-height: 44px; }
+.seraphim-reveal { opacity: 1; transform: none; }
 @media (max-width: 720px) {
   .seraphim-header { align-items: flex-start; flex-direction: column; }
   .seraphim-header-row { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
@@ -810,7 +1562,10 @@ button, .button, .btn, [role="button"] { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
-}`;
+}
+${componentCss}
+${buildReferenceQualityCss()}
+${pageContract?.globalCss || ""}`;
 }
 
 function buildJsonLd(cleanBusinessData: CleanBusinessData) {
@@ -833,10 +1588,19 @@ function assembleFullHtml(input: {
   cleanBusinessData: CleanBusinessData;
   tokens: DesignTokens;
   plan: WebsitePlan;
+  creativeContract: CreativeContract;
+  designSystem: DesignSystemContract;
+  pageContract: PageContract;
   sections: string[];
 }) {
   const title = `${input.business.name} | ${input.cleanBusinessData.businessType}`;
-  const description = compactText(input.business.description || input.plan.conversionFlow || input.cleanBusinessData.visibleDescription, 155);
+  const description = compactText(
+    input.creativeContract.businessIdentity.offerSummary ||
+      input.business.description ||
+      input.plan.conversionFlow ||
+      input.cleanBusinessData.visibleDescription,
+    155,
+  );
   const bodyStyle = [
     `--seraphim-primary:${input.plan.colorPalette.primary || input.tokens.colors.primary}`,
     `--seraphim-secondary:${input.plan.colorPalette.secondary || input.tokens.colors.secondary}`,
@@ -844,13 +1608,14 @@ function assembleFullHtml(input: {
     `--seraphim-heading-font:${input.tokens.fonts.heading}`,
     `--seraphim-body-font:${input.tokens.fonts.body}`,
   ].join(";");
-  const navLinks = input.plan.sections
+  const navLinks = input.pageContract.sections
     .slice(0, 6)
     .map((section) => {
-      const id = section.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+      const id = slugify(section.id || section.name);
       return `<a href="#${id}">${escapeHtml(section.name)}</a>`;
     })
     .join("");
+  const sections = ensureSourceImageFeatured(input.sections, input.cleanBusinessData);
 
   return normalizeHtml(`<!DOCTYPE html>
 <html lang="en">
@@ -868,9 +1633,10 @@ function assembleFullHtml(input: {
   <meta name="theme-color" content="${escapeHtml(input.plan.colorPalette.primary || input.tokens.colors.primary)}">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232B5E8C'/%3E%3Ctext x='50%25' y='56%25' text-anchor='middle' font-size='32' fill='white' font-family='Arial'%3ES%3C/text%3E%3C/svg%3E">
   <script type="application/ld+json">${buildJsonLd(input.cleanBusinessData)}</script>
-  <style>${buildTokenCss(input.tokens, input.plan)}</style>
+  <style>${buildTokenCss(input.tokens, input.plan, input.designSystem, input.pageContract)}</style>
 </head>
 <body data-seraphim-generator="true" style="${escapeHtml(bodyStyle)}">
+  <a class="seraphim-skip-link" href="#main-content">Skip to content</a>
   <div class="seraphim-site">
     <header class="seraphim-header">
       <div class="seraphim-header-row">
@@ -879,8 +1645,8 @@ function assembleFullHtml(input: {
       </div>
       <nav id="seraphim-primary-nav" class="seraphim-nav" aria-label="Primary navigation">${navLinks}</nav>
     </header>
-    <main>
-      ${input.sections.join("\n\n")}
+    <main id="main-content">
+      ${sections.join("\n\n")}
     </main>
     <footer class="seraphim-footer">
       <div class="seraphim-footer-inner">
@@ -913,45 +1679,211 @@ function assembleFullHtml(input: {
 </html>`);
 }
 
-function normalizeSectionQA(value: unknown, fallbackIssues: string[] = []): SectionQAResult {
-  if (!isRecord(value)) return { passed: fallbackIssues.length === 0, issues: fallbackIssues };
-  return {
-    passed: Boolean(value.passed),
-    issues: stringList(value.issues, 20),
-  };
-}
-
-function heuristicSectionIssues(html: string) {
+function heuristicVisualIssues(input: {
+  html: string;
+  cleanBusinessData: CleanBusinessData;
+  designSystem: DesignSystemContract;
+  pageContract: PageContract;
+  premiumReferenceBrief?: PremiumReferenceBrief;
+}) {
   const issues: string[] = [];
-  const visibleText = html
+  const sectionIssues: VisualQAResult["sectionIssues"] = [];
+  const visibleText = input.html
     .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
     .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
     .replace(/<[^>]+>/g, " ");
-  if (!/<title>/i.test(html) || !/meta\s+name=["']description/i.test(html)) issues.push("Missing core SEO metadata.");
-  if (!/data-seraphim-generator=["']true["']/i.test(html)) issues.push("Missing Seraphim output signature.");
-  if (!/<section\b/i.test(html)) issues.push("No meaningful sections were generated.");
-  if (/<meta\s+name=["']keywords["']/i.test(html)) issues.push("Meta keywords are not allowed.");
-  if (/(five-star|5-star|award-winning|guaranteed|certified|\b\d+ reviews\b|\b\d+\+ customers\b)/i.test(html)) {
-    issues.push("Potential fabricated proof or unsupported metrics found.");
+  const firstViewportText = visibleText.slice(0, 2600).toLowerCase();
+  const leakedPlanningLanguage = [
+    "orient and convert",
+    "decision moment",
+    "conversion story",
+    "customer question",
+    "section contract",
+    "page contract",
+    "creative contract",
+    "design system contract",
+    "required content",
+    "must avoid",
+    "verified business facts",
+    "verified business details",
+    "missing facts",
+    "raw extracted data",
+    "support the conversion path",
+    "support the page conversion story",
+  ].filter((phrase) => visibleText.toLowerCase().includes(phrase));
+  const leakedPlanningSections = input.pageContract.sections.flatMap((section) => {
+    const id = section.id || slugify(section.name);
+    const match = input.html.match(new RegExp(`<section\\b[^>]*id=["']${escapeRegExp(id)}["'][^>]*>([\\s\\S]*?)<\\/section>`, "i"));
+    const sectionText = (match?.[1] || "")
+      .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .toLowerCase();
+    const phrases = leakedPlanningLanguage.filter((phrase) => sectionText.includes(phrase));
+    return phrases.length ? [{ id, phrases }] : [];
+  });
+  const sectionCount = (input.html.match(/<section\b/gi) ?? []).length;
+  const cssText = [...input.html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((match) => match[1]).join("\n");
+  const referenceBenchmark = input.premiumReferenceBrief?.benchmark;
+  const minReferenceSections = Math.min(9, Math.max(7, referenceBenchmark?.minSections ?? 7));
+  const minReferenceCssLength = Math.min(14000, Math.max(8500, referenceBenchmark?.minCssLength ?? 9000));
+  const classNames = [...input.html.matchAll(/\bclass=["']([^"']+)["']/gi)]
+    .flatMap((match) => match[1].split(/\s+/))
+    .map((className) => className.trim())
+    .filter(Boolean);
+  const definedClassNames = new Set([
+    ...[...cssText.matchAll(/\.([_a-zA-Z][-_a-zA-Z0-9]*)/g)].map((match) => match[1]),
+    ...Object.values(input.designSystem.components).map((component) => component.className),
+  ]);
+  const tailwindLikeClasses = classNames.filter((className) =>
+    /^(sm:|md:|lg:|xl:|2xl:|flex|grid|block|hidden|inline-flex|items-|justify-|gap-|p[trblxy]?-\d|m[trblxy]?-\d|text-|bg-|rounded|shadow|w-|h-|max-w-|min-h-|mx-|my-|space-|border-|opacity-|translate-|scale-)/.test(className),
+  );
+  const deadTailwindClasses = tailwindLikeClasses.filter((className) => !definedClassNames.has(className.replace(/^[a-z0-9]+:/i, "")));
+  const imageTags = [...input.html.matchAll(/<img\b[^>]*>/gi)].map((match) => match[0]);
+  const unreliableImages = imageTags
+    .map((tag) => attributeValue(tag, "src"))
+    .filter(isUnreliableImageSrc);
+  const emptyInteractiveControls = [
+    ...input.html.matchAll(/<(?:a|button)\b[^>]*>\s*<\/(?:a|button)>/gi),
+  ];
+
+  if (!/<title>/i.test(input.html) || !/meta\s+name=["']description/i.test(input.html)) issues.push("Missing core SEO metadata.");
+  if (!/<script[^>]+type=["']application\/ld\+json["']/i.test(input.html)) issues.push("Missing JSON-LD schema.");
+  if (!/data-seraphim-generator=["']true["']/i.test(input.html)) issues.push("Missing Seraphim output signature.");
+  if (!/<section\b/i.test(input.html)) issues.push("No meaningful sections were generated.");
+  if (sectionCount < minReferenceSections) issues.push(`Generated page has ${sectionCount} sections, below the local premium reference floor of ${minReferenceSections}.`);
+  if (cssText.length < minReferenceCssLength) issues.push(`Embedded CSS is too shallow (${cssText.length} chars), below the local premium reference floor of ${minReferenceCssLength} chars.`);
+  if (input.html.length < 12000) issues.push("Generated HTML is too short to feel like a premium full landing page.");
+  if (/<meta\s+name=["']keywords["']/i.test(input.html)) issues.push("Meta keywords are not allowed.");
+  if (deadTailwindClasses.length) issues.push(`Dead Tailwind-style classes found without embedded CSS: ${unique(deadTailwindClasses).slice(0, 12).join(", ")}.`);
+  if (unreliableImages.length) issues.push(`Unreliable or broken image sources found: ${unique(unreliableImages).slice(0, 6).join(", ")}.`);
+  if (emptyInteractiveControls.length) issues.push("Empty anchor or button controls found.");
+  if (/(five-star|5-star|award-winning|guaranteed|certified|\b(?!0\b)\d+ reviews\b|\b\d+\+ customers\b|trusted by thousands|best-in-class)/i.test(input.html)) {
+    issues.push("Potential fabricated proof, generic hype, or unsupported metrics found.");
   }
-  if (/\bplaceholder\b|lorem ipsum|TODO|\[[A-Z][^\]]{2,60}\]/i.test(visibleText)) issues.push("Placeholder content found.");
-  return issues;
+  if (/\bplaceholder\b|lorem ipsum|TODO|your image here|\[[A-Z][^\]]{2,60}\]/i.test(visibleText)) issues.push("Placeholder content found.");
+  if (/(transform your business|solutions for every need|private concept)/i.test(visibleText)) issues.push("Generic AI/template wording found.");
+  if (leakedPlanningLanguage.length) {
+    issues.push(`Internal planning language leaked into visible copy: ${unique(leakedPlanningLanguage).slice(0, 8).join(", ")}.`);
+  }
+  if (!new RegExp(escapeRegExp(input.cleanBusinessData.companyName), "i").test(firstViewportText)) {
+    issues.push("Business name is missing from the first viewport text.");
+  }
+  if (!/(href=["']tel:|href=["']mailto:|contact|call|message|enquir|inquir|whatsapp)/i.test(input.html)) {
+    issues.push("No clear contact path or CTA was found.");
+  }
+  if (!/(hero|gallery|media|visual|showcase|image-frame|figure|object-fit|aspect-ratio|seraphim-generated-photo)/i.test(input.html)) {
+    issues.push("No clear industry-specific visual/media moment was found.");
+  }
+  if (!/(faq|<details\b|aria-expanded)/i.test(input.html)) {
+    issues.push("No FAQ or accordion-style decision support was found.");
+  }
+  if (!/(reveal|intersectionobserver|data-reveal|@keyframes|transition:|animation:)/i.test(input.html)) {
+    issues.push("No interaction or reveal layer was found.");
+  }
+  if (sectionCount >= 6 && input.pageContract.sections.length >= 6) {
+    const sectionNames = input.pageContract.sections.map((section) => section.name.toLowerCase());
+    if (new Set(sectionNames).size < Math.min(5, sectionNames.length)) issues.push("Section variety is too low.");
+  }
+
+  if (deadTailwindClasses.length) {
+    sectionIssues.push({
+      sectionId: input.pageContract.sections[0]?.id || "global",
+      severity: "high",
+      issue: "Section HTML includes Tailwind-style classes that are not defined in embedded CSS.",
+      revisionInstruction: "Regenerate the affected sections using only design-system classes or scoped CSS for every new class.",
+    });
+  }
+  if (unreliableImages.length) {
+    sectionIssues.push({
+      sectionId: input.pageContract.sections[0]?.id || "global",
+      severity: "high",
+      issue: "Generated HTML includes unreliable image sources that can break in standalone previews.",
+      revisionInstruction: "Regenerate media-heavy sections without local filenames, placeholder image services, or relative screenshot paths. Use reliable inline SVG/data-URI visual compositions or verified remote image URLs only.",
+    });
+  }
+  if (cssText.length < minReferenceCssLength) {
+    sectionIssues.push({
+      sectionId: input.pageContract.sections[0]?.id || "global",
+      severity: "high",
+      issue: "The generated page does not have enough embedded CSS depth to match the local premium references.",
+      revisionInstruction: "Regenerate sections with richer design-system usage, varied compositions, responsive media treatment, hover/focus states, layered surfaces, and scoped CSS only where needed.",
+    });
+  }
+  if (emptyInteractiveControls.length) {
+    sectionIssues.push({
+      sectionId: input.pageContract.sections[0]?.id || "global",
+      severity: "medium",
+      issue: "Generated HTML contains empty links or buttons.",
+      revisionInstruction: "Regenerate CTA sections so every link and button has visible, accessible text and clear contrast.",
+    });
+  }
+  for (const leakedSection of leakedPlanningSections.length
+    ? leakedPlanningSections
+    : leakedPlanningLanguage.length
+      ? [{ id: input.pageContract.sections[0]?.id || "global", phrases: leakedPlanningLanguage }]
+      : []) {
+    sectionIssues.push({
+      sectionId: leakedSection.id,
+      severity: "high",
+      issue: "Visible copy contains internal planning language instead of customer-facing website copy.",
+      revisionInstruction: `Regenerate this section because it contains ${unique(leakedSection.phrases).slice(0, 8).join(", ")}. Replace every internal goal, contract label, or QA phrase with polished public-facing headlines and body copy for the actual business.`,
+    });
+  }
+
+  return { issues, sectionIssues };
 }
 
-async function runSectionQA(fullHtml: string) {
-  const heuristicIssues = heuristicSectionIssues(fullHtml);
+function qaFromHeuristics(heuristic: ReturnType<typeof heuristicVisualIssues>): SectionQAResult {
+  return {
+    passed: heuristic.issues.length === 0,
+    score: heuristic.issues.length === 0 ? 8.5 : Math.max(4.5, 8 - heuristic.issues.length * 0.45),
+    issues: heuristic.issues,
+    sectionIssues: heuristic.sectionIssues,
+    globalRevisionInstruction: heuristic.issues.length
+      ? `Fix visual QA issues: ${heuristic.issues.join(" ")}`
+      : "Passed heuristic visual QA.",
+  };
+}
+
+async function runVisualQA(input: {
+  html: string;
+  creativeContract: CreativeContract;
+  designSystem: DesignSystemContract;
+  pageContract: PageContract;
+  cleanBusinessData: CleanBusinessData;
+  premiumReferenceBrief: PremiumReferenceBrief;
+}) {
+  const heuristic = heuristicVisualIssues(input);
+  const heuristicQa = qaFromHeuristics(heuristic);
   const errors: string[] = [];
 
-  for (const route of getRoutesForStage("qa")) {
+  for (const route of getRoutesForStage("visual-qa")) {
     try {
       const text = await runWithModelRouteRetry(route, () =>
-        generateTextWithRoute(buildQAPrompt(fullHtml), route, { temperature: 0.15, maxOutputTokens: 3000 }),
+        generateTextWithRoute(buildVisualQAPrompt(input), route, {
+          temperature: 0.05,
+          maxOutputTokens: 5000,
+          responseMimeType: "application/json",
+        }),
       );
-      const modelQa = normalizeSectionQA(parseJsonObject(text), heuristicIssues);
-      const issues = unique([...heuristicIssues, ...modelQa.issues]);
+      const modelQa = parseVisualQAResult(text, heuristicQa);
+      const usedHeuristicFallback = modelQa === heuristicQa;
+      if (usedHeuristicFallback) errors.push(`${route.provider}:${route.model}: Visual QA returned invalid JSON; heuristic QA was used.`);
+      const issues = unique([...heuristic.issues, ...(usedHeuristicFallback ? [] : modelQa.issues)]);
+      const sectionIssues = [...heuristic.sectionIssues, ...(usedHeuristicFallback ? [] : modelQa.sectionIssues)];
       return {
-        qa: { passed: modelQa.passed && issues.length === 0, issues } satisfies SectionQAResult,
-        metadata: { stage: "qa", provider: route.provider, model: route.model, fallback: route.fallback } satisfies StageMetadata,
+        qa: {
+          ...modelQa,
+          passed: (usedHeuristicFallback ? heuristicQa.passed : modelQa.passed) && issues.length === 0,
+          score: issues.length ? Math.min(modelQa.score || heuristicQa.score, 8.2) : (modelQa.score || heuristicQa.score),
+          issues,
+          sectionIssues,
+          globalRevisionInstruction: usedHeuristicFallback
+            ? heuristicQa.globalRevisionInstruction
+            : modelQa.globalRevisionInstruction || "Revise sections to satisfy Creative Contract, Design System, and Page Contract.",
+        } satisfies SectionQAResult,
+        metadata: { stage: "visual-qa", provider: route.provider, model: route.model, fallback: route.fallback || usedHeuristicFallback } satisfies StageMetadata,
         errors,
       };
     } catch (error) {
@@ -960,20 +1892,26 @@ async function runSectionQA(fullHtml: string) {
   }
 
   return {
-    qa: { passed: heuristicIssues.length === 0, issues: heuristicIssues } satisfies SectionQAResult,
-    metadata: { stage: "qa", provider: "local", model: "heuristic-section-qa", fallback: true } satisfies StageMetadata,
+    qa: heuristicQa,
+    metadata: { stage: "visual-qa", provider: "local", model: "heuristic-visual-qa", fallback: true } satisfies StageMetadata,
     errors,
   };
 }
 
-function sectionNamesForIssues(sections: WebsitePlanSection[], issues: string[]) {
+function sectionContractsForIssues(sections: SectionContract[], qa: SectionQAResult) {
+  const targeted = qa.sectionIssues
+    .map((issue) => sections.find((section) => section.id === issue.sectionId || section.name.toLowerCase() === issue.sectionId.toLowerCase()))
+    .filter((section): section is SectionContract => Boolean(section));
+  if (targeted.length) return Array.from(new Map(targeted.map((section) => [section.id, section])).values());
+
+  const issues = qa.issues;
   const issueText = issues.join(" ").toLowerCase();
-  const matched = sections.filter((section) => issueText.includes(section.name.toLowerCase()));
+  const matched = sections.filter((section) => issueText.includes(section.name.toLowerCase()) || issueText.includes(section.id.toLowerCase()));
   return matched.length ? matched : sections.slice(0, Math.min(3, sections.length));
 }
 
 function qualityGateFromSectionQA(qa: SectionQAResult): QualityGate {
-  const score = qa.passed ? 9 : Math.max(5, 8 - qa.issues.length * 0.4);
+  const score = qa.score || (qa.passed ? 9 : Math.max(5, 8 - qa.issues.length * 0.4));
   return {
     score: Number(score.toFixed(1)),
     passed: qa.passed,
@@ -1000,6 +1938,11 @@ function buildGenerationPlanResponse(input: {
   generationId: string;
   plan: WebsitePlan;
   industryBrief: SeraphimIndustryBrief;
+  creativeContract?: CreativeContract;
+  designSystem?: DesignSystemContract;
+  pageContract?: PageContract;
+  archetype?: Archetype;
+  premiumReferenceBrief?: PremiumReferenceBrief;
   qualityGate?: QualityGate;
   revisionCount?: number;
 }): GenerationPlanResponse {
@@ -1007,14 +1950,25 @@ function buildGenerationPlanResponse(input: {
     generationId: input.generationId,
     stage: "planning",
     summary: input.plan.layoutPhilosophy,
-    sectionIds: input.plan.sections.map((section) => section.name),
+    sectionIds: input.pageContract?.sections.map((section) => section.name) ?? input.plan.sections.map((section) => section.name),
     premiumPlan: input.plan,
+    creativeContract: input.creativeContract,
+    designSystem: input.designSystem,
+    pageContract: input.pageContract,
+    archetype: input.archetype ? {
+      id: input.archetype.id,
+      name: input.archetype.name,
+      tone: input.archetype.tone,
+      sectionOrder: input.archetype.sectionOrder,
+      qaChecks: input.archetype.qaChecks,
+    } : undefined,
     seraphimGenerator: {
       authority: "only-website-generation-system",
       industryBrief: input.industryBrief.id,
       industryName: input.industryBrief.name,
       matchedSignals: input.industryBrief.matchedSignals,
     },
+    premiumReferenceBrief: input.premiumReferenceBrief,
     qualityGate: input.qualityGate,
     revisionCount: input.revisionCount,
   };
@@ -1034,6 +1988,11 @@ function buildGenerationResponse(input: {
     generationId: input.generationId,
     plan: input.pipeline.plan,
     industryBrief: input.industryBrief,
+    creativeContract: input.pipeline.creativeContract,
+    designSystem: input.pipeline.designSystem,
+    pageContract: input.pipeline.pageContract,
+    archetype: input.pipeline.archetype,
+    premiumReferenceBrief: input.pipeline.premiumReferenceBrief,
     qualityGate,
     revisionCount: input.pipeline.revisionCount,
   });
@@ -1041,38 +2000,107 @@ function buildGenerationResponse(input: {
   return {
     generationId: input.generationId,
     html: input.pipeline.html,
+    creativeContract: input.pipeline.creativeContract,
+    designSystem: input.pipeline.designSystem,
+    pageContract: input.pipeline.pageContract,
     plan: input.pipeline.plan,
     qa: input.pipeline.qa,
     designTokens: input.pipeline.tokens,
     modelMetadata,
     pipelineModelMetadata: input.pipelineMetadata,
     cleanedBusinessData: input.cleanBusinessData,
+    archetype: input.pipeline.archetype ? {
+      id: input.pipeline.archetype.id,
+      name: input.pipeline.archetype.name,
+      tone: input.pipeline.archetype.tone,
+      sectionOrder: input.pipeline.archetype.sectionOrder,
+      qaChecks: input.pipeline.archetype.qaChecks,
+    } : undefined,
+    premiumReferenceBrief: input.pipeline.premiumReferenceBrief,
     generationPlan,
     qualityGate,
+    warning: input.pipeline.qa.passed
+      ? undefined
+      : "Generated website returned the best available attempt after archetype QA retries.",
   };
 }
 
 async function runSectionGenerationPipeline(input: {
   data: z.infer<typeof requestSchema>;
   cleanBusinessData: CleanBusinessData;
+  industryBrief: SeraphimIndustryBrief;
   generationId: string;
 }) {
-  const tokens = buildDesignTokens(coerceVisualPreferences(input.data.visualPreferences));
+  const archetype = resolveArchetype(input.data, input.cleanBusinessData);
+  const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences);
   const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
+  const premiumReferenceBrief = getPremiumReferenceBrief(input.cleanBusinessData.businessType);
+  const creativeResult = await generateCreativeContract({
+    cleanBusinessData: input.cleanBusinessData,
+    industryBrief: input.industryBrief,
+    visualPreferences: input.data.visualPreferences,
+    generationMode: input.data.generationMode,
+    archetype,
+    generationId: input.generationId,
+    premiumReferenceBrief,
+  });
+  const designSystemResult = await generateDesignSystemContract({
+    creativeContract: creativeResult.creativeContract,
+    tokens,
+    visualPreferences: input.data.visualPreferences,
+    generationId: input.generationId,
+    premiumReferenceBrief,
+  });
   const inspiration = await fetchDesignInspiration(input.cleanBusinessData.businessType);
-  const planResult = await generateWebsitePlanFromPrompt(business, tokens, inspiration, input.generationId);
-  const metadata: StageMetadata[] = [planResult.metadata];
+  const planResult = await generateWebsitePlanFromPrompt(
+    business,
+    tokens,
+    inspiration,
+    input.generationId,
+    archetype,
+    creativeResult.creativeContract,
+    designSystemResult.designSystem,
+    premiumReferenceBrief,
+  );
+  const pageContractResult = await generatePageContract({
+    creativeContract: creativeResult.creativeContract,
+    designSystem: designSystemResult.designSystem,
+    websitePlan: planResult.plan,
+    generationId: input.generationId,
+    premiumReferenceBrief,
+  });
+  const basePageContract = pageContractResult.pageContract.sections.length
+    ? pageContractResult.pageContract
+    : fallbackPageContract(creativeResult.creativeContract, designSystemResult.designSystem, planResult.plan);
+  const pageContract = strengthenPageContractWithReferences(basePageContract, premiumReferenceBrief);
+  const sectionContracts = pageContract.sections.length
+    ? pageContract.sections
+    : fallbackPageContract(creativeResult.creativeContract, designSystemResult.designSystem, planResult.plan).sections;
+  const metadata: StageMetadata[] = [
+    creativeResult.metadata,
+    designSystemResult.metadata,
+    planResult.metadata,
+    pageContractResult.metadata,
+  ];
   const sectionResults = new Map<string, string>();
 
-  for (const section of planResult.plan.sections) {
+  for (const [index, section] of sectionContracts.entries()) {
     const result = await generateSectionHtmlFromPrompt({
       business,
+      cleanBusinessData: input.cleanBusinessData,
       section,
       plan: planResult.plan,
       tokens,
       inspiration,
+      creativeContract: creativeResult.creativeContract,
+      designSystem: designSystemResult.designSystem,
+      pageContract,
+      previousSectionSummary: index > 0 ? internalSectionSummary(sectionContracts[index - 1]) : "",
+      nextSectionSummary: index < sectionContracts.length - 1 ? internalSectionSummary(sectionContracts[index + 1]) : "",
+      archetype,
+      premiumReferenceBrief,
     });
-    sectionResults.set(section.name, result.html);
+    sectionResults.set(section.id, result.html);
     metadata.push(result.metadata);
   }
 
@@ -1081,47 +2109,88 @@ async function runSectionGenerationPipeline(input: {
     cleanBusinessData: input.cleanBusinessData,
     tokens,
     plan: planResult.plan,
-    sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
+    creativeContract: creativeResult.creativeContract,
+    designSystem: designSystemResult.designSystem,
+    pageContract,
+    sections: sectionContracts.map((section) => sectionResults.get(section.id) || fallbackSectionHtml(section, business)),
   });
-  let qaResult = await runSectionQA(html);
+  let qaResult = await runVisualQA({
+    html,
+    creativeContract: creativeResult.creativeContract,
+    designSystem: designSystemResult.designSystem,
+    pageContract,
+    cleanBusinessData: input.cleanBusinessData,
+    premiumReferenceBrief,
+  });
   metadata.push(qaResult.metadata);
   let revisionCount = 0;
 
   while (!qaResult.qa.passed && revisionCount < 2 && qaResult.qa.issues.length) {
     revisionCount += 1;
-    const sectionsToRegenerate = sectionNamesForIssues(planResult.plan.sections, qaResult.qa.issues);
+    const sectionsToRegenerate = sectionContractsForIssues(sectionContracts, qaResult.qa);
     for (const section of sectionsToRegenerate) {
+      const sectionIndex = sectionContracts.findIndex((candidate) => candidate.id === section.id);
+      const sectionFeedback = qaResult.qa.sectionIssues
+        .filter((issue) => issue.sectionId === section.id || issue.sectionId === section.name)
+        .map((issue) => issue.revisionInstruction);
       const result = await generateSectionHtmlFromPrompt({
         business,
+        cleanBusinessData: input.cleanBusinessData,
         section,
         plan: planResult.plan,
         tokens,
         inspiration,
-        correctiveFeedback: qaResult.qa.issues,
+        creativeContract: creativeResult.creativeContract,
+        designSystem: designSystemResult.designSystem,
+        pageContract,
+        previousSectionSummary: sectionIndex > 0 ? internalSectionSummary(sectionContracts[sectionIndex - 1]) : "",
+        nextSectionSummary: sectionIndex < sectionContracts.length - 1 ? internalSectionSummary(sectionContracts[sectionIndex + 1]) : "",
+        archetype,
+        correctiveFeedback: unique([
+          ...qaResult.qa.issues,
+          qaResult.qa.globalRevisionInstruction,
+          ...sectionFeedback,
+        ]),
+        premiumReferenceBrief,
       });
-      sectionResults.set(section.name, result.html);
-      metadata.push({ ...result.metadata, stage: `revision:${section.name}` });
+      sectionResults.set(section.id, result.html);
+      metadata.push({ ...result.metadata, stage: `revision:${section.id}` });
     }
     html = assembleFullHtml({
       business,
       cleanBusinessData: input.cleanBusinessData,
       tokens,
       plan: planResult.plan,
-      sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
+      creativeContract: creativeResult.creativeContract,
+      designSystem: designSystemResult.designSystem,
+      pageContract,
+      sections: sectionContracts.map((section) => sectionResults.get(section.id) || fallbackSectionHtml(section, business)),
     });
-    qaResult = await runSectionQA(html);
-    metadata.push({ ...qaResult.metadata, stage: `qa:retry-${revisionCount}` });
+    qaResult = await runVisualQA({
+      html,
+      creativeContract: creativeResult.creativeContract,
+      designSystem: designSystemResult.designSystem,
+      pageContract,
+      cleanBusinessData: input.cleanBusinessData,
+      premiumReferenceBrief,
+    });
+    metadata.push({ ...qaResult.metadata, stage: `visual-qa:retry-${revisionCount}` });
   }
 
   return {
     html,
+    creativeContract: creativeResult.creativeContract,
+    designSystem: designSystemResult.designSystem,
+    pageContract,
     plan: planResult.plan,
     qa: qaResult.qa,
     metadata,
     revisionCount,
     business,
     tokens,
+    archetype,
     inspiration,
+    premiumReferenceBrief,
   };
 }
 
@@ -1132,16 +2201,78 @@ async function streamSectionGenerationPipeline(input: {
   generationId: string;
   send: (event: Record<string, unknown>) => void;
 }) {
-  const tokens = buildDesignTokens(coerceVisualPreferences(input.data.visualPreferences));
+  const archetype = resolveArchetype(input.data, input.cleanBusinessData);
+  const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences);
   const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
+  const premiumReferenceBrief = getPremiumReferenceBrief(input.cleanBusinessData.businessType);
+  const creativeResult = await generateCreativeContract({
+    cleanBusinessData: input.cleanBusinessData,
+    industryBrief: input.industryBrief,
+    visualPreferences: input.data.visualPreferences,
+    generationMode: input.data.generationMode,
+    archetype,
+    generationId: input.generationId,
+    premiumReferenceBrief,
+  });
+  const designSystemResult = await generateDesignSystemContract({
+    creativeContract: creativeResult.creativeContract,
+    tokens,
+    visualPreferences: input.data.visualPreferences,
+    generationId: input.generationId,
+    premiumReferenceBrief,
+  });
   const inspiration = await fetchDesignInspiration(input.cleanBusinessData.businessType);
-  const planResult = await generateWebsitePlanFromPrompt(business, tokens, inspiration, input.generationId);
-  const metadata: StageMetadata[] = [planResult.metadata];
+  input.send({
+    type: "creative-contract",
+    creativeContract: creativeResult.creativeContract,
+    modelMetadata: creativeResult.metadata,
+  });
+  input.send({
+    type: "design-system",
+    designSystem: designSystemResult.designSystem,
+    designTokens: tokens,
+    modelMetadata: designSystemResult.metadata,
+  });
+  const planResult = await generateWebsitePlanFromPrompt(
+    business,
+    tokens,
+    inspiration,
+    input.generationId,
+    archetype,
+    creativeResult.creativeContract,
+    designSystemResult.designSystem,
+    premiumReferenceBrief,
+  );
+  const pageContractResult = await generatePageContract({
+    creativeContract: creativeResult.creativeContract,
+    designSystem: designSystemResult.designSystem,
+    websitePlan: planResult.plan,
+    generationId: input.generationId,
+    premiumReferenceBrief,
+  });
+  const basePageContract = pageContractResult.pageContract.sections.length
+    ? pageContractResult.pageContract
+    : fallbackPageContract(creativeResult.creativeContract, designSystemResult.designSystem, planResult.plan);
+  const pageContract = strengthenPageContractWithReferences(basePageContract, premiumReferenceBrief);
+  const sectionContracts = pageContract.sections.length
+    ? pageContract.sections
+    : fallbackPageContract(creativeResult.creativeContract, designSystemResult.designSystem, planResult.plan).sections;
+  const metadata: StageMetadata[] = [
+    creativeResult.metadata,
+    designSystemResult.metadata,
+    planResult.metadata,
+    pageContractResult.metadata,
+  ];
   const sectionResults = new Map<string, string>();
   const earlyGenerationPlan = buildGenerationPlanResponse({
     generationId: input.generationId,
     plan: planResult.plan,
     industryBrief: input.industryBrief,
+    creativeContract: creativeResult.creativeContract,
+    designSystem: designSystemResult.designSystem,
+    pageContract,
+    archetype,
+    premiumReferenceBrief,
   });
 
   input.send({
@@ -1149,23 +2280,47 @@ async function streamSectionGenerationPipeline(input: {
     plan: planResult.plan,
     generationPlan: earlyGenerationPlan,
     designTokens: tokens,
+    creativeContract: creativeResult.creativeContract,
+    designSystem: designSystemResult.designSystem,
+    premiumReferenceBrief,
+    archetype: {
+      id: archetype.id,
+      name: archetype.name,
+      tone: archetype.tone,
+      sectionOrder: archetype.sectionOrder,
+      qaChecks: archetype.qaChecks,
+    },
+  });
+  input.send({
+    type: "page-contract",
+    pageContract,
+    modelMetadata: pageContractResult.metadata,
   });
 
-  for (const [index, section] of planResult.plan.sections.entries()) {
+  for (const [index, section] of sectionContracts.entries()) {
     const result = await generateSectionHtmlFromPrompt({
       business,
+      cleanBusinessData: input.cleanBusinessData,
       section,
       plan: planResult.plan,
       tokens,
       inspiration,
+      creativeContract: creativeResult.creativeContract,
+      designSystem: designSystemResult.designSystem,
+      pageContract,
+      previousSectionSummary: index > 0 ? internalSectionSummary(sectionContracts[index - 1]) : "",
+      nextSectionSummary: index < sectionContracts.length - 1 ? internalSectionSummary(sectionContracts[index + 1]) : "",
+      archetype,
+      premiumReferenceBrief,
     });
-    sectionResults.set(section.name, result.html);
+    sectionResults.set(section.id, result.html);
     metadata.push(result.metadata);
     input.send({
       type: "section",
       index,
       html: result.html,
       sectionName: section.name,
+      sectionId: section.id,
       modelMetadata: result.metadata,
     });
   }
@@ -1175,9 +2330,19 @@ async function streamSectionGenerationPipeline(input: {
     cleanBusinessData: input.cleanBusinessData,
     tokens,
     plan: planResult.plan,
-    sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
+    creativeContract: creativeResult.creativeContract,
+    designSystem: designSystemResult.designSystem,
+    pageContract,
+    sections: sectionContracts.map((section) => sectionResults.get(section.id) || fallbackSectionHtml(section, business)),
   });
-  let qaResult = await runSectionQA(html);
+  let qaResult = await runVisualQA({
+    html,
+    creativeContract: creativeResult.creativeContract,
+    designSystem: designSystemResult.designSystem,
+    pageContract,
+    cleanBusinessData: input.cleanBusinessData,
+    premiumReferenceBrief,
+  });
   metadata.push(qaResult.metadata);
   let revisionCount = 0;
   input.send({
@@ -1189,24 +2354,40 @@ async function streamSectionGenerationPipeline(input: {
 
   while (!qaResult.qa.passed && revisionCount < 2 && qaResult.qa.issues.length) {
     revisionCount += 1;
-    const sectionsToRegenerate = sectionNamesForIssues(planResult.plan.sections, qaResult.qa.issues);
+    const sectionsToRegenerate = sectionContractsForIssues(sectionContracts, qaResult.qa);
     for (const section of sectionsToRegenerate) {
-      const index = planResult.plan.sections.findIndex((candidate) => candidate.name === section.name);
+      const index = sectionContracts.findIndex((candidate) => candidate.id === section.id);
+      const sectionFeedback = qaResult.qa.sectionIssues
+        .filter((issue) => issue.sectionId === section.id || issue.sectionId === section.name)
+        .map((issue) => issue.revisionInstruction);
       const result = await generateSectionHtmlFromPrompt({
         business,
+        cleanBusinessData: input.cleanBusinessData,
         section,
         plan: planResult.plan,
         tokens,
         inspiration,
-        correctiveFeedback: qaResult.qa.issues,
+        creativeContract: creativeResult.creativeContract,
+        designSystem: designSystemResult.designSystem,
+        pageContract,
+        previousSectionSummary: index > 0 ? internalSectionSummary(sectionContracts[index - 1]) : "",
+        nextSectionSummary: index < sectionContracts.length - 1 ? internalSectionSummary(sectionContracts[index + 1]) : "",
+        archetype,
+        correctiveFeedback: unique([
+          ...qaResult.qa.issues,
+          qaResult.qa.globalRevisionInstruction,
+          ...sectionFeedback,
+        ]),
+        premiumReferenceBrief,
       });
-      sectionResults.set(section.name, result.html);
-      metadata.push({ ...result.metadata, stage: `revision:${section.name}` });
+      sectionResults.set(section.id, result.html);
+      metadata.push({ ...result.metadata, stage: `revision:${section.id}` });
       input.send({
         type: "section",
         index,
         html: result.html,
         sectionName: section.name,
+        sectionId: section.id,
         revision: revisionCount,
         modelMetadata: result.metadata,
       });
@@ -1216,10 +2397,20 @@ async function streamSectionGenerationPipeline(input: {
       cleanBusinessData: input.cleanBusinessData,
       tokens,
       plan: planResult.plan,
-      sections: planResult.plan.sections.map((section) => sectionResults.get(section.name) || fallbackSectionHtml(section, business)),
+      creativeContract: creativeResult.creativeContract,
+      designSystem: designSystemResult.designSystem,
+      pageContract,
+      sections: sectionContracts.map((section) => sectionResults.get(section.id) || fallbackSectionHtml(section, business)),
     });
-    qaResult = await runSectionQA(html);
-    metadata.push({ ...qaResult.metadata, stage: `qa:retry-${revisionCount}` });
+    qaResult = await runVisualQA({
+      html,
+      creativeContract: creativeResult.creativeContract,
+      designSystem: designSystemResult.designSystem,
+      pageContract,
+      cleanBusinessData: input.cleanBusinessData,
+      premiumReferenceBrief,
+    });
+    metadata.push({ ...qaResult.metadata, stage: `visual-qa:retry-${revisionCount}` });
     input.send({
       type: "qa",
       result: qaResult.qa,
@@ -1231,13 +2422,18 @@ async function streamSectionGenerationPipeline(input: {
 
   return {
     html,
+    creativeContract: creativeResult.creativeContract,
+    designSystem: designSystemResult.designSystem,
+    pageContract,
     plan: planResult.plan,
     qa: qaResult.qa,
     metadata,
     revisionCount,
     business,
     tokens,
+    archetype,
     inspiration,
+    premiumReferenceBrief,
   };
 }
 
@@ -1280,6 +2476,10 @@ export async function POST(request: Request) {
             colors: cleanBusinessData.visibleColors.length,
             missingFields: cleanBusinessData.missingFields,
             dataConfidence: cleanBusinessData.dataConfidence,
+          });
+          safeDebug(generationId, "archetype", {
+            requested: normalizedData.archetypeId || "auto",
+            selected: resolveArchetype(normalizedData, cleanBusinessData).id,
           });
 
           const pipeline = await streamSectionGenerationPipeline({
@@ -1338,10 +2538,15 @@ export async function POST(request: Request) {
       industryName: industryBrief.name,
       matchedSignals: industryBrief.matchedSignals,
     });
+    safeDebug(generationId, "archetype", {
+      requested: normalizedData.archetypeId || "auto",
+      selected: resolveArchetype(normalizedData, cleanBusinessData).id,
+    });
 
     const pipeline = await runSectionGenerationPipeline({
       data: normalizedData,
       cleanBusinessData,
+      industryBrief,
       generationId,
     });
     pipelineMetadata.push(...pipeline.metadata);

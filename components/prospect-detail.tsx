@@ -178,7 +178,9 @@ export function ProspectDetail() {
           info,
           generationMode: "more-luxury",
           visualPreferences: prospect.business_intelligence?.visualPreferences,
+          archetypeId: prospect.business_intelligence?.archetypeId,
           imageName: prospect.business_intelligence?.screenshotName ?? "",
+          sourceImageDataUrl: prospect.business_intelligence?.screenshotDataUrl ?? "",
           businessUnderstanding: prospect.business_intelligence,
         }),
       });
@@ -210,6 +212,7 @@ export function ProspectDetail() {
           ...prospect.business_intelligence,
           generationId: activeGenerationId,
           generationMode: "more-luxury",
+          archetypeId: prospect.business_intelligence?.archetypeId,
           visualPreferences: prospect.business_intelligence?.visualPreferences,
           generationPlan: payload.generationPlan ?? prospect.business_intelligence?.generationPlan ?? null,
           modelMetadata: nextMetadata,
