@@ -180,6 +180,7 @@ export function ProspectDetail() {
           visualPreferences: prospect.business_intelligence?.visualPreferences,
           archetypeId: prospect.business_intelligence?.archetypeId,
           imageName: prospect.business_intelligence?.screenshotName ?? "",
+          sourceImageDataUrl: prospect.business_intelligence?.screenshotDataUrl ?? "",
           businessUnderstanding: prospect.business_intelligence,
         }),
       });

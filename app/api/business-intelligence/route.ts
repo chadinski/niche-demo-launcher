@@ -170,6 +170,72 @@ function normalizeCategory(value: unknown, fallback: OpenAIBusinessUnderstanding
   return match || fallback;
 }
 
+function explicitPageCategoryFromText(value: string) {
+  const match = value
+    .split(/\r?\n/)
+    .map((line) => line.match(/^\s*Page\s*[^\w\s]+\s*([^\n\r]+)/i))
+    .find((candidate): candidate is RegExpMatchArray => Boolean(candidate));
+  if (!match) return "";
+  return match[1]
+    .replace(/\s{2,}.*/, "")
+    .replace(/[|•].*$/, "")
+    .trim()
+    .slice(0, 120);
+}
+
+function categoryForVisiblePageLabel(
+  label: string,
+  fallback: OpenAIBusinessUnderstanding["industry"]["category"],
+) {
+  const normalized = label.toLowerCase();
+  const categoryId =
+    /\b(restaurant|food|cafe|bar|grill|bakery|catering|dining|kitchen)\b/.test(normalized)
+      ? "food-hospitality-entertainment"
+      : /\b(auto|detailing|mechanic|car|vehicle|tire|tyre|repair)\b/.test(normalized)
+        ? "trades-repairs-local-services"
+        : /\b(home|plumb|electric|handy|contractor|cleaning|painting|locksmith|worker|service)\b/.test(normalized)
+          ? "trades-repairs-local-services"
+          : /\b(pet|store|retail|shop|boutique|product)\b/.test(normalized)
+            ? "retail-products-ecommerce"
+            : "";
+
+  return generalWebsiteCategories.find((category) => category.id === categoryId) || fallback;
+}
+
+function applyVisiblePageCategory(
+  understanding: OpenAIBusinessUnderstanding,
+  rawOcrText: string,
+): OpenAIBusinessUnderstanding {
+  const visiblePageCategory = explicitPageCategoryFromText(
+    [
+      rawOcrText,
+      understanding.rawOcrText,
+      understanding.cleanedText,
+      understanding.reportMarkdown,
+    ].join("\n"),
+  ) || understanding.enrichedInfo.category.trim();
+
+  if (!visiblePageCategory) return understanding;
+
+  const category = categoryForVisiblePageLabel(visiblePageCategory, understanding.industry.category);
+
+  return {
+    ...understanding,
+    industry: {
+      ...understanding.industry,
+      primaryIndustry: visiblePageCategory,
+      category,
+      categoryConfidence: Math.max(understanding.industry.categoryConfidence, 92),
+      explanation: `${understanding.industry.explanation} Visible Facebook page category "${visiblePageCategory}" was used as the strongest category signal.`,
+      triggeredKeywords: Array.from(new Set([...understanding.industry.triggeredKeywords, visiblePageCategory])),
+    },
+    enrichedInfo: {
+      ...understanding.enrichedInfo,
+      category: visiblePageCategory,
+    },
+  };
+}
+
 function normalizeCandidates(value: unknown, fallback: OpenAIBusinessUnderstanding["businessNameCandidates"]) {
   if (!Array.isArray(value)) return fallback;
 
@@ -432,7 +498,7 @@ ${userContext(input)}`,
       logModelRoute(route, input.generationId);
 
       return {
-        understanding: sanitizeOpenAIUnderstanding(repaired),
+        understanding: sanitizeOpenAIUnderstanding(applyVisiblePageCategory(repaired, input.rawOcrText)),
         model,
         provider: "gemini",
         route,
@@ -442,7 +508,7 @@ ${userContext(input)}`,
     logModelRoute(route, input.generationId);
 
     return {
-      understanding: sanitizeOpenAIUnderstanding(parsed.data),
+        understanding: sanitizeOpenAIUnderstanding(applyVisiblePageCategory(parsed.data, input.rawOcrText)),
       model,
       provider: "gemini",
       route,
@@ -492,7 +558,7 @@ async function generateWithOpenAI(input: {
   }
 
   return {
-    understanding: sanitizeOpenAIUnderstanding(response.output_parsed),
+    understanding: sanitizeOpenAIUnderstanding(applyVisiblePageCategory(response.output_parsed, input.rawOcrText)),
     model,
     provider: "openai",
     route,

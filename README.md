@@ -76,9 +76,13 @@ NEXT_PUBLIC_DEFAULT_SECONDARY_COLOR=#F4A261
 
 # Stage-based model routing
 EXTRACTION_MODEL=gemini-2.5-flash-lite
+CREATIVE_MODEL=gemini-2.5-pro
+DESIGN_SYSTEM_MODEL=gemini-2.5-pro
 PLANNER_MODEL=gemini-2.5-pro
+PAGE_CONTRACT_MODEL=gemini-2.5-pro
 SECTION_MODEL=gemini-2.5-pro
 QA_MODEL=gemini-2.5-flash
+VISUAL_QA_MODEL=gemini-2.5-flash
 INSPIRATION_MODEL=gemini-2.5-flash
 VISION_MODEL=gemini-2.5-flash
 FALLBACK_MODEL=gemini-2.5-flash-lite
@@ -102,11 +106,13 @@ VERCEL_TEAM_ID=
 
 Screenshot and pasted-info extraction use the server-side AI route in `app/api/business-intelligence/route.ts`. Website HTML generation uses only the Seraphim Generator route in `app/api/generate-website/route.ts`. Set `GEMINI_API_KEY` or `OPENAI_API_KEY` locally and in Vercel before production use. Add `FIRECRAWL_API_KEY` only when you want abstract inspiration and stronger niche-matched photo direction before HTML generation.
 
-Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. `PLANNER_MODEL` and `SECTION_MODEL` default to `gemini-2.5-pro`; `QA_MODEL` and `INSPIRATION_MODEL` default to `gemini-2.5-flash`. Reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable. The router retries failed model calls twice with exponential backoff and temporarily opens a 60-second circuit after repeated route failures.
+Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. `CREATIVE_MODEL`, `DESIGN_SYSTEM_MODEL`, `PLANNER_MODEL`, `PAGE_CONTRACT_MODEL`, and `SECTION_MODEL` default to `gemini-2.5-pro`; `QA_MODEL`, `VISUAL_QA_MODEL`, and `INSPIRATION_MODEL` default to `gemini-2.5-flash`. Reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable. The router retries failed model calls twice with exponential backoff and temporarily opens a 60-second circuit after repeated route failures.
 
 ## Generation UI Migration Notes
 
-The `/create` workflow now streams website generation when the browser requests `text/event-stream`. The server emits plan, section, QA, and complete events so the preview can fill in section by section; JSON responses remain supported for older callers and prospect-detail fallbacks.
+The `/create` workflow now streams website generation when the browser requests `text/event-stream`. The server emits creative-contract, design-system, plan, page-contract, section, QA, and complete events so the preview can fill in section by section; JSON responses remain supported for older callers and prospect-detail fallbacks.
+
+Website generation now runs through a Creative Contract pipeline before HTML generation: business data -> Creative Contract -> Design System Contract -> Website Plan -> Page Contract -> section HTML -> standalone assembly -> Visual QA -> targeted section revision. This keeps the output AI-generated and business-specific without adding static template libraries, while making every section obey a shared visual grammar and embedded CSS system.
 
 Design controls are available above the Generate buttons. Primary/secondary colors, heading/body fonts, and mood are saved in localStorage and sent as `visualPreferences` to the generator. Generated output includes those values as CSS custom properties, and saved prospects keep the preferences for future premium regeneration. The preview also supports **Regenerate All** and per-section **Regenerate** actions.
 

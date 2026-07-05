@@ -25,6 +25,9 @@ export type GenerationPlan = {
   summary: string;
   sectionIds: string[];
   premiumPlan?: unknown;
+  creativeContract?: unknown;
+  designSystem?: unknown;
+  pageContract?: unknown;
   archetype?: {
     id: string;
     name: string;

@@ -4,7 +4,13 @@ import { z } from "zod";
 
 import { getRoutesForStage, runWithModelRouteRetry, type ModelRoute } from "@/lib/ai/modelRouter";
 import { buildSectionPrompt } from "@/lib/ai/prompts/section";
-import type { WebsitePlan, WebsitePlanSection } from "@/lib/ai/prompts/planner";
+import type { WebsitePlan } from "@/lib/ai/prompts/planner";
+import {
+  DEFAULT_CREATIVE_CONTRACT,
+  DEFAULT_DESIGN_SYSTEM_CONTRACT,
+  parsePageContract,
+  type SectionContract,
+} from "@/lib/ai/site-contract-schema";
 import type { DesignTokens } from "@/lib/design/tokens";
 import { getArchetypeById } from "@/lib/archetypes";
 
@@ -110,6 +116,10 @@ function extractSectionFragment(text: string) {
   return fenced.trim().replace(/<\/?(?:html|head|body)[^>]*>/gi, "").trim();
 }
 
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "section";
+}
+
 async function generateTextWithGemini(
   prompt: string,
   route: ModelRoute,
@@ -207,6 +217,27 @@ export async function POST(request: Request) {
   const plan = normalizePlan(parsed.data.plan);
   const designTokens = normalizeTokens(parsed.data.designTokens);
   const archetype = parsed.data.archetypeId ? getArchetypeById(parsed.data.archetypeId) : undefined;
+  const designSystem = {
+    ...DEFAULT_DESIGN_SYSTEM_CONTRACT,
+    tokens: {
+      ...DEFAULT_DESIGN_SYSTEM_CONTRACT.tokens,
+      colors: {
+        ...DEFAULT_DESIGN_SYSTEM_CONTRACT.tokens.colors,
+        primary: designTokens.colors.primary,
+        secondary: designTokens.colors.secondary,
+        accent: designTokens.colors.accent,
+      },
+      fonts: {
+        heading: designTokens.fonts.heading,
+        body: designTokens.fonts.body,
+      },
+      radius: designTokens.borderRadius,
+      shadows: {
+        ...DEFAULT_DESIGN_SYSTEM_CONTRACT.tokens.shadows,
+        card: designTokens.shadows.lg || designTokens.shadows.md || DEFAULT_DESIGN_SYSTEM_CONTRACT.tokens.shadows.card,
+      },
+    },
+  };
   const section = plan.sections[parsed.data.sectionIndex];
 
   if (!section) {
@@ -216,17 +247,65 @@ export async function POST(request: Request) {
     );
   }
 
-  const sectionDef: WebsitePlanSection & { correctiveFeedback?: string[] } = {
-    ...section,
+  const sectionContract: SectionContract & { correctiveFeedback?: string[] } = {
+    id: slugify(section.name),
+    name: section.name,
+    goal: section.goal,
+    customerQuestionAnswered: "What should this regenerated section clarify for the visitor?",
+    requiredContent: ["preserve verified business facts", "improve the section using existing page strategy"],
+    visualTreatment: "Use the page design system and avoid dead utility classes.",
+    ctaRole: "Support the existing conversion path.",
+    mustAvoid: ["fake proof", "unsupported claims", "placeholder text", "Tailwind-only classes"],
     correctiveFeedback: parsed.data.feedback ? [parsed.data.feedback] : undefined,
   };
+  const pageContract = parsePageContract({
+    creativeContract: DEFAULT_CREATIVE_CONTRACT,
+    designSystem,
+    sections: plan.sections.map((planSection) => ({
+      id: slugify(planSection.name),
+      name: planSection.name,
+      goal: planSection.goal,
+      customerQuestionAnswered: "What should the visitor understand here?",
+      requiredContent: ["business-specific copy"],
+      visualTreatment: "Use the shared design system.",
+      ctaRole: "Support the page conversion path.",
+      mustAvoid: ["fake claims", "placeholder text", "dead utility classes"],
+    })),
+    globalCss: "",
+    metadataRules: [],
+    qaChecklist: [],
+  });
   const context = [
     parsed.data.feedback ? `User feedback: ${parsed.data.feedback}` : "",
     parsed.data.originalHtml ? `Original section HTML to improve, not copy blindly:\n${parsed.data.originalHtml.slice(0, 12000)}` : "",
   ].filter(Boolean).join("\n\n");
 
   try {
-    const prompt = buildSectionPrompt(sectionDef, plan, designTokens, context, archetype);
+    const prompt = buildSectionPrompt({
+      business: {
+        name: "Existing generated website",
+        description: plan.layoutPhilosophy,
+        targetAudience: plan.conversionFlow,
+        differentiators: plan.sections.map((item) => item.name),
+        brandPersonality: archetype?.tone,
+      },
+      cleanBusinessData: {
+        originalSectionHtml: parsed.data.originalHtml,
+        feedbackContext: context,
+      },
+      creativeContract: {
+        ...DEFAULT_CREATIVE_CONTRACT,
+        creativeThesis: {
+          ...DEFAULT_CREATIVE_CONTRACT.creativeThesis,
+          oneSentenceDirection: plan.visualThesis || plan.layoutPhilosophy,
+          brandMood: archetype?.tone || DEFAULT_CREATIVE_CONTRACT.creativeThesis.brandMood,
+        },
+      },
+      designSystem,
+      pageContract,
+      sectionContract,
+      correctiveFeedback: parsed.data.feedback ? [parsed.data.feedback] : undefined,
+    });
     const result = await generateSection(prompt);
     return NextResponse.json({
       html: result.html,

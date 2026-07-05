@@ -938,6 +938,7 @@ export function DemoWorkspace() {
           visualPreferences: designTokenPreferences,
           archetypeId: selectedArchetypeId || undefined,
           imageName: imageFile?.name || "",
+          sourceImageDataUrl: imageDataUrl,
           businessUnderstanding,
         }),
       });
@@ -1086,7 +1087,7 @@ export function DemoWorkspace() {
 
       return streamedResult;
     },
-    [businessUnderstanding, designTokenPreferences, generationMode, imageFile, isActiveGeneration, selectedArchetypeId, visualPrefs],
+    [businessUnderstanding, designTokenPreferences, generationMode, imageDataUrl, imageFile, isActiveGeneration, selectedArchetypeId, visualPrefs],
   );
 
   const requireGenerationReady = useCallback(() => {
