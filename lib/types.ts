@@ -88,6 +88,8 @@ export interface BusinessIntelligence {
     creativeContract?: unknown;
     designSystem?: unknown;
     pageContract?: unknown;
+    visualIdentity?: unknown;
+    archetypeReconciliation?: unknown;
     archetype?: {
       id: string;
       name: string;

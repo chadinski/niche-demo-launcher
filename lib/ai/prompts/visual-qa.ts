@@ -18,6 +18,8 @@ export function buildVisualQAPrompt(input: {
   pageContract: unknown;
   cleanBusinessData: unknown;
   premiumReferenceBrief?: unknown;
+  visualIdentity?: unknown;
+  archetypeReconciliation?: unknown;
 }): string {
   return `You are Seraphim's strict visual, code, and factual QA auditor.
 
@@ -56,12 +58,19 @@ ${JSON.stringify(input.designSystem, null, 2)}
 PAGE CONTRACT:
 ${JSON.stringify(input.pageContract, null, 2)}
 
+VISUAL IDENTITY PROFILE:
+${JSON.stringify(input.visualIdentity ?? {}, null, 2)}
+
+ARCHETYPE RECONCILIATION:
+${JSON.stringify(input.archetypeReconciliation ?? {}, null, 2)}
+
 LOCAL PREMIUM REFERENCE INTELLIGENCE:
 ${JSON.stringify(input.premiumReferenceBrief ?? {}, null, 2)}
 
 QA RULES:
 - Judge visual consistency.
 - Judge premium feel.
+- Judge brand specificity, emotional fit, niche appropriateness, visual memorability, identity preservation, screenshot/color/logo alignment, and archetype accuracy.
 - Compare the result against the Local Premium Reference Intelligence as a quality benchmark. Do not require copied layouts, but reject pages that are clearly less complete, less visually dense, or less compositionally intentional than the references.
 - Judge business specificity.
 - Judge factual safety.
@@ -73,11 +82,15 @@ QA RULES:
 - Check contact clarity and CTA clarity.
 - Check mobile responsiveness, no horizontal overflow, section rhythm, and varied layouts.
 - Reject shallow CSS, repeated generic section structures, weak first viewport composition, missing industry-specific visual moments, or pages that feel like prompt-written content wrapped in basic cards.
+- Reject "technically complete but boring" output. A page can have metadata, sections, responsive CSS, and CTAs but still fail because it feels generic, emotionally flat, or transferable to another business with minor text swaps.
+- If the page ignores extracted colors, logo mood, image energy, or archetype reconciliation, cap the score at 7.4 and return passed=false.
+- If the design uses #0f172a, #111827, Inter-only typography, blue-gray corporate surfaces, or generic SaaS spacing for an expressive niche without explicit fallback justification, cap the score at 7.2 and return passed=false.
+- If the assigned archetype is mismatched or the page feels like generic professional services for food, pet, beauty, wellness, home services, trades, boutique retail, hospitality, events, or automotive, cap the score at 7.0 and return passed=false.
 - Judge whether the page feels like a real business website, not an AI demo.
 - Judge whether the design follows the Creative Contract.
 - Judge whether the HTML follows the Design System Contract.
 - Reject generic wording such as "transform your business", "solutions for every need", "trusted by thousands", "award-winning", "best-in-class", "lorem ipsum", "placeholder", and "your image here".
-- Score 8.5 or above only when the page is premium, custom, factual, standalone, and CSS-reliable.
+- Score 8.5 or above only when the page is premium, custom, factual, standalone, CSS-reliable, emotionally right for the niche, visually memorable, and clearly aligned with the supplied visual identity.
 
 HTML:
 ${input.html.slice(0, 100000)}`;
