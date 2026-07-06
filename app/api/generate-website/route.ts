@@ -22,8 +22,15 @@ import {
   type SectionContract,
   type VisualQAResult,
 } from "@/lib/ai/site-contract-schema";
-import { getArchetypeById, getArchetypeForIndustry, type Archetype } from "@/lib/archetypes";
+import type { Archetype } from "@/lib/archetypes";
 import { buildDesignTokensFromArchetype, type DesignTokenPreferences, type DesignTokens } from "@/lib/design/tokens";
+import {
+  buildVisualIdentityProfile,
+  reconcileArchetype,
+  visualTokenOverrides,
+  type ArchetypeReconciliation,
+  type VisualIdentityProfile,
+} from "@/lib/generation/taste-profile";
 import { fetchDesignInspiration } from "@/lib/inspiration/firecrawl";
 import { getPremiumReferenceBrief } from "@/lib/reference/premium-reference-library";
 
@@ -145,6 +152,8 @@ type GenerationPlanResponse = {
     matchedSignals: string[];
   };
   premiumReferenceBrief?: PremiumReferenceBrief;
+  visualIdentity?: VisualIdentityProfile;
+  archetypeReconciliation?: ArchetypeReconciliation;
   qualityGate?: QualityGate;
   revisionCount?: number;
 };
@@ -611,23 +620,38 @@ function coerceVisualPreferences(value: unknown): DesignTokenPreferences {
 }
 
 function resolveArchetype(data: z.infer<typeof requestSchema>, cleanBusinessData: CleanBusinessData): Archetype {
-  const selected = data.archetypeId ? getArchetypeById(data.archetypeId) : undefined;
-  if (selected) return selected;
-
-  const industrySignals = unique([
-    cleanBusinessData.businessType,
-    data.info.category,
-    ...cleanBusinessData.services,
-    ...cleanBusinessData.products,
-    cleanBusinessData.visibleDescription,
-    cleanBusinessData.targetAudience,
-  ]);
-
-  return getArchetypeForIndustry(industrySignals.join(" "));
+  return resolveTasteLayer(data, cleanBusinessData).archetype;
 }
 
-function buildTokensForGeneration(archetype: Archetype, preferences: unknown): DesignTokens {
-  return buildDesignTokensFromArchetype(archetype, coerceVisualPreferences(preferences));
+function resolveTasteLayer(data: z.infer<typeof requestSchema>, cleanBusinessData: CleanBusinessData) {
+  const visualIdentity = buildVisualIdentityProfile(cleanBusinessData);
+  const { archetype, reconciliation } = reconcileArchetype({
+    cleanBusinessData,
+    visualIdentity,
+    selectedArchetypeId: data.archetypeId,
+  });
+
+  return { visualIdentity, archetype, reconciliation };
+}
+
+function buildTokensForGeneration(archetype: Archetype, preferences: unknown, visualIdentity?: VisualIdentityProfile): DesignTokens {
+  return buildDesignTokensFromArchetype(archetype, {
+    ...visualTokenOverrides(visualIdentity ?? {
+      extractedColors: [],
+      dominantAccents: [],
+      logoMood: "",
+      shapeLanguage: "",
+      typographyFeel: "",
+      brandTemperature: "neutral",
+      imageEnergy: "",
+      industryCues: [],
+      layoutImplications: [],
+      paletteRationale: "",
+      fallbackUsed: true,
+      warnings: [],
+    }),
+    ...coerceVisualPreferences(preferences),
+  });
 }
 
 function businessDataFromCleanData(cleanBusinessData: CleanBusinessData, structured?: BusinessData): BusinessData {
@@ -1003,6 +1027,8 @@ async function generateCreativeContract(input: {
   visualPreferences?: unknown;
   generationMode?: string;
   archetype: Archetype;
+  visualIdentity: VisualIdentityProfile;
+  archetypeReconciliation: ArchetypeReconciliation;
   generationId: string;
   premiumReferenceBrief: PremiumReferenceBrief;
 }) {
@@ -1037,6 +1063,8 @@ async function generateDesignSystemContract(input: {
   creativeContract: CreativeContract;
   tokens: DesignTokens;
   visualPreferences?: unknown;
+  visualIdentity: VisualIdentityProfile;
+  archetypeReconciliation: ArchetypeReconciliation;
   generationId: string;
   premiumReferenceBrief: PremiumReferenceBrief;
 }) {
@@ -1046,6 +1074,8 @@ async function generateDesignSystemContract(input: {
     designTokens: input.tokens,
     visualPreferences: input.visualPreferences,
     premiumReferenceBrief: input.premiumReferenceBrief,
+    visualIdentity: input.visualIdentity,
+    archetypeReconciliation: input.archetypeReconciliation,
   });
   const errors: string[] = [];
 
@@ -1122,6 +1152,8 @@ async function generatePageContract(input: {
   creativeContract: CreativeContract;
   designSystem: DesignSystemContract;
   websitePlan: WebsitePlan;
+  visualIdentity: VisualIdentityProfile;
+  archetypeReconciliation: ArchetypeReconciliation;
   generationId: string;
   premiumReferenceBrief: PremiumReferenceBrief;
 }) {
@@ -1198,6 +1230,8 @@ async function generateSectionHtmlFromPrompt(input: {
   previousSectionSummary?: string;
   nextSectionSummary?: string;
   archetype?: Archetype;
+  visualIdentity: VisualIdentityProfile;
+  archetypeReconciliation: ArchetypeReconciliation;
   correctiveFeedback?: string[];
   premiumReferenceBrief: PremiumReferenceBrief;
 }) {
@@ -1212,6 +1246,8 @@ async function generateSectionHtmlFromPrompt(input: {
     nextSectionSummary: input.nextSectionSummary,
     correctiveFeedback: input.correctiveFeedback,
     premiumReferenceBrief: input.premiumReferenceBrief,
+    visualIdentity: input.visualIdentity,
+    archetypeReconciliation: input.archetypeReconciliation,
   });
   const errors: string[] = [];
 
@@ -1684,6 +1720,8 @@ function heuristicVisualIssues(input: {
   cleanBusinessData: CleanBusinessData;
   designSystem: DesignSystemContract;
   pageContract: PageContract;
+  visualIdentity: VisualIdentityProfile;
+  archetypeReconciliation: ArchetypeReconciliation;
   premiumReferenceBrief?: PremiumReferenceBrief;
 }) {
   const issues: string[] = [];
@@ -1746,6 +1784,33 @@ function heuristicVisualIssues(input: {
   const emptyInteractiveControls = [
     ...input.html.matchAll(/<(?:a|button)\b[^>]*>\s*<\/(?:a|button)>/gi),
   ];
+  const expressiveCueText = input.visualIdentity.industryCues.join(" ").toLowerCase();
+  const expressiveNiche = /(food|hospitality|pet|automotive|home services|trades|beauty|salon|wellness|retail|boutique|creative)/i.test(expressiveCueText);
+  const usesCorporateDefaults = /#0f172a|#111827|#1e293b|#334155|#2b5e8c|blue-gray|slate/i.test(input.html) ||
+    /font-family:\s*(?:var\(--font-body\),?\s*)?Inter\b/i.test(cssText);
+  const extractedColorMisses = input.visualIdentity.extractedColors
+    .filter((color) => /^#[0-9a-f]{6}$/i.test(color))
+    .filter((color) => !input.html.toLowerCase().includes(color.toLowerCase()));
+  const visualWords = unique([
+    ...input.visualIdentity.dominantAccents,
+    input.visualIdentity.logoMood,
+    input.visualIdentity.imageEnergy,
+    ...input.visualIdentity.industryCues,
+  ]).join(" ").toLowerCase();
+  const weakNicheCopy = expressiveNiche && !visualWords
+    .split(/[^a-z]+/)
+    .filter((word) => word.length > 4)
+    .some((word) => visibleText.toLowerCase().includes(word));
+  const genericCorporateLanguage = /(transform your business|solutions for every need|elevate your brand|modern solutions|unlock growth|trusted partner|comprehensive services|tailored solutions|seamless experience|best-in-class)/i.test(visibleText);
+  const technicallyCompleteSignals = [
+    /<title>/i.test(input.html),
+    /meta\s+name=["']description/i.test(input.html),
+    sectionCount >= 6,
+    /@media/i.test(cssText),
+    /(href=["']tel:|href=["']mailto:|contact|call|message|whatsapp)/i.test(input.html),
+  ].filter(Boolean).length;
+  const technicallyCompleteButBoring = technicallyCompleteSignals >= 4 &&
+    (genericCorporateLanguage || usesCorporateDefaults && expressiveNiche || weakNicheCopy);
 
   if (!/<title>/i.test(input.html) || !/meta\s+name=["']description/i.test(input.html)) issues.push("Missing core SEO metadata.");
   if (!/<script[^>]+type=["']application\/ld\+json["']/i.test(input.html)) issues.push("Missing JSON-LD schema.");
@@ -1758,6 +1823,27 @@ function heuristicVisualIssues(input: {
   if (deadTailwindClasses.length) issues.push(`Dead Tailwind-style classes found without embedded CSS: ${unique(deadTailwindClasses).slice(0, 12).join(", ")}.`);
   if (unreliableImages.length) issues.push(`Unreliable or broken image sources found: ${unique(unreliableImages).slice(0, 6).join(", ")}.`);
   if (emptyInteractiveControls.length) issues.push("Empty anchor or button controls found.");
+  if (input.archetypeReconciliation.mismatch) {
+    issues.push(`Archetype mismatch corrected before generation: ${input.archetypeReconciliation.warnings.join(" ") || `${input.archetypeReconciliation.selectedArchetypeId} did not fit ${input.archetypeReconciliation.recommendedArchetypeId}`}`);
+  }
+  if (input.archetypeReconciliation.finalArchetypeId === "professional-services" && expressiveNiche) {
+    issues.push("Archetype mismatch risk: expressive local niche still resembles generic professional/business services.");
+  }
+  if (usesCorporateDefaults && expressiveNiche) {
+    issues.push("Corporate-default risk: page uses navy/blue-gray/Inter-style defaults for a niche that needs stronger visual identity.");
+  }
+  if (extractedColorMisses.length >= Math.min(2, input.visualIdentity.extractedColors.length)) {
+    issues.push(`Palette mismatch: extracted visual colors are not clearly carried into the final HTML (${extractedColorMisses.slice(0, 4).join(", ")}).`);
+  }
+  if (weakNicheCopy) {
+    issues.push("Weak niche cues: visible copy and visual language do not strongly reflect the extracted industry mood or image energy.");
+  }
+  if (!/(warm|flavor|fresh|care|comfort|finish|detail|repair|quick|local|island|home|pet|groom|shine|style|visit|book|call)/i.test(visibleText) && expressiveNiche) {
+    issues.push("Missing emotional hook: page does not make the niche-specific feeling obvious to the visitor.");
+  }
+  if (technicallyCompleteButBoring) {
+    issues.push("Technically complete but boring: the page has required structure but feels generic, emotionally flat, or transferable to another business.");
+  }
   if (/(five-star|5-star|award-winning|guaranteed|certified|\b(?!0\b)\d+ reviews\b|\b\d+\+ customers\b|trusted by thousands|best-in-class)/i.test(input.html)) {
     issues.push("Potential fabricated proof, generic hype, or unsupported metrics found.");
   }
@@ -1810,6 +1896,14 @@ function heuristicVisualIssues(input: {
       revisionInstruction: "Regenerate sections with richer design-system usage, varied compositions, responsive media treatment, hover/focus states, layered surfaces, and scoped CSS only where needed.",
     });
   }
+  if (technicallyCompleteButBoring || usesCorporateDefaults && expressiveNiche || weakNicheCopy) {
+    sectionIssues.push({
+      sectionId: input.pageContract.sections[0]?.id || "hero",
+      severity: "high",
+      issue: "The page is structurally complete but creatively generic for the extracted niche.",
+      revisionInstruction: `Regenerate the hero and strongest visual sections around this identity: ${input.visualIdentity.imageEnergy}; ${input.visualIdentity.paletteRationale}; ${input.visualIdentity.layoutImplications.join(" ")} Avoid generic corporate language and default navy/gray styling.`,
+    });
+  }
   if (emptyInteractiveControls.length) {
     sectionIssues.push({
       sectionId: input.pageContract.sections[0]?.id || "global",
@@ -1835,9 +1929,18 @@ function heuristicVisualIssues(input: {
 }
 
 function qaFromHeuristics(heuristic: ReturnType<typeof heuristicVisualIssues>): SectionQAResult {
+  const issueText = heuristic.issues.join(" ").toLowerCase();
+  const maxScore = issueText.includes("technically complete but boring")
+    ? 7.1
+    : issueText.includes("corporate-default risk") || issueText.includes("archetype mismatch")
+      ? 7.4
+      : issueText.includes("palette mismatch") || issueText.includes("weak niche cues") || issueText.includes("missing emotional hook")
+        ? 7.8
+        : 8.5;
+  const rawScore = heuristic.issues.length === 0 ? 8.7 : Math.max(4.5, 8 - heuristic.issues.length * 0.45);
   return {
     passed: heuristic.issues.length === 0,
-    score: heuristic.issues.length === 0 ? 8.5 : Math.max(4.5, 8 - heuristic.issues.length * 0.45),
+    score: Math.min(rawScore, maxScore),
     issues: heuristic.issues,
     sectionIssues: heuristic.sectionIssues,
     globalRevisionInstruction: heuristic.issues.length
@@ -1852,6 +1955,8 @@ async function runVisualQA(input: {
   designSystem: DesignSystemContract;
   pageContract: PageContract;
   cleanBusinessData: CleanBusinessData;
+  visualIdentity: VisualIdentityProfile;
+  archetypeReconciliation: ArchetypeReconciliation;
   premiumReferenceBrief: PremiumReferenceBrief;
 }) {
   const heuristic = heuristicVisualIssues(input);
@@ -1872,11 +1977,19 @@ async function runVisualQA(input: {
       if (usedHeuristicFallback) errors.push(`${route.provider}:${route.model}: Visual QA returned invalid JSON; heuristic QA was used.`);
       const issues = unique([...heuristic.issues, ...(usedHeuristicFallback ? [] : modelQa.issues)]);
       const sectionIssues = [...heuristic.sectionIssues, ...(usedHeuristicFallback ? [] : modelQa.sectionIssues)];
+      const issueText = issues.join(" ").toLowerCase();
+      const scoreCap = issueText.includes("technically complete but boring")
+        ? 7.1
+        : issueText.includes("corporate-default risk") || issueText.includes("archetype mismatch")
+          ? 7.4
+          : issueText.includes("palette mismatch") || issueText.includes("weak niche cues") || issueText.includes("missing emotional hook")
+            ? 7.8
+            : 8.2;
       return {
         qa: {
           ...modelQa,
           passed: (usedHeuristicFallback ? heuristicQa.passed : modelQa.passed) && issues.length === 0,
-          score: issues.length ? Math.min(modelQa.score || heuristicQa.score, 8.2) : (modelQa.score || heuristicQa.score),
+          score: issues.length ? Math.min(modelQa.score || heuristicQa.score, scoreCap) : (modelQa.score || heuristicQa.score),
           issues,
           sectionIssues,
           globalRevisionInstruction: usedHeuristicFallback
@@ -1943,6 +2056,8 @@ function buildGenerationPlanResponse(input: {
   pageContract?: PageContract;
   archetype?: Archetype;
   premiumReferenceBrief?: PremiumReferenceBrief;
+  visualIdentity?: VisualIdentityProfile;
+  archetypeReconciliation?: ArchetypeReconciliation;
   qualityGate?: QualityGate;
   revisionCount?: number;
 }): GenerationPlanResponse {
@@ -1969,6 +2084,8 @@ function buildGenerationPlanResponse(input: {
       matchedSignals: input.industryBrief.matchedSignals,
     },
     premiumReferenceBrief: input.premiumReferenceBrief,
+    visualIdentity: input.visualIdentity,
+    archetypeReconciliation: input.archetypeReconciliation,
     qualityGate: input.qualityGate,
     revisionCount: input.revisionCount,
   };
@@ -1993,6 +2110,8 @@ function buildGenerationResponse(input: {
     pageContract: input.pipeline.pageContract,
     archetype: input.pipeline.archetype,
     premiumReferenceBrief: input.pipeline.premiumReferenceBrief,
+    visualIdentity: input.pipeline.visualIdentity,
+    archetypeReconciliation: input.pipeline.archetypeReconciliation,
     qualityGate,
     revisionCount: input.pipeline.revisionCount,
   });
@@ -2006,6 +2125,8 @@ function buildGenerationResponse(input: {
     plan: input.pipeline.plan,
     qa: input.pipeline.qa,
     designTokens: input.pipeline.tokens,
+    visualIdentity: input.pipeline.visualIdentity,
+    archetypeReconciliation: input.pipeline.archetypeReconciliation,
     modelMetadata,
     pipelineModelMetadata: input.pipelineMetadata,
     cleanedBusinessData: input.cleanBusinessData,
@@ -2031,8 +2152,8 @@ async function runSectionGenerationPipeline(input: {
   industryBrief: SeraphimIndustryBrief;
   generationId: string;
 }) {
-  const archetype = resolveArchetype(input.data, input.cleanBusinessData);
-  const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences);
+  const { visualIdentity, archetype, reconciliation } = resolveTasteLayer(input.data, input.cleanBusinessData);
+  const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences, visualIdentity);
   const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
   const premiumReferenceBrief = getPremiumReferenceBrief(input.cleanBusinessData.businessType);
   const creativeResult = await generateCreativeContract({
@@ -2041,6 +2162,8 @@ async function runSectionGenerationPipeline(input: {
     visualPreferences: input.data.visualPreferences,
     generationMode: input.data.generationMode,
     archetype,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
   });
@@ -2048,6 +2171,8 @@ async function runSectionGenerationPipeline(input: {
     creativeContract: creativeResult.creativeContract,
     tokens,
     visualPreferences: input.data.visualPreferences,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
   });
@@ -2066,6 +2191,8 @@ async function runSectionGenerationPipeline(input: {
     creativeContract: creativeResult.creativeContract,
     designSystem: designSystemResult.designSystem,
     websitePlan: planResult.plan,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
   });
@@ -2098,6 +2225,8 @@ async function runSectionGenerationPipeline(input: {
       previousSectionSummary: index > 0 ? internalSectionSummary(sectionContracts[index - 1]) : "",
       nextSectionSummary: index < sectionContracts.length - 1 ? internalSectionSummary(sectionContracts[index + 1]) : "",
       archetype,
+      visualIdentity,
+      archetypeReconciliation: reconciliation,
       premiumReferenceBrief,
     });
     sectionResults.set(section.id, result.html);
@@ -2120,6 +2249,8 @@ async function runSectionGenerationPipeline(input: {
     designSystem: designSystemResult.designSystem,
     pageContract,
     cleanBusinessData: input.cleanBusinessData,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     premiumReferenceBrief,
   });
   metadata.push(qaResult.metadata);
@@ -2146,6 +2277,8 @@ async function runSectionGenerationPipeline(input: {
         previousSectionSummary: sectionIndex > 0 ? internalSectionSummary(sectionContracts[sectionIndex - 1]) : "",
         nextSectionSummary: sectionIndex < sectionContracts.length - 1 ? internalSectionSummary(sectionContracts[sectionIndex + 1]) : "",
         archetype,
+        visualIdentity,
+        archetypeReconciliation: reconciliation,
         correctiveFeedback: unique([
           ...qaResult.qa.issues,
           qaResult.qa.globalRevisionInstruction,
@@ -2172,6 +2305,8 @@ async function runSectionGenerationPipeline(input: {
       designSystem: designSystemResult.designSystem,
       pageContract,
       cleanBusinessData: input.cleanBusinessData,
+      visualIdentity,
+      archetypeReconciliation: reconciliation,
       premiumReferenceBrief,
     });
     metadata.push({ ...qaResult.metadata, stage: `visual-qa:retry-${revisionCount}` });
@@ -2189,6 +2324,8 @@ async function runSectionGenerationPipeline(input: {
     business,
     tokens,
     archetype,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     inspiration,
     premiumReferenceBrief,
   };
@@ -2201,8 +2338,8 @@ async function streamSectionGenerationPipeline(input: {
   generationId: string;
   send: (event: Record<string, unknown>) => void;
 }) {
-  const archetype = resolveArchetype(input.data, input.cleanBusinessData);
-  const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences);
+  const { visualIdentity, archetype, reconciliation } = resolveTasteLayer(input.data, input.cleanBusinessData);
+  const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences, visualIdentity);
   const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
   const premiumReferenceBrief = getPremiumReferenceBrief(input.cleanBusinessData.businessType);
   const creativeResult = await generateCreativeContract({
@@ -2211,6 +2348,8 @@ async function streamSectionGenerationPipeline(input: {
     visualPreferences: input.data.visualPreferences,
     generationMode: input.data.generationMode,
     archetype,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
   });
@@ -2218,6 +2357,8 @@ async function streamSectionGenerationPipeline(input: {
     creativeContract: creativeResult.creativeContract,
     tokens,
     visualPreferences: input.data.visualPreferences,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
   });
@@ -2226,12 +2367,16 @@ async function streamSectionGenerationPipeline(input: {
     type: "creative-contract",
     creativeContract: creativeResult.creativeContract,
     modelMetadata: creativeResult.metadata,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
   });
   input.send({
     type: "design-system",
     designSystem: designSystemResult.designSystem,
     designTokens: tokens,
     modelMetadata: designSystemResult.metadata,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
   });
   const planResult = await generateWebsitePlanFromPrompt(
     business,
@@ -2247,6 +2392,8 @@ async function streamSectionGenerationPipeline(input: {
     creativeContract: creativeResult.creativeContract,
     designSystem: designSystemResult.designSystem,
     websitePlan: planResult.plan,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
   });
@@ -2273,6 +2420,8 @@ async function streamSectionGenerationPipeline(input: {
     pageContract,
     archetype,
     premiumReferenceBrief,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
   });
 
   input.send({
@@ -2283,6 +2432,8 @@ async function streamSectionGenerationPipeline(input: {
     creativeContract: creativeResult.creativeContract,
     designSystem: designSystemResult.designSystem,
     premiumReferenceBrief,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     archetype: {
       id: archetype.id,
       name: archetype.name,
@@ -2311,6 +2462,8 @@ async function streamSectionGenerationPipeline(input: {
       previousSectionSummary: index > 0 ? internalSectionSummary(sectionContracts[index - 1]) : "",
       nextSectionSummary: index < sectionContracts.length - 1 ? internalSectionSummary(sectionContracts[index + 1]) : "",
       archetype,
+      visualIdentity,
+      archetypeReconciliation: reconciliation,
       premiumReferenceBrief,
     });
     sectionResults.set(section.id, result.html);
@@ -2341,6 +2494,8 @@ async function streamSectionGenerationPipeline(input: {
     designSystem: designSystemResult.designSystem,
     pageContract,
     cleanBusinessData: input.cleanBusinessData,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     premiumReferenceBrief,
   });
   metadata.push(qaResult.metadata);
@@ -2373,6 +2528,8 @@ async function streamSectionGenerationPipeline(input: {
         previousSectionSummary: index > 0 ? internalSectionSummary(sectionContracts[index - 1]) : "",
         nextSectionSummary: index < sectionContracts.length - 1 ? internalSectionSummary(sectionContracts[index + 1]) : "",
         archetype,
+        visualIdentity,
+        archetypeReconciliation: reconciliation,
         correctiveFeedback: unique([
           ...qaResult.qa.issues,
           qaResult.qa.globalRevisionInstruction,
@@ -2408,6 +2565,8 @@ async function streamSectionGenerationPipeline(input: {
       designSystem: designSystemResult.designSystem,
       pageContract,
       cleanBusinessData: input.cleanBusinessData,
+      visualIdentity,
+      archetypeReconciliation: reconciliation,
       premiumReferenceBrief,
     });
     metadata.push({ ...qaResult.metadata, stage: `visual-qa:retry-${revisionCount}` });
@@ -2432,6 +2591,8 @@ async function streamSectionGenerationPipeline(input: {
     business,
     tokens,
     archetype,
+    visualIdentity,
+    archetypeReconciliation: reconciliation,
     inspiration,
     premiumReferenceBrief,
   };
@@ -2480,6 +2641,13 @@ export async function POST(request: Request) {
           safeDebug(generationId, "archetype", {
             requested: normalizedData.archetypeId || "auto",
             selected: resolveArchetype(normalizedData, cleanBusinessData).id,
+          });
+          const streamTaste = resolveTasteLayer(normalizedData, cleanBusinessData);
+          safeDebug(generationId, "taste-layer", {
+            visualMood: streamTaste.visualIdentity.imageEnergy,
+            colors: streamTaste.visualIdentity.extractedColors,
+            finalArchetype: streamTaste.reconciliation.finalArchetypeId,
+            warnings: [...streamTaste.visualIdentity.warnings, ...streamTaste.reconciliation.warnings],
           });
 
           const pipeline = await streamSectionGenerationPipeline({
@@ -2541,6 +2709,13 @@ export async function POST(request: Request) {
     safeDebug(generationId, "archetype", {
       requested: normalizedData.archetypeId || "auto",
       selected: resolveArchetype(normalizedData, cleanBusinessData).id,
+    });
+    const taste = resolveTasteLayer(normalizedData, cleanBusinessData);
+    safeDebug(generationId, "taste-layer", {
+      visualMood: taste.visualIdentity.imageEnergy,
+      colors: taste.visualIdentity.extractedColors,
+      finalArchetype: taste.reconciliation.finalArchetypeId,
+      warnings: [...taste.visualIdentity.warnings, ...taste.reconciliation.warnings],
     });
 
     const pipeline = await runSectionGenerationPipeline({

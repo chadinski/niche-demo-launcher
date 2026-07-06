@@ -34,6 +34,8 @@ export function buildSectionPrompt(input: {
   nextSectionSummary?: string;
   correctiveFeedback?: string[];
   premiumReferenceBrief?: unknown;
+  visualIdentity?: unknown;
+  archetypeReconciliation?: unknown;
 }): string {
   return `You are Seraphim Generator's elite section designer, conversion copywriter, and frontend engineer.
 
@@ -56,6 +58,12 @@ ${JSON.stringify(input.pageContract, null, 2)}
 
 LOCAL PREMIUM REFERENCE INTELLIGENCE:
 ${JSON.stringify(input.premiumReferenceBrief ?? {}, null, 2)}
+
+VISUAL IDENTITY PROFILE:
+${JSON.stringify(input.visualIdentity ?? {}, null, 2)}
+
+ARCHETYPE RECONCILIATION:
+${JSON.stringify(input.archetypeReconciliation ?? {}, null, 2)}
 
 CURRENT SECTION CONTRACT:
 ${JSON.stringify(input.sectionContract, null, 2)}
@@ -89,6 +97,8 @@ SECTION RULES:
 - Use factual, business-specific copy.
 - The section must visually obey the Creative Contract.
 - The section must serve the Page Contract.
+- The section must preserve the Visual Identity Profile: extracted colors, logo mood, shape language, typography feel, image energy, and niche cues should show up in composition, copy rhythm, media treatment, and class choices.
+- If the Visual Identity Profile warns about corporate-default risk, do not use bland navy/gray business language, Inter-only corporate tone, centered generic headings, or interchangeable service cards.
 - The section must respect the Local Premium Reference Intelligence as a quality floor for composition, visual depth, media treatment, interaction polish, and responsiveness. Do not copy reference code, copy, exact layouts, branded artwork, or complete compositions.
 - Add a distinct visual/compositional idea to this section when appropriate. Avoid plain text blocks and generic equal-card grids unless the section contract specifically calls for them.
 - Treat section goals, customer questions, visual treatments, ctaRole values, mustAvoid items, page contract notes, and QA language as INTERNAL INSTRUCTIONS ONLY.
