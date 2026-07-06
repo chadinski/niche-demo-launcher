@@ -90,6 +90,7 @@ export interface BusinessIntelligence {
     pageContract?: unknown;
     visualIdentity?: unknown;
     archetypeReconciliation?: unknown;
+    visualMotifs?: unknown;
     archetype?: {
       id: string;
       name: string;

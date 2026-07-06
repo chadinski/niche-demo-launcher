@@ -31,6 +31,10 @@ import {
   type ArchetypeReconciliation,
   type VisualIdentityProfile,
 } from "@/lib/generation/taste-profile";
+import {
+  recommendPremiumVisualMotifs,
+  type PremiumVisualMotifRecommendation,
+} from "@/lib/generation/visual-motifs";
 import { fetchDesignInspiration } from "@/lib/inspiration/firecrawl";
 import { getPremiumReferenceBrief } from "@/lib/reference/premium-reference-library";
 
@@ -154,6 +158,7 @@ type GenerationPlanResponse = {
   premiumReferenceBrief?: PremiumReferenceBrief;
   visualIdentity?: VisualIdentityProfile;
   archetypeReconciliation?: ArchetypeReconciliation;
+  visualMotifs?: PremiumVisualMotifRecommendation;
   qualityGate?: QualityGate;
   revisionCount?: number;
 };
@@ -634,6 +639,14 @@ function resolveTasteLayer(data: z.infer<typeof requestSchema>, cleanBusinessDat
   return { visualIdentity, archetype, reconciliation };
 }
 
+function resolveVisualMotifs(input: {
+  cleanBusinessData: CleanBusinessData;
+  archetype: Archetype;
+  visualIdentity: VisualIdentityProfile;
+}) {
+  return recommendPremiumVisualMotifs(input);
+}
+
 function buildTokensForGeneration(archetype: Archetype, preferences: unknown, visualIdentity?: VisualIdentityProfile): DesignTokens {
   return buildDesignTokensFromArchetype(archetype, {
     ...visualTokenOverrides(visualIdentity ?? {
@@ -1031,6 +1044,7 @@ async function generateCreativeContract(input: {
   archetypeReconciliation: ArchetypeReconciliation;
   generationId: string;
   premiumReferenceBrief: PremiumReferenceBrief;
+  visualMotifs: PremiumVisualMotifRecommendation;
 }) {
   const fallback = fallbackCreativeContract(input.cleanBusinessData, input.industryBrief, input.archetype);
   const prompt = buildCreativeDirectorPrompt(input);
@@ -1067,6 +1081,7 @@ async function generateDesignSystemContract(input: {
   archetypeReconciliation: ArchetypeReconciliation;
   generationId: string;
   premiumReferenceBrief: PremiumReferenceBrief;
+  visualMotifs: PremiumVisualMotifRecommendation;
 }) {
   const fallback = fallbackDesignSystemContract(input.tokens);
   const prompt = buildDesignSystemPrompt({
@@ -1076,6 +1091,7 @@ async function generateDesignSystemContract(input: {
     premiumReferenceBrief: input.premiumReferenceBrief,
     visualIdentity: input.visualIdentity,
     archetypeReconciliation: input.archetypeReconciliation,
+    visualMotifs: input.visualMotifs,
   });
   const errors: string[] = [];
 
@@ -1111,6 +1127,7 @@ async function generateWebsitePlanFromPrompt(
   creativeContract?: CreativeContract,
   designSystem?: DesignSystemContract,
   premiumReferenceBrief?: PremiumReferenceBrief,
+  visualMotifs?: PremiumVisualMotifRecommendation,
 ) {
   const fallback = fallbackWebsitePlan(business, tokens, archetype);
   const prompt = [
@@ -1121,7 +1138,10 @@ async function generateWebsitePlanFromPrompt(
     JSON.stringify(creativeContract ?? {}, null, 2),
     "DESIGN SYSTEM CONTRACT:",
     JSON.stringify(designSystem ?? {}, null, 2),
+    "PREMIUM VISUAL MOTIF LIBRARY RECOMMENDATION:",
+    JSON.stringify(visualMotifs ?? {}, null, 2),
     "The website plan must obey the Creative Contract and should use section names that can map to the Page Contract.",
+    "The website plan should assign reusable motif primitives to appropriate sections without becoming a fixed template.",
   ].join("\n\n");
   const errors: string[] = [];
 
@@ -1156,6 +1176,7 @@ async function generatePageContract(input: {
   archetypeReconciliation: ArchetypeReconciliation;
   generationId: string;
   premiumReferenceBrief: PremiumReferenceBrief;
+  visualMotifs: PremiumVisualMotifRecommendation;
 }) {
   const fallback = fallbackPageContract(input.creativeContract, input.designSystem, input.websitePlan);
   const prompt = buildPageContractPrompt(input);
@@ -1234,6 +1255,7 @@ async function generateSectionHtmlFromPrompt(input: {
   archetypeReconciliation: ArchetypeReconciliation;
   correctiveFeedback?: string[];
   premiumReferenceBrief: PremiumReferenceBrief;
+  visualMotifs: PremiumVisualMotifRecommendation;
 }) {
   const prompt = buildSectionPrompt({
     business: input.business,
@@ -1248,6 +1270,7 @@ async function generateSectionHtmlFromPrompt(input: {
     premiumReferenceBrief: input.premiumReferenceBrief,
     visualIdentity: input.visualIdentity,
     archetypeReconciliation: input.archetypeReconciliation,
+    visualMotifs: input.visualMotifs,
   });
   const errors: string[] = [];
 
@@ -1405,6 +1428,15 @@ function buildReferenceQualityCss() {
   background-size:72px 72px;mask-image:linear-gradient(to bottom,black,transparent 72%);opacity:.38;}
 .seraphim-editorial-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:clamp(1.25rem,3vw,3.5rem);align-items:center;}
 .seraphim-editorial-grid[data-align="start"]{align-items:start;}
+.seraphim-hero-editorial,.seraphim-hero-cinematic,.seraphim-hero-montage{position:relative;isolation:isolate;display:grid;gap:clamp(1.25rem,3vw,3.5rem);align-items:center;min-height:min(760px,calc(100svh - 5rem));padding-block:clamp(3.5rem,7vw,7rem);}
+.seraphim-hero-editorial{grid-template-columns:minmax(0,1fr);}
+.seraphim-hero-copy{display:grid;gap:clamp(.8rem,1.4vw,1.2rem);max-width:68ch;z-index:2;}
+.seraphim-hero-visual{position:relative;min-height:clamp(18rem,38vw,34rem);border-radius:clamp(1.2rem,3vw,2.3rem);overflow:hidden;background:var(--seraphim-gradient-hero);box-shadow:0 28px 86px rgb(15 23 42 / .16);}
+.seraphim-hero-cinematic{overflow:hidden;border-radius:0;background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-primary) 18%,var(--seraphim-bg)),var(--seraphim-bg));}
+.seraphim-hero-cinematic .seraphim-hero-media,.seraphim-hero-montage .seraphim-hero-media{min-height:clamp(20rem,42vw,40rem);}
+.seraphim-hero-overlay{position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgb(0 0 0 / .44),transparent 68%);}
+.seraphim-hero-montage{grid-template-columns:minmax(0,1fr);}
+.seraphim-montage-tile{position:relative;overflow:hidden;min-height:11rem;border-radius:var(--seraphim-radius-xl);border:1px solid color-mix(in srgb,var(--seraphim-border) 82%,transparent);background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-primary) 14%,white),color-mix(in srgb,var(--seraphim-secondary) 14%,white));box-shadow:0 18px 58px rgb(15 23 42 / .08);}
 .seraphim-copy-stack{display:grid;gap:clamp(.8rem,1.4vw,1.25rem);max-width:68ch;}
 .seraphim-copy-stack>*,.seraphim-card>*{margin-block:0;}
 .seraphim-kicker{display:inline-flex;width:max-content;align-items:center;gap:.5rem;border:1px solid color-mix(in srgb,var(--seraphim-primary) 25%,transparent);border-radius:999px;padding:.42rem .72rem;background:color-mix(in srgb,var(--seraphim-primary) 9%,white);color:var(--seraphim-primary);font-size:.72rem;font-weight:850;letter-spacing:.12em;text-transform:uppercase;}
@@ -1422,6 +1454,53 @@ function buildReferenceQualityCss() {
 .seraphim-media-label{position:absolute;left:clamp(1rem,3vw,2rem);right:clamp(1rem,3vw,2rem);bottom:clamp(1rem,3vw,2rem);z-index:2;color:white;display:grid;gap:.45rem;}
 .seraphim-media-label strong{font-family:var(--seraphim-heading-font);font-size:clamp(1.2rem,2.6vw,2.1rem);line-height:1;letter-spacing:-.04em;}
 .seraphim-media-label span{max-width:42ch;color:rgb(255 255 255 / .78);}
+.seraphim-divider-wave{position:relative;width:100%;height:clamp(2.5rem,6vw,5rem);overflow:hidden;color:var(--seraphim-secondary);}
+.seraphim-divider-wave svg{display:block;width:100%;height:100%;fill:currentColor;}
+.seraphim-divider-angle{width:100%;height:clamp(2rem,5vw,4rem);background:linear-gradient(135deg,var(--seraphim-primary),var(--seraphim-accent));clip-path:polygon(0 28%,100% 0,100% 100%,0 72%);}
+.seraphim-texture-grain,.seraphim-texture-blueprint,.seraphim-bg-paper-grain,.seraphim-bg-noise-fine,.seraphim-bg-radial-light,.seraphim-bg-warm-local,.seraphim-bg-auto-dark,.seraphim-bg-blueprint-grid,.seraphim-bg-pet-soft,.seraphim-bg-beauty-pearl,.seraphim-bg-wellness-contour,.seraphim-bg-retail-fabric,.seraphim-bg-travel-map,.seraphim-bg-tech-nodes,.seraphim-bg-document-wash{position:relative;isolation:isolate;overflow:hidden;}
+.seraphim-texture-grain::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 16% 18%,color-mix(in srgb,var(--seraphim-secondary) 24%,transparent),transparent 18rem),radial-gradient(circle at 84% 12%,color-mix(in srgb,var(--seraphim-primary) 14%,transparent),transparent 22rem),repeating-radial-gradient(circle at 0 0,rgb(15 23 42 / .055) 0 1px,transparent 1px 5px);opacity:.58;}
+.seraphim-texture-blueprint::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(color-mix(in srgb,var(--seraphim-primary) 14%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--seraphim-primary) 14%,transparent) 1px,transparent 1px);background-size:48px 48px;mask-image:linear-gradient(to bottom,black,transparent 82%);}
+.seraphim-bg-paper-grain{background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-secondary) 10%,#fffaf0),color-mix(in srgb,var(--seraphim-bg) 90%,white));}
+.seraphim-bg-paper-grain::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 18% 18%,rgb(255 255 255 / .42),transparent 18rem),repeating-radial-gradient(circle at 0 0,rgb(120 72 24 / .055) 0 1px,transparent 1px 5px),repeating-linear-gradient(115deg,rgb(120 72 24 / .035) 0 1px,transparent 1px 9px);opacity:.66;}
+.seraphim-bg-noise-fine::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:repeating-radial-gradient(circle at 12% 18%,rgb(15 23 42 / .05) 0 1px,transparent 1px 4px),repeating-radial-gradient(circle at 78% 66%,rgb(255 255 255 / .06) 0 1px,transparent 1px 6px);opacity:.48;}
+.seraphim-bg-radial-light{background:radial-gradient(circle at 18% 12%,color-mix(in srgb,var(--seraphim-secondary) 28%,transparent),transparent 28rem),radial-gradient(circle at 88% 18%,color-mix(in srgb,var(--seraphim-primary) 22%,transparent),transparent 34rem),linear-gradient(135deg,color-mix(in srgb,var(--seraphim-bg) 90%,white),var(--seraphim-bg));}
+.seraphim-bg-radial-light::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 50% 0,rgb(255 255 255 / .52),transparent 24rem);opacity:.54;}
+.seraphim-bg-warm-local{background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-secondary) 16%,#fff7ed),color-mix(in srgb,var(--seraphim-primary) 7%,#fffaf0));}
+.seraphim-bg-warm-local::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 12% 18%,color-mix(in srgb,var(--seraphim-accent) 18%,transparent),transparent 18rem),radial-gradient(circle at 88% 72%,color-mix(in srgb,var(--seraphim-secondary) 20%,transparent),transparent 20rem),repeating-radial-gradient(circle at 0 0,rgb(92 48 12 / .05) 0 1px,transparent 1px 6px);}
+.seraphim-bg-auto-dark{background:radial-gradient(circle at 18% 8%,color-mix(in srgb,var(--seraphim-primary) 38%,transparent),transparent 26rem),radial-gradient(circle at 82% 18%,color-mix(in srgb,var(--seraphim-accent) 24%,transparent),transparent 30rem),linear-gradient(135deg,#020617,#0b1220 44%,#111827);color:white;}
+.seraphim-bg-auto-dark::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(112deg,transparent 0 38%,rgb(255 255 255 / .16) 39%,transparent 45%),repeating-linear-gradient(105deg,transparent 0 22px,rgb(255 255 255 / .045) 23px 24px,transparent 25px 50px);opacity:.86;}
+.seraphim-bg-auto-dark :where(h1,h2,h3,p,.seraphim-body-text){color:inherit;}
+.seraphim-bg-blueprint-grid{background:linear-gradient(180deg,color-mix(in srgb,var(--seraphim-bg) 88%,white),var(--seraphim-surface));}
+.seraphim-bg-blueprint-grid::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(color-mix(in srgb,var(--seraphim-primary) 16%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--seraphim-primary) 16%,transparent) 1px,transparent 1px),radial-gradient(circle at 18% 16%,color-mix(in srgb,var(--seraphim-accent) 12%,transparent),transparent 18rem);background-size:52px 52px,52px 52px,auto;mask-image:linear-gradient(to bottom,black,transparent 88%);}
+.seraphim-bg-pet-soft{background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-secondary) 18%,#fff),color-mix(in srgb,var(--seraphim-primary) 8%,#f8fbff));}
+.seraphim-bg-pet-soft::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(circle at 14% 22%,color-mix(in srgb,var(--seraphim-accent) 18%,transparent),transparent 12rem),radial-gradient(circle at 84% 18%,color-mix(in srgb,var(--seraphim-primary) 14%,transparent),transparent 14rem),repeating-radial-gradient(circle at 0 0,color-mix(in srgb,var(--seraphim-primary) 16%,transparent) 0 2px,transparent 2px 18px);opacity:.7;}
+.seraphim-bg-beauty-pearl{background:radial-gradient(circle at 18% 8%,color-mix(in srgb,var(--seraphim-secondary) 30%,white),transparent 24rem),linear-gradient(135deg,#fff7fb,color-mix(in srgb,var(--seraphim-accent) 8%,#fff),#fffdf7);}
+.seraphim-bg-beauty-pearl::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(115deg,transparent 0 36%,rgb(255 255 255 / .72) 44%,transparent 54%),radial-gradient(circle at 82% 72%,color-mix(in srgb,var(--seraphim-primary) 10%,transparent),transparent 18rem);opacity:.72;}
+.seraphim-bg-wellness-contour{background:linear-gradient(145deg,color-mix(in srgb,var(--seraphim-primary) 7%,#f8fffb),color-mix(in srgb,var(--seraphim-secondary) 7%,#f8fbff));}
+.seraphim-bg-wellness-contour::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:repeating-radial-gradient(ellipse at 20% 24%,color-mix(in srgb,var(--seraphim-primary) 12%,transparent) 0 1px,transparent 1px 22px),radial-gradient(circle at 88% 20%,color-mix(in srgb,var(--seraphim-secondary) 14%,transparent),transparent 18rem);opacity:.42;}
+.seraphim-bg-retail-fabric{background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-secondary) 8%,#fff),color-mix(in srgb,var(--seraphim-bg) 94%,white));}
+.seraphim-bg-retail-fabric::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:repeating-linear-gradient(45deg,rgb(15 23 42 / .035) 0 1px,transparent 1px 7px),repeating-linear-gradient(-45deg,rgb(15 23 42 / .025) 0 1px,transparent 1px 9px);opacity:.62;}
+.seraphim-bg-travel-map{background:radial-gradient(circle at 18% 12%,color-mix(in srgb,var(--seraphim-secondary) 34%,transparent),transparent 24rem),linear-gradient(135deg,#fff8ed,color-mix(in srgb,var(--seraphim-primary) 8%,#f7fbff));}
+.seraphim-bg-travel-map::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(34deg,transparent 0 45%,color-mix(in srgb,var(--seraphim-primary) 20%,transparent) 46% 47%,transparent 48%),linear-gradient(112deg,transparent 0 60%,color-mix(in srgb,var(--seraphim-accent) 15%,transparent) 61% 62%,transparent 63%);opacity:.62;}
+.seraphim-bg-tech-nodes{background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-neutral) 94%,#020617),#020617);color:white;}
+.seraphim-bg-tech-nodes::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background-image:linear-gradient(rgb(255 255 255 / .075) 1px,transparent 1px),linear-gradient(90deg,rgb(255 255 255 / .075) 1px,transparent 1px),radial-gradient(circle,rgb(255 255 255 / .22) 0 1px,transparent 2px);background-size:54px 54px,54px 54px,108px 108px;opacity:.58;}
+.seraphim-bg-tech-nodes :where(h1,h2,h3,p,.seraphim-body-text){color:inherit;}
+.seraphim-bg-document-wash{background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-bg) 92%,white),#fff);}
+.seraphim-bg-document-wash::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;background:repeating-linear-gradient(180deg,transparent 0 30px,color-mix(in srgb,var(--seraphim-border) 38%,transparent) 31px 32px),radial-gradient(circle at 82% 18%,color-mix(in srgb,var(--seraphim-primary) 8%,transparent),transparent 22rem);opacity:.55;}
+.seraphim-fact-badge{display:inline-flex;align-items:center;gap:.45rem;min-height:34px;width:max-content;max-width:100%;border:1px solid color-mix(in srgb,var(--seraphim-primary) 24%,transparent);border-radius:999px;padding:.42rem .72rem;background:color-mix(in srgb,var(--seraphim-primary) 8%,white);color:var(--seraphim-primary);font-size:.84rem;font-weight:850;line-height:1.15;}
+.seraphim-frame-offset{position:relative;border-radius:var(--seraphim-radius-xl);overflow:hidden;box-shadow:0 26px 80px rgb(15 23 42 / .14);}
+.seraphim-frame-offset::after{content:"";position:absolute;inset:.75rem -.75rem -.75rem .75rem;z-index:-1;border:1px solid color-mix(in srgb,var(--seraphim-accent) 55%,transparent);border-radius:inherit;}
+.seraphim-frame-utility{position:relative;border:1px solid color-mix(in srgb,var(--seraphim-primary) 32%,var(--seraphim-border));border-radius:var(--seraphim-radius-lg);background:linear-gradient(180deg,var(--seraphim-surface),color-mix(in srgb,var(--seraphim-bg) 78%,white));padding:clamp(1rem,2.4vw,1.75rem);box-shadow:0 18px 54px rgb(15 23 42 / .1);}
+.seraphim-frame-utility::before{content:"";position:absolute;inset:0 auto auto 0;width:4.5rem;height:4px;background:linear-gradient(90deg,var(--seraphim-primary),var(--seraphim-accent));border-radius:999px;}
+.seraphim-icon-mark{display:inline-grid;place-items:center;flex:0 0 auto;width:2.55rem;aspect-ratio:1;border-radius:calc(var(--seraphim-radius-lg) * .8);background:color-mix(in srgb,var(--seraphim-primary) 10%,white);color:var(--seraphim-primary);border:1px solid color-mix(in srgb,var(--seraphim-primary) 18%,transparent);}
+.seraphim-icon-mark svg{width:1.15rem;height:1.15rem;stroke:currentColor;stroke-width:2;fill:none;}
+.seraphim-cta-band{position:relative;overflow:hidden;border-radius:clamp(1.5rem,4vw,3rem);padding:clamp(1.35rem,4vw,3.5rem);background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-primary) 94%,#020617),color-mix(in srgb,var(--seraphim-accent) 60%,#020617));color:white;box-shadow:0 30px 90px rgb(2 6 23 / .24);}
+.seraphim-cta-band::before{content:"";position:absolute;inset:-30% auto auto 48%;width:46%;aspect-ratio:1;border-radius:999px;background:rgb(255 255 255 / .15);filter:blur(2px);}
+.seraphim-cta-band :where(h2,h3,p){color:inherit;}
+.seraphim-cta-band p{color:rgb(255 255 255 / .78);}
+.seraphim-mask-arch{overflow:hidden;border-radius:999px 999px var(--seraphim-radius-xl) var(--seraphim-radius-xl);aspect-ratio:4/5;}
+.seraphim-mask-diagonal{overflow:hidden;border-radius:var(--seraphim-radius-xl);clip-path:polygon(7% 0,100% 0,93% 100%,0 100%);}
+.seraphim-mask-arch img,.seraphim-mask-diagonal img{width:100%;height:100%;object-fit:cover;}
 .seraphim-proof-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;padding:clamp(.85rem,1.8vw,1.15rem);border:1px solid color-mix(in srgb,var(--seraphim-border) 82%,transparent);border-radius:var(--seraphim-radius-xl);background:color-mix(in srgb,var(--seraphim-surface) 86%,transparent);box-shadow:0 16px 50px rgb(15 23 42 / .08);}
 .seraphim-proof-item{display:grid;gap:.2rem;padding:.9rem;border-radius:var(--seraphim-radius-lg);background:linear-gradient(180deg,color-mix(in srgb,var(--seraphim-bg) 84%,white),color-mix(in srgb,var(--seraphim-bg) 96%,white));}
 .seraphim-proof-item strong{font-family:var(--seraphim-heading-font);font-size:clamp(1rem,1.5vw,1.25rem);letter-spacing:-.03em;}
@@ -1432,6 +1511,50 @@ function buildReferenceQualityCss() {
 .seraphim-card:hover{transform:translateY(-4px);border-color:color-mix(in srgb,var(--seraphim-primary) 32%,var(--seraphim-border));box-shadow:0 24px 70px rgb(15 23 42 / .12);}
 .seraphim-card h3{margin:.2rem 0 .55rem;font-size:clamp(1.15rem,2vw,1.55rem);}
 .seraphim-card p{color:var(--seraphim-muted);line-height:1.68;}
+.seraphim-service-rail{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:.85rem;align-items:stretch;}
+.seraphim-service-rail-item{position:relative;display:grid;gap:.45rem;align-content:start;border:1px solid color-mix(in srgb,var(--seraphim-border) 86%,transparent);border-radius:var(--seraphim-radius-lg);padding:1rem;background:linear-gradient(180deg,color-mix(in srgb,var(--seraphim-surface) 96%,white),color-mix(in srgb,var(--seraphim-bg) 90%,white));box-shadow:0 14px 42px rgb(15 23 42 / .07);}
+.seraphim-service-rail-item::before{content:"";width:2.35rem;height:3px;border-radius:999px;background:linear-gradient(90deg,var(--seraphim-primary),var(--seraphim-secondary));}
+.seraphim-service-rail-item h3{margin:0;font-size:clamp(1.05rem,1.7vw,1.35rem);}
+.seraphim-service-rail-item p{margin:0;color:var(--seraphim-muted);}
+.seraphim-service-card{position:relative;display:grid;gap:.75rem;border:1px solid color-mix(in srgb,var(--seraphim-border) 84%,transparent);border-radius:var(--seraphim-radius-xl);padding:clamp(1rem,2.2vw,1.65rem);background:linear-gradient(180deg,var(--seraphim-surface),color-mix(in srgb,var(--seraphim-bg) 86%,white));box-shadow:0 18px 58px rgb(15 23 42 / .08);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease;}
+.seraphim-service-card:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--seraphim-primary) 28%,var(--seraphim-border));box-shadow:0 24px 72px rgb(15 23 42 / .12);}
+.seraphim-service-card-icon{display:grid;place-items:center;width:2.8rem;aspect-ratio:1;border-radius:var(--seraphim-radius-lg);background:color-mix(in srgb,var(--seraphim-primary) 11%,white);color:var(--seraphim-primary);}
+.seraphim-service-card-action{margin-top:auto;display:inline-flex;align-items:center;width:max-content;gap:.45rem;color:var(--seraphim-primary);font-weight:850;text-decoration:none;}
+.seraphim-service-rail-meta{display:flex;flex-wrap:wrap;gap:.4rem;color:var(--seraphim-muted);font-size:.86rem;font-weight:750;}
+.seraphim-process-path{display:grid;gap:.9rem;counter-reset:process;}
+.seraphim-process-step{counter-increment:process;position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:1rem;align-items:start;border:1px solid color-mix(in srgb,var(--seraphim-border) 82%,transparent);border-radius:var(--seraphim-radius-xl);padding:1rem;background:var(--seraphim-surface);box-shadow:0 14px 44px rgb(15 23 42 / .06);}
+.seraphim-process-number{display:grid;place-items:center;width:2.75rem;aspect-ratio:1;border-radius:999px;background:var(--seraphim-primary);color:white;font-size:.82rem;font-weight:900;}
+.seraphim-process-step>.seraphim-process-number:empty::before{content:counter(process,decimal-leading-zero);}
+.seraphim-process-checklist{display:grid;gap:.75rem;border-radius:var(--seraphim-radius-xl);padding:clamp(1rem,2.4vw,1.75rem);background:color-mix(in srgb,var(--seraphim-surface) 92%,white);border:1px solid color-mix(in srgb,var(--seraphim-border) 84%,transparent);}
+.seraphim-check-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:.75rem;align-items:start;}
+.seraphim-check-mark{display:grid;place-items:center;width:1.6rem;aspect-ratio:1;border-radius:999px;background:color-mix(in srgb,var(--seraphim-primary) 12%,white);color:var(--seraphim-primary);font-weight:900;}
+.seraphim-contact-strip{display:grid;grid-template-columns:1fr;gap:.75rem;align-items:center;border:1px solid color-mix(in srgb,var(--seraphim-border) 82%,transparent);border-radius:var(--seraphim-radius-xl);padding:clamp(.9rem,2vw,1.25rem);background:color-mix(in srgb,var(--seraphim-surface) 92%,transparent);box-shadow:0 16px 50px rgb(15 23 42 / .08);}
+.seraphim-contact-action{display:inline-flex;align-items:center;justify-content:center;min-height:44px;border-radius:999px;padding:.8rem 1rem;background:var(--seraphim-primary);color:white;font-weight:900;text-decoration:none;box-shadow:0 18px 48px color-mix(in srgb,var(--seraphim-primary) 26%,transparent);}
+.seraphim-contact-note{color:var(--seraphim-muted);font-size:.92rem;line-height:1.5;}
+.seraphim-gallery-frame{display:grid;grid-template-columns:1fr;gap:1rem;}
+.seraphim-gallery-tile{position:relative;overflow:hidden;min-height:14rem;border-radius:var(--seraphim-radius-xl);background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-primary) 14%,white),color-mix(in srgb,var(--seraphim-secondary) 14%,white));border:1px solid color-mix(in srgb,var(--seraphim-border) 84%,transparent);box-shadow:0 18px 58px rgb(15 23 42 / .08);}
+.seraphim-gallery-caption{padding:.7rem .8rem;color:var(--seraphim-muted);font-size:.86rem;line-height:1.45;}
+.seraphim-menu-card,.seraphim-mirror-card,.seraphim-care-path,.seraphim-learning-card,.seraphim-editorial-panel{position:relative;display:grid;gap:.75rem;border:1px solid color-mix(in srgb,var(--seraphim-border) 82%,transparent);border-radius:var(--seraphim-radius-xl);padding:clamp(1rem,2.4vw,1.75rem);background:linear-gradient(180deg,color-mix(in srgb,var(--seraphim-surface) 96%,white),color-mix(in srgb,var(--seraphim-bg) 88%,white));box-shadow:0 18px 58px rgb(15 23 42 / .08);}
+.seraphim-menu-card::before{content:"";position:absolute;inset:.65rem;border:1px dashed color-mix(in srgb,var(--seraphim-secondary) 44%,transparent);border-radius:calc(var(--seraphim-radius-xl) - .35rem);pointer-events:none;}
+.seraphim-plate-ring{position:relative;border-radius:999px;aspect-ratio:1;display:grid;place-items:center;background:radial-gradient(circle,color-mix(in srgb,var(--seraphim-surface) 94%,white) 0 46%,transparent 47%),conic-gradient(from 20deg,var(--seraphim-primary),var(--seraphim-secondary),var(--seraphim-accent),var(--seraphim-primary));box-shadow:0 20px 60px rgb(15 23 42 / .12);}
+.seraphim-metal-panel{position:relative;overflow:hidden;border:1px solid color-mix(in srgb,var(--seraphim-primary) 32%,#fff);border-radius:var(--seraphim-radius-xl);background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-neutral) 92%,#020617),color-mix(in srgb,var(--seraphim-primary) 22%,#020617));color:white;box-shadow:0 28px 90px rgb(2 6 23 / .26);}
+.seraphim-gloss-sweep::after,.seraphim-speed-lines::after{content:"";position:absolute;inset:-40% auto -40% 18%;width:26%;transform:rotate(18deg);background:linear-gradient(90deg,transparent,rgb(255 255 255 / .28),transparent);pointer-events:none;}
+.seraphim-speed-lines{position:relative;overflow:hidden;}
+.seraphim-speed-lines::before{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(110deg,transparent 0 18px,color-mix(in srgb,var(--seraphim-accent) 18%,transparent) 19px 21px,transparent 22px 44px);opacity:.44;}
+.seraphim-paw-mark,.seraphim-tool-icon{display:inline-grid;place-items:center;width:2.65rem;aspect-ratio:1;border-radius:999px;background:color-mix(in srgb,var(--seraphim-secondary) 14%,white);color:var(--seraphim-primary);border:1px solid color-mix(in srgb,var(--seraphim-primary) 18%,transparent);}
+.seraphim-paw-mark::before{content:"";width:1.15rem;aspect-ratio:1;border-radius:50% 50% 45% 45%;background:currentColor;box-shadow:-.55rem -.45rem 0 -.22rem currentColor,0 -.62rem 0 -.23rem currentColor,.55rem -.45rem 0 -.22rem currentColor;}
+.seraphim-soft-blob,.seraphim-soft-gradient{position:relative;isolation:isolate;overflow:hidden;background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-secondary) 18%,white),color-mix(in srgb,var(--seraphim-primary) 10%,white));}
+.seraphim-soft-blob::before{content:"";position:absolute;inset:auto -8% -22% auto;width:38%;aspect-ratio:1;border-radius:46% 54% 66% 34% / 42% 48% 52% 58%;background:color-mix(in srgb,var(--seraphim-accent) 16%,transparent);z-index:-1;}
+.seraphim-map-panel{position:relative;overflow:hidden;border-radius:var(--seraphim-radius-xl);padding:clamp(1rem,2.4vw,1.75rem);background:linear-gradient(180deg,color-mix(in srgb,var(--seraphim-bg) 86%,white),var(--seraphim-surface));border:1px solid color-mix(in srgb,var(--seraphim-border) 84%,transparent);}
+.seraphim-map-panel::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 0 40%,color-mix(in srgb,var(--seraphim-primary) 18%,transparent) 41% 42%,transparent 43%),linear-gradient(35deg,transparent 0 52%,color-mix(in srgb,var(--seraphim-secondary) 18%,transparent) 53% 54%,transparent 55%);opacity:.7;}
+.seraphim-tool-icon{border-radius:var(--seraphim-radius-lg);}
+.seraphim-tool-icon::before{content:"";width:1.15rem;height:.28rem;border-radius:999px;background:currentColor;transform:rotate(-35deg);box-shadow:.45rem .45rem 0 -.06rem currentColor;}
+.seraphim-product-shelf{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:1rem;align-items:end;border-bottom:4px solid color-mix(in srgb,var(--seraphim-primary) 24%,var(--seraphim-border));padding-bottom:1rem;}
+.seraphim-route-line{position:relative;display:grid;gap:.75rem;}
+.seraphim-route-line::before{content:"";position:absolute;left:1.15rem;top:.5rem;bottom:.5rem;width:2px;background:linear-gradient(var(--seraphim-primary),var(--seraphim-secondary));opacity:.55;}
+.seraphim-postcard{border:1px solid color-mix(in srgb,var(--seraphim-border) 80%,transparent);border-radius:var(--seraphim-radius-lg);padding:clamp(1rem,2vw,1.5rem);background:linear-gradient(180deg,#fff,color-mix(in srgb,var(--seraphim-secondary) 8%,white));box-shadow:0 18px 52px rgb(15 23 42 / .08);transform:rotate(-.4deg);}
+.seraphim-interface-frame{overflow:hidden;border:1px solid color-mix(in srgb,var(--seraphim-primary) 26%,var(--seraphim-border));border-radius:var(--seraphim-radius-xl);background:linear-gradient(180deg,color-mix(in srgb,var(--seraphim-neutral) 94%,#020617),#020617);color:white;box-shadow:0 28px 90px rgb(2 6 23 / .25);}
+.seraphim-interface-frame::before{content:"";display:block;height:2.4rem;background:linear-gradient(90deg,rgb(255 255 255 / .16),rgb(255 255 255 / .05));border-bottom:1px solid rgb(255 255 255 / .12);}
 .seraphim-feature-band{position:relative;overflow:hidden;border-radius:clamp(1.5rem,4vw,3rem);padding:clamp(1.4rem,4vw,3.5rem);background:linear-gradient(135deg,color-mix(in srgb,var(--seraphim-primary) 92%,#111827),color-mix(in srgb,var(--seraphim-accent) 58%,#111827));color:white;box-shadow:0 30px 90px rgb(2 6 23 / .22);}
 .seraphim-feature-band::after{content:"";position:absolute;inset:auto -8% -28% auto;width:42%;aspect-ratio:1;border-radius:999px;background:rgb(255 255 255 / .16);filter:blur(4px);}
 .seraphim-feature-band .seraphim-body-text,.seraphim-feature-band p{color:rgb(255 255 255 / .78);}
@@ -1453,7 +1576,7 @@ function buildReferenceQualityCss() {
 .seraphim-source-proof-frame{width:min(1120px,calc(100% - 2rem));margin:clamp(1.5rem,4vw,3rem) auto 0;display:grid;gap:.65rem;border-radius:var(--seraphim-radius-xl);padding:clamp(.55rem,1.4vw,.85rem);background:linear-gradient(180deg,color-mix(in srgb,var(--seraphim-surface) 92%,white),color-mix(in srgb,var(--seraphim-bg) 90%,white));border:1px solid color-mix(in srgb,var(--seraphim-border) 82%,transparent);box-shadow:0 24px 80px rgb(15 23 42 / .12);}
 .seraphim-source-proof-frame .seraphim-source-photo{max-height:clamp(22rem,54vw,42rem);object-fit:cover;object-position:top center;border-radius:calc(var(--seraphim-radius-xl) - .35rem);box-shadow:none;}
 .seraphim-source-proof-frame figcaption{padding:.2rem .35rem .35rem;color:var(--seraphim-muted);font-size:.82rem;line-height:1.45;}
-@media (min-width:760px){.seraphim-editorial-grid{grid-template-columns:minmax(0,1.02fr) minmax(18rem,.98fr);}.seraphim-editorial-grid[data-flip="true"]>*:first-child{order:2}.seraphim-proof-strip{grid-template-columns:repeat(4,minmax(0,1fr));}.seraphim-showcase-grid{grid-template-columns:1.2fr .8fr;}.seraphim-showcase-tile:nth-child(1){grid-row:span 2;min-height:32rem;}}
+@media (min-width:760px){.seraphim-editorial-grid,.seraphim-hero-editorial,.seraphim-hero-montage{grid-template-columns:minmax(0,1.02fr) minmax(18rem,.98fr);}.seraphim-editorial-grid[data-flip="true"]>*:first-child{order:2}.seraphim-proof-strip{grid-template-columns:repeat(4,minmax(0,1fr));}.seraphim-contact-strip{grid-template-columns:minmax(0,1fr) auto;}.seraphim-gallery-frame{grid-template-columns:1.2fr .8fr;}.seraphim-gallery-tile:first-child{grid-row:span 2;min-height:30rem;}.seraphim-showcase-grid{grid-template-columns:1.2fr .8fr;}.seraphim-showcase-tile:nth-child(1){grid-row:span 2;min-height:32rem;}}
 @media (max-width:720px){.seraphim-display{font-size:clamp(2.55rem,16vw,4.6rem);}.seraphim-proof-strip{grid-template-columns:1fr;}.seraphim-action-row>*{width:100%;}.seraphim-mobile-cta{display:flex;}body:has(.seraphim-mobile-cta){padding-bottom:5rem;}.seraphim-hero-media{min-height:22rem;border-radius:1.35rem;}.seraphim-feature-band{border-radius:1.35rem;}}
 @media (prefers-reduced-motion:no-preference){.seraphim-reveal,.reveal{opacity:0;transform:translateY(18px);animation:seraphimRise .7s ease forwards;}.seraphim-card:hover .seraphim-generated-photo{transform:scale(1.025);}@keyframes seraphimRise{to{opacity:1;transform:translateY(0);}}}
 `;
@@ -1723,6 +1846,7 @@ function heuristicVisualIssues(input: {
   visualIdentity: VisualIdentityProfile;
   archetypeReconciliation: ArchetypeReconciliation;
   premiumReferenceBrief?: PremiumReferenceBrief;
+  visualMotifs: PremiumVisualMotifRecommendation;
 }) {
   const issues: string[] = [];
   const sectionIssues: VisualQAResult["sectionIssues"] = [];
@@ -1773,6 +1897,34 @@ function heuristicVisualIssues(input: {
     ...[...cssText.matchAll(/\.([_a-zA-Z][-_a-zA-Z0-9]*)/g)].map((match) => match[1]),
     ...Object.values(input.designSystem.components).map((component) => component.className),
   ]);
+  const motifClassMap: Record<string, string[]> = {
+    "divider-organic-wave": ["seraphim-divider-wave"],
+    "divider-precision-angle": ["seraphim-divider-angle"],
+    "texture-tactile-grain": ["seraphim-texture-grain"],
+    "texture-blueprint-grid": ["seraphim-texture-blueprint"],
+    "badge-verified-facts": ["seraphim-fact-badge"],
+    "frame-editorial-offset": ["seraphim-frame-offset"],
+    "frame-rugged-utility": ["seraphim-frame-utility"],
+    "icon-contained-line": ["seraphim-icon-mark"],
+    "cta-ribbon-band": ["seraphim-cta-band"],
+    "mask-arched-window": ["seraphim-mask-arch"],
+    "mask-diagonal-crop": ["seraphim-mask-diagonal"],
+    "proof-strip-verified": ["seraphim-proof-strip"],
+    "service-rail-intent": ["seraphim-service-rail", "seraphim-service-rail-item"],
+  };
+  const assetPackClasses = input.visualMotifs.industryAssetPack.cssContractNotes
+    .map((className) => className.replace(/^\./, ""))
+    .filter((className) => /^seraphim-/.test(className));
+  const recommendedMotifClasses = unique([
+    ...input.visualMotifs.primitives.flatMap((motif) => motifClassMap[motif.id] ?? []),
+    ...assetPackClasses,
+  ]);
+  const usedMotifClasses = recommendedMotifClasses.filter((className) =>
+    classNames.includes(className) || cssText.includes(`.${className}`),
+  );
+  const deadMotifClasses = recommendedMotifClasses.filter((className) =>
+    classNames.includes(className) && !definedClassNames.has(className),
+  );
   const tailwindLikeClasses = classNames.filter((className) =>
     /^(sm:|md:|lg:|xl:|2xl:|flex|grid|block|hidden|inline-flex|items-|justify-|gap-|p[trblxy]?-\d|m[trblxy]?-\d|text-|bg-|rounded|shadow|w-|h-|max-w-|min-h-|mx-|my-|space-|border-|opacity-|translate-|scale-)/.test(className),
   );
@@ -1781,6 +1933,13 @@ function heuristicVisualIssues(input: {
   const unreliableImages = imageTags
     .map((tag) => attributeValue(tag, "src"))
     .filter(isUnreliableImageSrc);
+  const missingAltImages = imageTags.filter((tag) => !/\salt\s*=/i.test(tag));
+  const representativeRemoteImages = imageTags
+    .map((tag) => attributeValue(tag, "src"))
+    .filter((src) => /^https:\/\//i.test(src))
+    .filter((src) => /(unsplash|pexels|pixabay|images\.ctfassets|images\.restaurant|images\.squarespace|cdn)/i.test(src));
+  const unlabeledRepresentativeMedia = representativeRemoteImages.length > 0 &&
+    !/(representative imagery|representative image|replace with verified business photography|source image supplied|verified source material)/i.test(visibleText);
   const emptyInteractiveControls = [
     ...input.html.matchAll(/<(?:a|button)\b[^>]*>\s*<\/(?:a|button)>/gi),
   ];
@@ -1821,7 +1980,13 @@ function heuristicVisualIssues(input: {
   if (input.html.length < 12000) issues.push("Generated HTML is too short to feel like a premium full landing page.");
   if (/<meta\s+name=["']keywords["']/i.test(input.html)) issues.push("Meta keywords are not allowed.");
   if (deadTailwindClasses.length) issues.push(`Dead Tailwind-style classes found without embedded CSS: ${unique(deadTailwindClasses).slice(0, 12).join(", ")}.`);
+  if (deadMotifClasses.length) issues.push(`Dead visual motif classes found without embedded CSS: ${deadMotifClasses.slice(0, 12).join(", ")}.`);
+  if (input.visualMotifs.primitives.length >= 3 && usedMotifClasses.length < Math.min(3, input.visualMotifs.primitives.length)) {
+    issues.push(`Premium motif recommendations were mostly ignored: expected reusable primitives such as ${recommendedMotifClasses.slice(0, 8).join(", ")}.`);
+  }
   if (unreliableImages.length) issues.push(`Unreliable or broken image sources found: ${unique(unreliableImages).slice(0, 6).join(", ")}.`);
+  if (missingAltImages.length) issues.push("One or more image tags are missing alt text.");
+  if (unlabeledRepresentativeMedia) issues.push("Representative remote imagery appears without an honest visible label or replacement note.");
   if (emptyInteractiveControls.length) issues.push("Empty anchor or button controls found.");
   if (input.archetypeReconciliation.mismatch) {
     issues.push(`Archetype mismatch corrected before generation: ${input.archetypeReconciliation.warnings.join(" ") || `${input.archetypeReconciliation.selectedArchetypeId} did not fit ${input.archetypeReconciliation.recommendedArchetypeId}`}`);
@@ -1880,12 +2045,28 @@ function heuristicVisualIssues(input: {
       revisionInstruction: "Regenerate the affected sections using only design-system classes or scoped CSS for every new class.",
     });
   }
+  if (deadMotifClasses.length || usedMotifClasses.length < Math.min(3, input.visualMotifs.primitives.length)) {
+    sectionIssues.push({
+      sectionId: input.pageContract.sections[0]?.id || "hero",
+      severity: "high",
+      issue: "The page is not using the recommended premium visual motif primitives reliably.",
+      revisionInstruction: `Regenerate the hero, service, proof, and CTA sections using selected motif primitives with embedded CSS definitions. Recommended classes include ${recommendedMotifClasses.slice(0, 10).join(", ")}. Keep motifs primitive-level and factual; do not add fake proof.`,
+    });
+  }
   if (unreliableImages.length) {
     sectionIssues.push({
       sectionId: input.pageContract.sections[0]?.id || "global",
       severity: "high",
       issue: "Generated HTML includes unreliable image sources that can break in standalone previews.",
       revisionInstruction: "Regenerate media-heavy sections without local filenames, placeholder image services, or relative screenshot paths. Use reliable inline SVG/data-URI visual compositions or verified remote image URLs only.",
+    });
+  }
+  if (missingAltImages.length || unlabeledRepresentativeMedia) {
+    sectionIssues.push({
+      sectionId: input.pageContract.sections[0]?.id || "global",
+      severity: "high",
+      issue: "Generated media does not follow Seraphim photo-direction safety rules.",
+      revisionInstruction: "Regenerate media sections so every image has honest alt text. Use uploaded source imagery when verified, CSS/SVG art when safer, and visibly label representative imagery with 'Representative imagery - replace with verified business photography before launch' when it may be mistaken for actual business material.",
     });
   }
   if (cssText.length < minReferenceCssLength) {
@@ -1934,7 +2115,7 @@ function qaFromHeuristics(heuristic: ReturnType<typeof heuristicVisualIssues>): 
     ? 7.1
     : issueText.includes("corporate-default risk") || issueText.includes("archetype mismatch")
       ? 7.4
-      : issueText.includes("palette mismatch") || issueText.includes("weak niche cues") || issueText.includes("missing emotional hook")
+      : issueText.includes("palette mismatch") || issueText.includes("weak niche cues") || issueText.includes("missing emotional hook") || issueText.includes("premium motif")
         ? 7.8
         : 8.5;
   const rawScore = heuristic.issues.length === 0 ? 8.7 : Math.max(4.5, 8 - heuristic.issues.length * 0.45);
@@ -1958,6 +2139,7 @@ async function runVisualQA(input: {
   visualIdentity: VisualIdentityProfile;
   archetypeReconciliation: ArchetypeReconciliation;
   premiumReferenceBrief: PremiumReferenceBrief;
+  visualMotifs: PremiumVisualMotifRecommendation;
 }) {
   const heuristic = heuristicVisualIssues(input);
   const heuristicQa = qaFromHeuristics(heuristic);
@@ -1982,7 +2164,7 @@ async function runVisualQA(input: {
         ? 7.1
         : issueText.includes("corporate-default risk") || issueText.includes("archetype mismatch")
           ? 7.4
-          : issueText.includes("palette mismatch") || issueText.includes("weak niche cues") || issueText.includes("missing emotional hook")
+          : issueText.includes("palette mismatch") || issueText.includes("weak niche cues") || issueText.includes("missing emotional hook") || issueText.includes("premium motif")
             ? 7.8
             : 8.2;
       return {
@@ -2058,6 +2240,7 @@ function buildGenerationPlanResponse(input: {
   premiumReferenceBrief?: PremiumReferenceBrief;
   visualIdentity?: VisualIdentityProfile;
   archetypeReconciliation?: ArchetypeReconciliation;
+  visualMotifs?: PremiumVisualMotifRecommendation;
   qualityGate?: QualityGate;
   revisionCount?: number;
 }): GenerationPlanResponse {
@@ -2086,6 +2269,7 @@ function buildGenerationPlanResponse(input: {
     premiumReferenceBrief: input.premiumReferenceBrief,
     visualIdentity: input.visualIdentity,
     archetypeReconciliation: input.archetypeReconciliation,
+    visualMotifs: input.visualMotifs,
     qualityGate: input.qualityGate,
     revisionCount: input.revisionCount,
   };
@@ -2112,6 +2296,7 @@ function buildGenerationResponse(input: {
     premiumReferenceBrief: input.pipeline.premiumReferenceBrief,
     visualIdentity: input.pipeline.visualIdentity,
     archetypeReconciliation: input.pipeline.archetypeReconciliation,
+    visualMotifs: input.pipeline.visualMotifs,
     qualityGate,
     revisionCount: input.pipeline.revisionCount,
   });
@@ -2127,6 +2312,7 @@ function buildGenerationResponse(input: {
     designTokens: input.pipeline.tokens,
     visualIdentity: input.pipeline.visualIdentity,
     archetypeReconciliation: input.pipeline.archetypeReconciliation,
+    visualMotifs: input.pipeline.visualMotifs,
     modelMetadata,
     pipelineModelMetadata: input.pipelineMetadata,
     cleanedBusinessData: input.cleanBusinessData,
@@ -2156,6 +2342,7 @@ async function runSectionGenerationPipeline(input: {
   const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences, visualIdentity);
   const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
   const premiumReferenceBrief = getPremiumReferenceBrief(input.cleanBusinessData.businessType);
+  const visualMotifs = resolveVisualMotifs({ cleanBusinessData: input.cleanBusinessData, archetype, visualIdentity });
   const creativeResult = await generateCreativeContract({
     cleanBusinessData: input.cleanBusinessData,
     industryBrief: input.industryBrief,
@@ -2166,6 +2353,7 @@ async function runSectionGenerationPipeline(input: {
     archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
+    visualMotifs,
   });
   const designSystemResult = await generateDesignSystemContract({
     creativeContract: creativeResult.creativeContract,
@@ -2175,6 +2363,7 @@ async function runSectionGenerationPipeline(input: {
     archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
+    visualMotifs,
   });
   const inspiration = await fetchDesignInspiration(input.cleanBusinessData.businessType);
   const planResult = await generateWebsitePlanFromPrompt(
@@ -2186,6 +2375,7 @@ async function runSectionGenerationPipeline(input: {
     creativeResult.creativeContract,
     designSystemResult.designSystem,
     premiumReferenceBrief,
+    visualMotifs,
   );
   const pageContractResult = await generatePageContract({
     creativeContract: creativeResult.creativeContract,
@@ -2195,6 +2385,7 @@ async function runSectionGenerationPipeline(input: {
     archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
+    visualMotifs,
   });
   const basePageContract = pageContractResult.pageContract.sections.length
     ? pageContractResult.pageContract
@@ -2228,6 +2419,7 @@ async function runSectionGenerationPipeline(input: {
       visualIdentity,
       archetypeReconciliation: reconciliation,
       premiumReferenceBrief,
+      visualMotifs,
     });
     sectionResults.set(section.id, result.html);
     metadata.push(result.metadata);
@@ -2252,6 +2444,7 @@ async function runSectionGenerationPipeline(input: {
     visualIdentity,
     archetypeReconciliation: reconciliation,
     premiumReferenceBrief,
+    visualMotifs,
   });
   metadata.push(qaResult.metadata);
   let revisionCount = 0;
@@ -2285,6 +2478,7 @@ async function runSectionGenerationPipeline(input: {
           ...sectionFeedback,
         ]),
         premiumReferenceBrief,
+        visualMotifs,
       });
       sectionResults.set(section.id, result.html);
       metadata.push({ ...result.metadata, stage: `revision:${section.id}` });
@@ -2308,6 +2502,7 @@ async function runSectionGenerationPipeline(input: {
       visualIdentity,
       archetypeReconciliation: reconciliation,
       premiumReferenceBrief,
+      visualMotifs,
     });
     metadata.push({ ...qaResult.metadata, stage: `visual-qa:retry-${revisionCount}` });
   }
@@ -2328,6 +2523,7 @@ async function runSectionGenerationPipeline(input: {
     archetypeReconciliation: reconciliation,
     inspiration,
     premiumReferenceBrief,
+    visualMotifs,
   };
 }
 
@@ -2342,6 +2538,7 @@ async function streamSectionGenerationPipeline(input: {
   const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences, visualIdentity);
   const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
   const premiumReferenceBrief = getPremiumReferenceBrief(input.cleanBusinessData.businessType);
+  const visualMotifs = resolveVisualMotifs({ cleanBusinessData: input.cleanBusinessData, archetype, visualIdentity });
   const creativeResult = await generateCreativeContract({
     cleanBusinessData: input.cleanBusinessData,
     industryBrief: input.industryBrief,
@@ -2352,6 +2549,7 @@ async function streamSectionGenerationPipeline(input: {
     archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
+    visualMotifs,
   });
   const designSystemResult = await generateDesignSystemContract({
     creativeContract: creativeResult.creativeContract,
@@ -2361,6 +2559,7 @@ async function streamSectionGenerationPipeline(input: {
     archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
+    visualMotifs,
   });
   const inspiration = await fetchDesignInspiration(input.cleanBusinessData.businessType);
   input.send({
@@ -2369,6 +2568,7 @@ async function streamSectionGenerationPipeline(input: {
     modelMetadata: creativeResult.metadata,
     visualIdentity,
     archetypeReconciliation: reconciliation,
+    visualMotifs,
   });
   input.send({
     type: "design-system",
@@ -2377,6 +2577,7 @@ async function streamSectionGenerationPipeline(input: {
     modelMetadata: designSystemResult.metadata,
     visualIdentity,
     archetypeReconciliation: reconciliation,
+    visualMotifs,
   });
   const planResult = await generateWebsitePlanFromPrompt(
     business,
@@ -2387,6 +2588,7 @@ async function streamSectionGenerationPipeline(input: {
     creativeResult.creativeContract,
     designSystemResult.designSystem,
     premiumReferenceBrief,
+    visualMotifs,
   );
   const pageContractResult = await generatePageContract({
     creativeContract: creativeResult.creativeContract,
@@ -2396,6 +2598,7 @@ async function streamSectionGenerationPipeline(input: {
     archetypeReconciliation: reconciliation,
     generationId: input.generationId,
     premiumReferenceBrief,
+    visualMotifs,
   });
   const basePageContract = pageContractResult.pageContract.sections.length
     ? pageContractResult.pageContract
@@ -2422,6 +2625,7 @@ async function streamSectionGenerationPipeline(input: {
     premiumReferenceBrief,
     visualIdentity,
     archetypeReconciliation: reconciliation,
+    visualMotifs,
   });
 
   input.send({
@@ -2434,6 +2638,7 @@ async function streamSectionGenerationPipeline(input: {
     premiumReferenceBrief,
     visualIdentity,
     archetypeReconciliation: reconciliation,
+    visualMotifs,
     archetype: {
       id: archetype.id,
       name: archetype.name,
@@ -2465,6 +2670,7 @@ async function streamSectionGenerationPipeline(input: {
       visualIdentity,
       archetypeReconciliation: reconciliation,
       premiumReferenceBrief,
+      visualMotifs,
     });
     sectionResults.set(section.id, result.html);
     metadata.push(result.metadata);
@@ -2497,6 +2703,7 @@ async function streamSectionGenerationPipeline(input: {
     visualIdentity,
     archetypeReconciliation: reconciliation,
     premiumReferenceBrief,
+    visualMotifs,
   });
   metadata.push(qaResult.metadata);
   let revisionCount = 0;
@@ -2536,6 +2743,7 @@ async function streamSectionGenerationPipeline(input: {
           ...sectionFeedback,
         ]),
         premiumReferenceBrief,
+        visualMotifs,
       });
       sectionResults.set(section.id, result.html);
       metadata.push({ ...result.metadata, stage: `revision:${section.id}` });
@@ -2568,6 +2776,7 @@ async function streamSectionGenerationPipeline(input: {
       visualIdentity,
       archetypeReconciliation: reconciliation,
       premiumReferenceBrief,
+      visualMotifs,
     });
     metadata.push({ ...qaResult.metadata, stage: `visual-qa:retry-${revisionCount}` });
     input.send({
@@ -2595,6 +2804,7 @@ async function streamSectionGenerationPipeline(input: {
     archetypeReconciliation: reconciliation,
     inspiration,
     premiumReferenceBrief,
+    visualMotifs,
   };
 }
 
