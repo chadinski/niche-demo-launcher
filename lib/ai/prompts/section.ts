@@ -36,6 +36,7 @@ export function buildSectionPrompt(input: {
   premiumReferenceBrief?: unknown;
   visualIdentity?: unknown;
   archetypeReconciliation?: unknown;
+  visualMotifs?: unknown;
 }): string {
   return `You are Seraphim Generator's elite section designer, conversion copywriter, and frontend engineer.
 
@@ -64,6 +65,9 @@ ${JSON.stringify(input.visualIdentity ?? {}, null, 2)}
 
 ARCHETYPE RECONCILIATION:
 ${JSON.stringify(input.archetypeReconciliation ?? {}, null, 2)}
+
+PREMIUM VISUAL MOTIF LIBRARY RECOMMENDATION:
+${JSON.stringify(input.visualMotifs ?? {}, null, 2)}
 
 CURRENT SECTION CONTRACT:
 ${JSON.stringify(input.sectionContract, null, 2)}
@@ -101,6 +105,14 @@ SECTION RULES:
 - If the Visual Identity Profile warns about corporate-default risk, do not use bland navy/gray business language, Inter-only corporate tone, centered generic headings, or interchangeable service cards.
 - The section must respect the Local Premium Reference Intelligence as a quality floor for composition, visual depth, media treatment, interaction polish, and responsiveness. Do not copy reference code, copy, exact layouts, branded artwork, or complete compositions.
 - Add a distinct visual/compositional idea to this section when appropriate. Avoid plain text blocks and generic equal-card grids unless the section contract specifically calls for them.
+- Use the selected Premium Visual Motif primitives when they fit this section's job. Good uses include verified fact badges near real details, proof strips for verified contact/location/service facts, service rails for service-heavy offers, CTA bands for conversion moments, section frames or image masks for visual proof, icon treatments for scannable service lists, and SVG dividers/texture overlays for rhythm.
+- Use visualMotifs.industryAssetPack for the industry's asset vocabulary. Food may use warm paper/menu/plate/spice ideas, auto may use gloss/speed/metal panels, pet may use rounded paw/blob/badge systems, home services may use tool/map/sturdy panels, beauty may use editorial gradient/mirror/card motifs, and other packs should follow their own detailed guidance.
+- Use visualMotifs.industryAssetPack.textureBackgroundTokens for section atmosphere. Choose one appropriate background token class for the section when it improves richness, such as paper grain for food/local warmth, radial light for hero focus, warm local surface for neighborhood businesses, dark automotive surface for premium auto, blueprint grid for home services, pet soft blobs for pet care, beauty pearl gradients for salons, or wellness contour calm for care.
+- Use visualMotifs.industryAssetPack.componentPrimitives as premium Lego pieces. Choose one or two appropriate primitives for this section, such as editorial/cinematic/montage hero, customer-intent service card, detailed service rail, numbered path timeline, split checklist, premium FAQ accordion, contact action strip, or gallery proof frame.
+- Follow visualMotifs.industryAssetPack.photoDirection for all media. Use __SERAPHIM_SOURCE_IMAGE__ when uploaded source imagery is the safest verified visual; use CSS/SVG art when stock imagery would mislead; use representative remote imagery only when it is reliable, category-accurate, and honestly labeled if it could be mistaken for real business photography.
+- Motifs are primitives, not templates. Do not copy the motif names into public copy, and do not force every motif into one section.
+- If using a motif class, it must exist in the Design System Contract or be defined in a small scoped <style> tag in this section.
+- Badge systems and proof strips must contain verified facts only. Do not use motifs to create fake proof, fake reviews, fake ratings, fake awards, fake years, or fake guarantees.
 - Treat section goals, customer questions, visual treatments, ctaRole values, mustAvoid items, page contract notes, and QA language as INTERNAL INSTRUCTIONS ONLY.
 - Do not copy or paraphrase internal planning language into visible text. Forbidden visible phrases include "orient and convert", "decision moment", "conversion story", "customer question", "section contract", "page contract", "creative contract", "required content", "must avoid", "verified business facts", "verified business details", "missing facts", "raw extracted data", and "support the conversion path".
 - Write customer-facing headlines, subheads, labels, and CTAs as if this is a real business website. The visitor should never see how the page was planned.

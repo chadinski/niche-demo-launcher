@@ -20,6 +20,7 @@ export function buildVisualQAPrompt(input: {
   premiumReferenceBrief?: unknown;
   visualIdentity?: unknown;
   archetypeReconciliation?: unknown;
+  visualMotifs?: unknown;
 }): string {
   return `You are Seraphim's strict visual, code, and factual QA auditor.
 
@@ -67,6 +68,9 @@ ${JSON.stringify(input.archetypeReconciliation ?? {}, null, 2)}
 LOCAL PREMIUM REFERENCE INTELLIGENCE:
 ${JSON.stringify(input.premiumReferenceBrief ?? {}, null, 2)}
 
+PREMIUM VISUAL MOTIF LIBRARY RECOMMENDATION:
+${JSON.stringify(input.visualMotifs ?? {}, null, 2)}
+
 QA RULES:
 - Judge visual consistency.
 - Judge premium feel.
@@ -82,6 +86,15 @@ QA RULES:
 - Check contact clarity and CTA clarity.
 - Check mobile responsiveness, no horizontal overflow, section rhythm, and varied layouts.
 - Reject shallow CSS, repeated generic section structures, weak first viewport composition, missing industry-specific visual moments, or pages that feel like prompt-written content wrapped in basic cards.
+- Judge whether selected premium motif primitives are used appropriately: SVG dividers, texture overlays, badge systems, section frames, icon treatments, CTA bands, image masks, proof strips, and service rails should appear only where they support the Creative Contract.
+- Judge whether the final HTML visibly follows visualMotifs.industryAssetPack. A food site should not feel like an auto site; a beauty site should not feel like home services; home services should not collapse into generic professional services.
+- Judge whether recommended texture/background tokens are used appropriately and defined in embedded CSS. Penalize flat pages that ignore paper grain, noise, radial light, warm local, dark auto, blueprint, pet, beauty, wellness, retail, travel, tech, or professional background tokens when those tokens were recommended.
+- Judge whether visualMotifs.industryAssetPack.photoDirection was followed: uploaded source images should be used when they are the safest verified visual, representative imagery must be reliable and honestly labeled, and CSS/SVG art should be preferred over misleading stock.
+- Judge whether visualMotifs.industryAssetPack.componentPrimitives were used as composable premium pieces. Penalize pages that ignore recommended hero, service, process, FAQ, contact, or gallery primitives and fall back to repeated generic cards.
+- Reject dead motif classes. Any motif class used in HTML must be defined in embedded CSS or scoped section CSS.
+- Reject fake-proof motif misuse: fact badges and proof strips must not contain invented reviews, ratings, awards, certifications, years, customer counts, guarantees, or unsupported metrics.
+- Reject unsafe image usage: random stock that implies actual staff/customers/facilities/work, broken URLs, local paths, placeholder image services, unlabeled representative imagery, image-only essential text, or missing alt text.
+- Penalize pages that ignore motif recommendations and fall back to plain cards/text when the business has expressive niche signals.
 - Reject "technically complete but boring" output. A page can have metadata, sections, responsive CSS, and CTAs but still fail because it feels generic, emotionally flat, or transferable to another business with minor text swaps.
 - If the page ignores extracted colors, logo mood, image energy, or archetype reconciliation, cap the score at 7.4 and return passed=false.
 - If the design uses #0f172a, #111827, Inter-only typography, blue-gray corporate surfaces, or generic SaaS spacing for an expressive niche without explicit fallback justification, cap the score at 7.2 and return passed=false.
