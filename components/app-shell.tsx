@@ -12,6 +12,7 @@ import {
   Plus,
   Settings,
   Sparkles,
+  Target,
   Users,
   X,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import { clearWorkspaceStorage } from "@/lib/generation/session";
 
 const navigation = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/leads", label: "Lead Finder", icon: Target },
   { href: "/create", label: "Create Site", icon: Sparkles },
   { href: "/prospects", label: "Prospects", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },
