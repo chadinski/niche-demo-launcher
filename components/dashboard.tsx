@@ -17,6 +17,7 @@ import {
 import { formatRelativeDate } from "@/lib/utils";
 import { isFollowUpDue } from "@/lib/automation/follow-ups";
 import { useProspects } from "@/components/prospect-provider";
+import { RevolvingGlobe } from "@/components/dashboard/revolving-globe";
 import { PageHeading } from "@/components/page-heading";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, EmptyState, buttonClass } from "@/components/ui";
@@ -134,8 +135,8 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
         }
       />
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,.65fr)]">
-        <Card className="surface-grid relative overflow-hidden border-brand-200 bg-ink-950 p-6 text-white shadow-[0_28px_90px_rgba(21,26,45,.22)] sm:p-7">
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,.9fr)]">
+        <Card className="surface-grid relative overflow-hidden border-white/10 bg-ink-950 p-6 text-white shadow-[0_28px_90px_rgba(21,26,45,.28)] sm:p-8">
           <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_65%_35%,rgba(168,85,247,.34),transparent_17rem)]" />
           <div className="relative max-w-3xl">
             <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-[0.68rem] font-bold tracking-[0.13em] text-brand-100 uppercase">
@@ -148,6 +149,18 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
             <p className="mt-5 max-w-xl text-sm leading-6 text-white/62">
               A focused workspace for one-person agency speed: capture the business, generate a polished Seraphim site, attach the live URL, then approve outreach with context.
             </p>
+            <div className="mt-7 grid gap-3 sm:grid-cols-3">
+              {[
+                ["Prospects", prospects.length],
+                ["Demos", generated],
+                ["Follow-ups", prospects.filter((item) => isFollowUpDue(item, nowIso)).length],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.07] p-4 backdrop-blur">
+                  <div className="text-2xl font-black tracking-[-0.05em]">{value}</div>
+                  <div className="mt-1 text-[0.68rem] font-bold tracking-[0.12em] text-white/48 uppercase">{label}</div>
+                </div>
+              ))}
+            </div>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link href="/create" className={buttonClass("primary", "min-h-12 px-5")}>
                 Start a site
@@ -160,39 +173,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
           </div>
         </Card>
 
-        <Card className="p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-[0.68rem] font-bold tracking-[0.14em] text-brand-600 uppercase">
-                Today&apos;s priority
-              </p>
-              <h2 className="mt-2 text-2xl font-extrabold tracking-[-0.045em]">
-                {todayActions.length ? `${todayActions.length} action${todayActions.length === 1 ? "" : "s"} ready` : "No urgent actions"}
-              </h2>
-            </div>
-            <span className="grid size-11 place-items-center rounded-2xl bg-brand-50 text-brand-600">
-              <CalendarClock className="size-5" />
-            </span>
-          </div>
-          <div className="mt-8 grid gap-3">
-            <div className="rounded-2xl border border-[#ececf2] bg-[#fafafd] p-4">
-              <div className="text-[0.66rem] font-bold tracking-[0.12em] text-[#969bad] uppercase">
-                Ready to deploy
-              </div>
-              <div className="mt-2 text-2xl font-black tracking-[-0.05em] text-ink-950">
-                {readyToDeploy}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-[#ececf2] bg-[#fafafd] p-4">
-              <div className="text-[0.66rem] font-bold tracking-[0.12em] text-[#969bad] uppercase">
-                Deployed demos
-              </div>
-              <div className="mt-2 text-2xl font-black tracking-[-0.05em] text-ink-950">
-                {deployed}
-              </div>
-            </div>
-          </div>
-        </Card>
+        <RevolvingGlobe />
       </section>
 
       <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5" aria-label="Performance overview">

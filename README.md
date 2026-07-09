@@ -38,7 +38,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-When Supabase variables are blank, the app runs in local mode using browser storage. It does not preload fake prospects or fake revenue.
+When Supabase variables are blank in development, the app runs in local demo mode using browser storage. In production, Supabase is required and protected server routes/actions block access instead of falling back to local demo mode.
 
 ## Supabase Setup
 
@@ -84,6 +84,7 @@ PAGE_CONTRACT_MODEL=gemini-2.5-pro
 SECTION_MODEL=gemini-2.5-pro
 QA_MODEL=gemini-2.5-flash
 VISUAL_QA_MODEL=gemini-2.5-flash
+OUTREACH_MODEL=gemini-2.5-flash
 INSPIRATION_MODEL=gemini-2.5-flash
 VISION_MODEL=gemini-2.5-flash
 FALLBACK_MODEL=gemini-2.5-flash-lite
@@ -96,12 +97,14 @@ GITHUB_OWNER=
 GITHUB_REPO_PREFIX=niche-demo
 VERCEL_TOKEN=
 VERCEL_TEAM_ID=
+SERAPHIM_RENDER_QA=0
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `FIRECRAWL_API_KEY` are server-only. Never expose them through `NEXT_PUBLIC_*`.
 `FIRECRAWL_API_KEY` is optional. Add it when you want generated websites to research premium landing-page references and stronger niche-matched photo direction before HTML generation, and when you want `/leads` to search live business results for prospect discovery.
 `NEXT_PUBLIC_DEFAULT_PRIMARY_COLOR` and `NEXT_PUBLIC_DEFAULT_SECONDARY_COLOR` set the default public design-token palette used by `lib/design/tokens.ts`.
 `VERCEL_TOKEN` is required for one-click demo deployment. `GITHUB_TOKEN` and `GITHUB_OWNER` are optional for deployment, but when present the generated `index.html` is also archived to a GitHub repository.
+`SERAPHIM_RENDER_QA=1` enables optional Playwright-based rendered QA when Playwright is installed in the runtime. If unavailable, Seraphim falls back to heuristic/model QA and reports a warning.
 
 ## AI Model Routing
 
@@ -109,23 +112,33 @@ Screenshot and pasted-info extraction use the server-side AI route in `app/api/b
 
 ## Firecrawl Lead Finder
 
-The `/leads` page implements Phase 1 of Firecrawl lead generation. Enter a niche, choose a country/region, and Seraphim calls `app/api/leads/search/route.ts`, which uses `lib/leads/firecrawl-lead-search.ts` to query Firecrawl web search. Results are normalized into typed lead candidates, scored for website opportunity, contact availability, social-first presence, local intent, and commercial niche fit, then displayed for manual review.
+The `/leads` page implements Firecrawl lead generation. Enter a niche, choose a country/region, and Seraphim calls `app/api/leads/search/route.ts`, which uses `lib/leads/firecrawl-lead-search.ts` to query Firecrawl web search. Results are normalized into typed lead candidates, scored for website opportunity, contact availability, social-first presence, local intent, and commercial niche fit, then displayed for manual review.
+
+Lead Finder now persists authenticated searches to Supabase tables: `lead_search_runs`, `lead_candidates`, and `lead_blacklist`. Candidates are deduped by source URL, carry status (`new`, `saved`, `rejected`, `contacted`, `blacklisted`), and rejected/blacklisted leads are suppressed from repeated searches. Local development still has safe in-memory/browser fallback behavior; production requires Supabase.
 
 Lead Finder supports region targeting through `lib/leads/regions.ts`. The first supported markets are the United States with all 50 states, Jamaica with parish targeting, and Trinidad and Tobago with major regional corporations/boroughs. The selected country, region, and optional city/area are composed into the Firecrawl search location while preserving the older freeform `location` API field for backward compatibility.
 
 Lead Finder also includes a ranked industry targeting layer in `lib/leads/industry-targets.ts`. It prioritizes the industries most likely to lose calls, bookings, trust, inquiries, or sales from a weak or missing website: funeral and memorial businesses, tourism and hospitality, contractors and home services, clinics and med spas, restaurants and caterers, auto services, real estate, events, beauty and wellness, education, professional services, security systems, printing/signage, nonprofits, and visual retail. Each target defines why it is worth targeting, common digital weaknesses, best website offer, outreach hook, search terms, qualification signals, and avoid signals.
 
-The selected target industry now influences Firecrawl queries, candidate scoring, visible strategy guidance, and saved prospect notes. This keeps lead generation focused on niches where a premium demo website has a clear before-and-after sales story.
+The selected target industry now influences Firecrawl queries, candidate scoring, visible strategy guidance, persisted candidate status, and saved prospect notes. This keeps lead generation focused on niches where a premium demo website has a clear before-and-after sales story.
 
 Saving a candidate creates a normal Seraphim prospect with status `profile_extracted`. It does not generate a demo, deploy a site, send outreach, submit forms, or contact anyone automatically. Each saved lead includes the source URL, source summary, score reasons, warnings, and a reminder to verify facts before generation or outreach.
 
-Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. `CREATIVE_MODEL`, `DESIGN_SYSTEM_MODEL`, `PLANNER_MODEL`, `PAGE_CONTRACT_MODEL`, and `SECTION_MODEL` default to `gemini-2.5-pro`; `QA_MODEL`, `VISUAL_QA_MODEL`, and `INSPIRATION_MODEL` default to `gemini-2.5-flash`. Reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable. The router retries failed model calls twice with exponential backoff and temporarily opens a 60-second circuit after repeated route failures.
+Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. `CREATIVE_MODEL`, `DESIGN_SYSTEM_MODEL`, `PLANNER_MODEL`, `PAGE_CONTRACT_MODEL`, and `SECTION_MODEL` default to `gemini-2.5-pro`; `QA_MODEL`, `VISUAL_QA_MODEL`, `OUTREACH_MODEL`, and `INSPIRATION_MODEL` default to `gemini-2.5-flash`. Reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable. The router retries failed model calls twice with exponential backoff and temporarily opens a 60-second circuit after repeated route failures.
 
 ## Generation UI Migration Notes
 
 The `/create` workflow now streams website generation when the browser requests `text/event-stream`. The server emits creative-contract, design-system, plan, page-contract, section, QA, and complete events so the preview can fill in section by section; JSON responses remain supported for older callers and prospect-detail fallbacks.
 
+Create Site includes two generation depth options. **Fast Draft** is the default for lead screening: it uses the contract pipeline with lightweight QA and skips expensive revision loops. **Premium Final** is slower and keeps the full contract pipeline, visual QA, and targeted section revisions for high-value leads.
+
 Website generation now runs through a Creative Contract pipeline before HTML generation: business data -> Creative Contract -> Design System Contract -> Website Plan -> Page Contract -> section HTML -> standalone assembly -> Visual QA -> targeted section revision. This keeps the output AI-generated and business-specific without adding static template libraries, while making every section obey a shared visual grammar and embedded CSS system.
+
+Visual QA now combines HTML heuristics, strict JSON model QA in Premium Final mode, and optional render-based QA in `lib/generation/quality/render-qa.ts`. Render QA checks desktop/mobile output for empty pages, horizontal overflow, broken images, empty controls, and unusually short layouts. It never blocks generation when Playwright is unavailable.
+
+Extraction now carries field-level evidence metadata for business name, category, location, phone, email, website, social URL, services, and brand colors. The Create Site review panel surfaces confidence, source, evidence, and review flags before generation.
+
+Outreach copy can now use `/api/generate-outreach` for optional AI personalization. The deterministic `generateSalesMessages` templates remain the safe fallback, and the app still never sends messages automatically.
 
 The taste layer now builds a visual identity profile before the Creative Contract. It preserves screenshot/logo/material signals such as extracted colors, logo mood, image energy, typography feel, brand temperature, and niche cues; reconciles the selected archetype against the extracted industry and conversion action; and surfaces warnings when a page risks generic corporate defaults. QA now treats “technically complete but boring” as a failure mode, so technically valid pages can be capped until they show brand specificity, emotional fit, niche-appropriate visual language, and palette/logo alignment.
 
@@ -161,10 +174,14 @@ Generated concept sites:
 ## Verification
 
 ```bash
+npm install
 npm run lint
 npm run typecheck
+npm run test
 npm run build
 ```
+
+CI runs the same checks through `.github/workflows/ci.yml` on pull requests and pushes to `main`.
 
 Key UI paths:
 
