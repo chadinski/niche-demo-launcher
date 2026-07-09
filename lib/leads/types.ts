@@ -28,6 +28,9 @@ export interface LeadCandidate {
   recommendedAngle: string;
   confidence: number;
   warnings: string[];
+  persistentId?: string;
+  status?: "new" | "saved" | "rejected" | "contacted" | "blacklisted";
+  searchRunId?: string;
 }
 
 export interface LeadSearchRequest {
@@ -47,4 +50,5 @@ export interface LeadSearchResponse {
   candidates: LeadCandidate[];
   warnings: string[];
   searchedAt: string;
+  searchRunId?: string;
 }

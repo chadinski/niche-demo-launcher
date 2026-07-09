@@ -140,6 +140,7 @@ export function LeadFinder() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<LeadSearchResponse | null>(null);
   const [savedMap, setSavedMap] = useState<Record<string, string>>({});
+  const [candidateStatuses, setCandidateStatuses] = useState<Record<string, NonNullable<LeadCandidate["status"]>>>({});
   const selectedCountry = getLeadCountry(countryCode);
   const searchLocation = buildLeadSearchLocation({
     city,
@@ -198,6 +199,29 @@ export function LeadFinder() {
     const prospect = buildProspect(candidate);
     saveProspect(prospect);
     setSavedMap((current) => ({ ...current, [candidate.id]: prospect.id }));
+    setCandidateStatuses((current) => ({ ...current, [candidate.id]: "saved" }));
+    void updateCandidateStatus(candidate, "saved");
+  };
+
+  const updateCandidateStatus = async (
+    candidate: LeadCandidate,
+    status: NonNullable<LeadCandidate["status"]>,
+    reason?: string,
+  ) => {
+    setCandidateStatuses((current) => ({ ...current, [candidate.id]: status }));
+    await fetch("/api/leads/candidate-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        candidateId: candidate.persistentId,
+        sourceUrl: candidate.sourceUrl || candidate.sourceTitle,
+        businessName: candidate.businessName,
+        status,
+        reason,
+      }),
+    }).catch(() => {
+      // Remote status sync is best-effort; UI still reflects the user's current decision.
+    });
   };
 
   return (
@@ -382,6 +406,7 @@ export function LeadFinder() {
             <div className="divide-y divide-[#eff0f4]">
               {result.candidates.map((candidate) => {
                 const savedId = savedMap[candidate.id];
+                const status = candidateStatuses[candidate.id] || candidate.status || "new";
                 const alreadyExists = existingSources.has(`Firecrawl lead search: ${candidate.sourceUrl || candidate.sourceTitle}`);
 
                 return (
@@ -401,6 +426,9 @@ export function LeadFinder() {
                           </span>
                           <span className="rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700">
                             {candidate.confidence}/100 confidence
+                          </span>
+                          <span className="rounded-full border border-[#e3e5ed] bg-white px-2.5 py-1 text-xs font-bold text-[#667086]">
+                            {status}
                           </span>
                         </div>
 
@@ -479,12 +507,28 @@ export function LeadFinder() {
                             variant="primary"
                             className="w-full"
                             onClick={() => saveCandidate(candidate)}
-                            disabled={alreadyExists}
+                            disabled={alreadyExists || status === "rejected" || status === "blacklisted"}
                           >
                             <Save className="size-4" />
                             {alreadyExists ? "Already saved" : "Save prospect"}
                           </Button>
                         )}
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => void updateCandidateStatus(candidate, "rejected", "Rejected from Lead Finder")}
+                          disabled={status === "rejected" || status === "blacklisted"}
+                        >
+                          Reject lead
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          className="w-full text-rose-700"
+                          onClick={() => void updateCandidateStatus(candidate, "blacklisted", "Blacklisted from Lead Finder")}
+                          disabled={status === "blacklisted"}
+                        >
+                          Blacklist
+                        </Button>
                       </div>
                     </div>
                   </article>

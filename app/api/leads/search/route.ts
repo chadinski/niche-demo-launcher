@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
 import { searchFirecrawlLeads } from "@/lib/leads/firecrawl-lead-search";
+import { persistLeadSearch } from "@/lib/leads/persistence";
 import { buildLeadSearchLocation } from "@/lib/leads/regions";
 
 const requestSchema = z.object({
@@ -22,23 +23,36 @@ const noStoreHeaders = {
 
 export async function POST(request: Request) {
   try {
-    await requireServerUser();
+    const user = await requireServerUser();
 
     const json = await request.json().catch(() => ({}));
     const input = requestSchema.parse(json);
+    const location = buildLeadSearchLocation({
+      city: input.city,
+      region: input.region,
+      country: input.country,
+      fallbackLocation: input.location,
+    });
     const result = await searchFirecrawlLeads({
       ...input,
-      location: buildLeadSearchLocation({
-        city: input.city,
-        region: input.region,
-        country: input.country,
-        fallbackLocation: input.location,
-      }),
+      location,
+    });
+    const persisted = await persistLeadSearch({
+      user,
+      targetIndustryId: result.targetIndustryId,
+      industry: input.industry,
+      country: input.country,
+      region: input.region,
+      city: input.city,
+      query: result.query,
+      candidates: result.candidates,
     });
 
     return NextResponse.json(
       {
         ...result,
+        candidates: persisted.candidates,
+        searchRunId: persisted.searchRunId,
         searchedAt: new Date().toISOString(),
       },
       { headers: noStoreHeaders },

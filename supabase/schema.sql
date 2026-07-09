@@ -129,6 +129,52 @@ create table public.activity_logs (
   created_at timestamptz not null default now()
 );
 
+create table public.lead_search_runs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  target_industry_id text not null default '',
+  industry text not null default '',
+  country text not null default '',
+  region text not null default '',
+  city text not null default '',
+  query text not null default '',
+  result_count integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table public.lead_candidates (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  search_run_id uuid references public.lead_search_runs(id) on delete set null,
+  business_name text not null default '',
+  category text not null default '',
+  location text not null default '',
+  phone text not null default '',
+  email text not null default '',
+  website_url text not null default '',
+  social_url text not null default '',
+  source_url text not null default '',
+  source_title text not null default '',
+  source_summary text not null default '',
+  lead_score integer not null default 0,
+  score_reasons jsonb not null default '[]'::jsonb,
+  warnings jsonb not null default '[]'::jsonb,
+  status text not null default 'new' check (status in ('new', 'saved', 'rejected', 'contacted', 'blacklisted')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, source_url)
+);
+
+create table public.lead_blacklist (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  business_name text not null default '',
+  source_url text not null default '',
+  reason text not null default '',
+  created_at timestamptz not null default now(),
+  unique (user_id, source_url)
+);
+
 create index prospects_user_updated_idx on public.prospects(user_id, updated_at desc);
 create index prospects_user_status_idx on public.prospects(user_id, outreach_status);
 create index prospects_follow_up_idx on public.prospects(user_id, next_follow_up_at)
@@ -136,6 +182,10 @@ create index prospects_follow_up_idx on public.prospects(user_id, next_follow_up
 create index generated_websites_prospect_idx on public.generated_websites(prospect_id, created_at desc);
 create index outreach_messages_prospect_idx on public.outreach_messages(prospect_id, created_at desc);
 create index activity_logs_prospect_idx on public.activity_logs(prospect_id, created_at desc);
+create index lead_search_runs_user_created_idx on public.lead_search_runs(user_id, created_at desc);
+create index lead_candidates_user_status_idx on public.lead_candidates(user_id, status, updated_at desc);
+create index lead_candidates_search_run_idx on public.lead_candidates(search_run_id);
+create index lead_blacklist_user_source_idx on public.lead_blacklist(user_id, source_url);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -169,12 +219,19 @@ create trigger app_settings_set_updated_at
 before update on public.app_settings
 for each row execute function public.set_updated_at();
 
+create trigger lead_candidates_set_updated_at
+before update on public.lead_candidates
+for each row execute function public.set_updated_at();
+
 alter table public.prospects enable row level security;
 alter table public.generated_websites enable row level security;
 alter table public.outreach_messages enable row level security;
 alter table public.outreach_templates enable row level security;
 alter table public.app_settings enable row level security;
 alter table public.activity_logs enable row level security;
+alter table public.lead_search_runs enable row level security;
+alter table public.lead_candidates enable row level security;
+alter table public.lead_blacklist enable row level security;
 
 create policy "Users manage their own prospects"
 on public.prospects for all
@@ -203,5 +260,20 @@ with check ((select auth.uid()) = user_id);
 
 create policy "Users manage their own activity logs"
 on public.activity_logs for all
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
+create policy "Users manage their own lead search runs"
+on public.lead_search_runs for all
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
+create policy "Users manage their own lead candidates"
+on public.lead_candidates for all
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
+create policy "Users manage their own lead blacklist"
+on public.lead_blacklist for all
 using ((select auth.uid()) = user_id)
 with check ((select auth.uid()) = user_id);
