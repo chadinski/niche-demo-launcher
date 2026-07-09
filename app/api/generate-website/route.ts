@@ -10,6 +10,8 @@ import { buildPageContractPrompt } from "@/lib/ai/prompts/page-contract";
 import { buildVisualQAPrompt } from "@/lib/ai/prompts/visual-qa";
 import { getRoutesForStage, runWithModelRouteRetry, type ModelRoute } from "@/lib/ai/modelRouter";
 import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
+import { normalizeGenerationDepth, generationModeSummary } from "@/lib/generation/pipeline/types";
+import { runRenderQA } from "@/lib/generation/quality/render-qa";
 import {
   DEFAULT_CREATIVE_CONTRACT,
   DEFAULT_DESIGN_SYSTEM_CONTRACT,
@@ -67,6 +69,7 @@ const requestSchema = z.object({
     brandPersonality: z.string().max(600).optional(),
   }).optional(),
   visualPreferences: z.unknown().optional(),
+  generationDepth: z.enum(["fast-draft", "premium-final"]).optional().default("fast-draft"),
   generationMode: z.string().max(80).optional().default("standard"),
   imageName: z.string().max(180).optional().default(""),
   sourceImageDataUrl: z.string().max(18_000_000).optional().default(""),
@@ -2141,10 +2144,46 @@ async function runVisualQA(input: {
   archetypeReconciliation: ArchetypeReconciliation;
   premiumReferenceBrief: PremiumReferenceBrief;
   visualMotifs: PremiumVisualMotifRecommendation;
+  generationDepth?: "fast-draft" | "premium-final";
 }) {
   const heuristic = heuristicVisualIssues(input);
-  const heuristicQa = qaFromHeuristics(heuristic);
+  const renderQa = await runRenderQA(input.html);
+  const renderIssues = renderQa.findings
+    .filter((finding) => finding.severity !== "low")
+    .map((finding) => `Render QA ${finding.viewport}: ${finding.issue}`);
+  const combinedHeuristic = {
+    issues: unique([...heuristic.issues, ...renderIssues]),
+    sectionIssues: [
+      ...heuristic.sectionIssues,
+      ...renderQa.findings
+        .filter((finding) => finding.severity === "high")
+        .map((finding) => ({
+          sectionId: input.pageContract.sections[0]?.id || "global",
+          severity: "high" as const,
+          issue: `Render QA ${finding.viewport}: ${finding.issue}`,
+          revisionInstruction: "Regenerate affected sections with mobile-safe layout, stable media sizing, and no horizontal overflow.",
+        })),
+    ],
+  };
+  const heuristicQa = qaFromHeuristics(combinedHeuristic);
   const errors: string[] = [];
+  if (renderQa.warnings.length) errors.push(...renderQa.warnings);
+  const mode = generationModeSummary(normalizeGenerationDepth(input.generationDepth));
+
+  if (!mode.visualModelQa) {
+    return {
+      qa: {
+        ...heuristicQa,
+        renderQA: {
+          available: renderQa.available,
+          findings: renderQa.findings,
+          warnings: renderQa.warnings,
+        },
+      },
+      metadata: { stage: "visual-qa", provider: "local", model: "fast-draft-heuristic-render-qa", fallback: true } satisfies StageMetadata,
+      errors,
+    };
+  }
 
   for (const route of getRoutesForStage("visual-qa")) {
     try {
@@ -2158,8 +2197,8 @@ async function runVisualQA(input: {
       const modelQa = parseVisualQAResult(text, heuristicQa);
       const usedHeuristicFallback = modelQa === heuristicQa;
       if (usedHeuristicFallback) errors.push(`${route.provider}:${route.model}: Visual QA returned invalid JSON; heuristic QA was used.`);
-      const issues = unique([...heuristic.issues, ...(usedHeuristicFallback ? [] : modelQa.issues)]);
-      const sectionIssues = [...heuristic.sectionIssues, ...(usedHeuristicFallback ? [] : modelQa.sectionIssues)];
+      const issues = unique([...combinedHeuristic.issues, ...(usedHeuristicFallback ? [] : modelQa.issues)]);
+      const sectionIssues = [...combinedHeuristic.sectionIssues, ...(usedHeuristicFallback ? [] : modelQa.sectionIssues)];
       const issueText = issues.join(" ").toLowerCase();
       const scoreCap = issueText.includes("technically complete but boring")
         ? 7.1
@@ -2178,6 +2217,11 @@ async function runVisualQA(input: {
           globalRevisionInstruction: usedHeuristicFallback
             ? heuristicQa.globalRevisionInstruction
             : modelQa.globalRevisionInstruction || "Revise sections to satisfy Creative Contract, Design System, and Page Contract.",
+          renderQA: {
+            available: renderQa.available,
+            findings: renderQa.findings,
+            warnings: renderQa.warnings,
+          },
         } satisfies SectionQAResult,
         metadata: { stage: "visual-qa", provider: route.provider, model: route.model, fallback: route.fallback || usedHeuristicFallback } satisfies StageMetadata,
         errors,
@@ -2188,7 +2232,14 @@ async function runVisualQA(input: {
   }
 
   return {
-    qa: heuristicQa,
+    qa: {
+      ...heuristicQa,
+      renderQA: {
+        available: renderQa.available,
+        findings: renderQa.findings,
+        warnings: renderQa.warnings,
+      },
+    },
     metadata: { stage: "visual-qa", provider: "local", model: "heuristic-visual-qa", fallback: true } satisfies StageMetadata,
     errors,
   };
@@ -2213,6 +2264,8 @@ function qualityGateFromSectionQA(qa: SectionQAResult): QualityGate {
     passed: qa.passed,
     dimensionScores: {
       visualPremiumFeel: qa.passed ? 9 : 7,
+      desktopLayout: qa.issues.some((issue) => /desktop|render qa/i.test(issue)) ? 6 : 9,
+      mobileLayout: qa.issues.some((issue) => /mobile|overflow/i.test(issue)) ? 6 : 9,
       visualMagnetism: qa.passed ? 9 : 7,
       brandSpecificity: qa.passed ? 9 : 7,
       sectionDepth: qa.passed ? 9 : 7,
@@ -2220,8 +2273,10 @@ function qualityGateFromSectionQA(qa: SectionQAResult): QualityGate {
       seoCompleteness: qa.issues.some((issue) => /seo|meta/i.test(issue)) ? 6 : 9,
       mobileResponsiveness: qa.issues.some((issue) => /mobile|overflow/i.test(issue)) ? 6 : 9,
       imageQuality: qa.passed ? 9 : 7,
+      imageSafety: qa.issues.some((issue) => /image|media|alt/i.test(issue)) ? 6 : 9,
       interactionQuality: qa.passed ? 9 : 7,
       factualSafety: qa.issues.some((issue) => /fake|fabricated|unsupported/i.test(issue)) ? 5 : 9,
+      technicalCompleteness: qa.issues.some((issue) => /empty|broken|overflow|html/i.test(issue)) ? 6 : 9,
       codeCleanliness: qa.passed ? 9 : 7,
     },
     rejectionReasons: qa.issues,
@@ -2314,6 +2369,7 @@ function buildGenerationResponse(input: {
     visualIdentity: input.pipeline.visualIdentity,
     archetypeReconciliation: input.pipeline.archetypeReconciliation,
     visualMotifs: input.pipeline.visualMotifs,
+    generationDepth: input.pipeline.generationDepth,
     modelMetadata,
     pipelineModelMetadata: input.pipelineMetadata,
     cleanedBusinessData: input.cleanBusinessData,
@@ -2339,6 +2395,7 @@ async function runSectionGenerationPipeline(input: {
   industryBrief: SeraphimIndustryBrief;
   generationId: string;
 }) {
+  const mode = generationModeSummary(normalizeGenerationDepth(input.data.generationDepth));
   const { visualIdentity, archetype, reconciliation } = resolveTasteLayer(input.data, input.cleanBusinessData);
   const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences, visualIdentity);
   const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
@@ -2446,11 +2503,12 @@ async function runSectionGenerationPipeline(input: {
     archetypeReconciliation: reconciliation,
     premiumReferenceBrief,
     visualMotifs,
+    generationDepth: mode.generationDepth,
   });
   metadata.push(qaResult.metadata);
   let revisionCount = 0;
 
-  while (!qaResult.qa.passed && revisionCount < 2 && qaResult.qa.issues.length) {
+  while (!qaResult.qa.passed && revisionCount < mode.expensiveRevisionPasses && qaResult.qa.issues.length) {
     revisionCount += 1;
     const sectionsToRegenerate = sectionContractsForIssues(sectionContracts, qaResult.qa);
     for (const section of sectionsToRegenerate) {
@@ -2504,6 +2562,7 @@ async function runSectionGenerationPipeline(input: {
       archetypeReconciliation: reconciliation,
       premiumReferenceBrief,
       visualMotifs,
+      generationDepth: mode.generationDepth,
     });
     metadata.push({ ...qaResult.metadata, stage: `visual-qa:retry-${revisionCount}` });
   }
@@ -2525,6 +2584,7 @@ async function runSectionGenerationPipeline(input: {
     inspiration,
     premiumReferenceBrief,
     visualMotifs,
+    generationDepth: mode.generationDepth,
   };
 }
 
@@ -2535,6 +2595,7 @@ async function streamSectionGenerationPipeline(input: {
   generationId: string;
   send: (event: Record<string, unknown>) => void;
 }) {
+  const mode = generationModeSummary(normalizeGenerationDepth(input.data.generationDepth));
   const { visualIdentity, archetype, reconciliation } = resolveTasteLayer(input.data, input.cleanBusinessData);
   const tokens = buildTokensForGeneration(archetype, input.data.visualPreferences, visualIdentity);
   const business = businessDataFromCleanData(input.cleanBusinessData, input.data.business);
@@ -2705,6 +2766,7 @@ async function streamSectionGenerationPipeline(input: {
     archetypeReconciliation: reconciliation,
     premiumReferenceBrief,
     visualMotifs,
+    generationDepth: mode.generationDepth,
   });
   metadata.push(qaResult.metadata);
   let revisionCount = 0;
@@ -2715,7 +2777,7 @@ async function streamSectionGenerationPipeline(input: {
     modelMetadata: qaResult.metadata,
   });
 
-  while (!qaResult.qa.passed && revisionCount < 2 && qaResult.qa.issues.length) {
+  while (!qaResult.qa.passed && revisionCount < mode.expensiveRevisionPasses && qaResult.qa.issues.length) {
     revisionCount += 1;
     const sectionsToRegenerate = sectionContractsForIssues(sectionContracts, qaResult.qa);
     for (const section of sectionsToRegenerate) {
@@ -2778,6 +2840,7 @@ async function streamSectionGenerationPipeline(input: {
       archetypeReconciliation: reconciliation,
       premiumReferenceBrief,
       visualMotifs,
+      generationDepth: mode.generationDepth,
     });
     metadata.push({ ...qaResult.metadata, stage: `visual-qa:retry-${revisionCount}` });
     input.send({
@@ -2806,6 +2869,7 @@ async function streamSectionGenerationPipeline(input: {
     inspiration,
     premiumReferenceBrief,
     visualMotifs,
+    generationDepth: mode.generationDepth,
   };
 }
 

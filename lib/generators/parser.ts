@@ -126,14 +126,14 @@ const categorySignals: Array<{ category: string; pattern: RegExp; weight: number
   { category: "wellness", pattern: /\b(wellness|therapy|massage|holistic|yoga|meditation|healing)\b/gi, weight: 5 },
   { category: "spa", pattern: /\b(spa|facial|body treatment|skin care|aesthetic)\b/gi, weight: 5 },
   { category: "salon", pattern: /\b(salon|barber|hair|nails|lashes|makeup|beauty|stylist|braids)\b/gi, weight: 6 },
-  { category: "construction", pattern: /\b(construction|contractor|builder|renovation|roofing|plumbing|electrical|hardware|supplies|materials)\b/gi, weight: 5 },
+  { category: "construction", pattern: /\b(construction|contractor|builder|renovation|roofing|plumb(?:ing|er|ers)?|electric(?:al|ian|ians)?|paint(?:ing|er|ers)?|locksmiths?|hardware|supplies|materials|home service|in-home service)\b/gi, weight: 5 },
   { category: "real estate", pattern: /\b(real estate|realtor|realty|property|home staging)\b/gi, weight: 6 },
   { category: "interior design", pattern: /\b(interior|architect|decor|furniture|space planning)\b/gi, weight: 5 },
   { category: "funeral home", pattern: /\b(funeral|memorial|cremation|tribute|remembrance|urn)\b/gi, weight: 6 },
   { category: "3d printing", pattern: /\b(3d printing|prototype|prototyping|fabrication|laser cutting|cnc|custom product|sign shop|signage)\b/gi, weight: 6 },
   { category: "music", pattern: /\b(music|musician|band|dj|recording studio|performer|entertainment|artist|violin|singer)\b/gi, weight: 5 },
   { category: "florist", pattern: /\b(florist|flowers?|bouquet|arrangement|wedding florals|event florals)\b/gi, weight: 6 },
-  { category: "pet care", pattern: /\b(pet|veterinary|vet|grooming|dog|cat|animal care)\b/gi, weight: 6 },
+  { category: "pet care", pattern: /\b(pet|pet store|veterinary|vet|grooming|dog|cat|animal care)\b/gi, weight: 6 },
   { category: "law firm", pattern: /\b(law|legal|attorney|lawyer|barrister|solicitor)\b/gi, weight: 6 },
   { category: "accounting", pattern: /\b(accounting|accountant|tax|bookkeeping|finance|financial)\b/gi, weight: 5 },
   { category: "consulting", pattern: /\b(consulting|consultant|advisory|professional service)\b/gi, weight: 4 },
@@ -222,6 +222,7 @@ function isNoiseLine(line: string) {
   if (/^(?:19|20)\d{2}$/.test(value)) return true;
   if (/^\d{1,2}[/-]\d{1,2}[/-](?:\d{2}|\d{4})$/.test(value)) return true;
   if (/^(?:https?:\/\/|www\.)\S+$/i.test(value)) return true;
+  if (/^page\s*[^\w\s]\s*/i.test(value)) return true;
   if (/^[\w.+-]+@[\w-]+(?:\.[\w-]+)+$/i.test(value)) return true;
   if (/\b(?:battery|wi-?fi|lte|5g|4g|3g|carrier|signal|airplane mode|no service|charging|verizon|t-mobile|at&t|digicel|flow)\b/i.test(value)) return true;
   if (/\b(?:screenshot|screen shot|image metadata|file name|dimensions|megapixels|edited|saved to photos)\b/i.test(value)) return true;
@@ -493,7 +494,8 @@ export function parseBusinessInfo(raw: string): Partial<BusinessInfo> {
     firstMatch(normalized, /(?:\+?\d[\d\s().-]{7,}\d)/);
 
   const colors = normalized.match(/#[0-9a-f]{6}\b/gi)?.slice(0, 3).join(", ") ?? "";
-  const category = valueAfterLabel(raw, ["category", "business type", "industry", "niche"]) || inferCategory(cleanedRaw || normalized);
+  const pageCategory = normalized.match(/^page\s*[^\w\s]\s*([^\n]+)/im)?.[1]?.trim() ?? "";
+  const category = valueAfterLabel(raw, ["category", "business type", "industry", "niche"]) || inferCategory([pageCategory, normalized].filter(Boolean).join("\n"));
 
   return {
     rawInfo: raw,

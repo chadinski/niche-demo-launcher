@@ -66,6 +66,16 @@ export interface ThemeAssignment {
   notes: string[];
 }
 
+export type FieldEvidenceSource = "image" | "ocr" | "user_input" | "inferred" | "fallback";
+
+export interface ExtractedFieldEvidence {
+  value: string | string[];
+  confidence: number;
+  source: FieldEvidenceSource;
+  evidence: string[];
+  needsReview: boolean;
+}
+
 export interface BusinessUnderstanding {
   rawOcrText: string;
   cleanedText: string;
@@ -88,6 +98,17 @@ export interface BusinessUnderstanding {
   missingInformation: string[];
   assumptions: string[];
   enrichedInfo: Partial<BusinessInfo>;
+  fieldEvidence?: {
+    businessName: ExtractedFieldEvidence;
+    category: ExtractedFieldEvidence;
+    location: ExtractedFieldEvidence;
+    phone: ExtractedFieldEvidence;
+    email: ExtractedFieldEvidence;
+    websiteUrl: ExtractedFieldEvidence;
+    socialUrl: ExtractedFieldEvidence;
+    services: ExtractedFieldEvidence;
+    brandColors: ExtractedFieldEvidence;
+  };
   reportMarkdown: string;
 }
 

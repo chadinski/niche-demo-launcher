@@ -48,6 +48,8 @@ You must:
 - Populate enrichedInfo with empty strings for unknown business fields.
 - Use "Your Business Name" only if no business name can be found.
 - Mark weak OCR or low confidence in missingInformation and assumptions.
+- For businessName, category, location, phone, email, websiteUrl, socialUrl, services, and brandColors, include fieldEvidence with value, confidence, source, evidence, and needsReview.
+- Do not mark a field as high confidence unless the screenshot/OCR/user input directly supports it.
 - Build reportMarkdown as a complete business-intelligence-report.md document.
 
 Do not create testimonials, awards, ratings, prices, credentials, years in business, guarantees, addresses, or claims unless visible or supplied.`;
@@ -156,6 +158,98 @@ function completeBusinessInfo(value: unknown, fallback: OpenAIBusinessInfo): Ope
     brandColors: asString(source.brandColors || source.colors, fallback.brandColors),
     notes: asString(source.notes, fallback.notes),
     painPoints: asString(source.painPoints, fallback.painPoints),
+  };
+}
+
+function fieldEvidence(input: {
+  value: string | string[];
+  confidence: number;
+  source: "image" | "ocr" | "user_input" | "inferred" | "fallback";
+  evidence: string[];
+  repaired?: boolean;
+}) {
+  return {
+    value: input.value,
+    confidence: input.confidence,
+    source: input.source,
+    evidence: input.evidence.filter(Boolean).slice(0, 4),
+    needsReview: input.repaired || input.confidence < 75 || input.source === "inferred" || input.source === "fallback",
+  };
+}
+
+function buildFieldEvidence(input: {
+  info: OpenAIBusinessInfo;
+  understanding: Pick<OpenAIBusinessUnderstanding, "businessNameConfidence" | "businessNameReason" | "industry" | "services" | "contact" | "theme" | "visualClues" | "rawOcrText">;
+  repaired?: boolean;
+}) {
+  const ocrEvidence = input.understanding.rawOcrText ? ["Visible OCR text contained this field or a related label."] : ["Derived from screenshot/business context."];
+  const visualEvidence = input.understanding.visualClues.slice(0, 2);
+  const repairedEvidence = input.repaired ? ["Model JSON required schema repair; review before generation."] : [];
+
+  return {
+    businessName: fieldEvidence({
+      value: input.info.businessName,
+      confidence: input.understanding.businessNameConfidence,
+      source: input.info.businessName ? "ocr" : "fallback",
+      evidence: [input.understanding.businessNameReason, ...repairedEvidence],
+      repaired: input.repaired,
+    }),
+    category: fieldEvidence({
+      value: input.info.category,
+      confidence: input.understanding.industry.categoryConfidence,
+      source: input.understanding.industry.triggeredKeywords.length ? "ocr" : "inferred",
+      evidence: [input.understanding.industry.explanation, ...input.understanding.industry.triggeredKeywords.slice(0, 2), ...repairedEvidence],
+      repaired: input.repaired,
+    }),
+    location: fieldEvidence({
+      value: input.info.location,
+      confidence: input.info.location ? 86 : 35,
+      source: input.info.location ? "ocr" : "fallback",
+      evidence: [...ocrEvidence, ...repairedEvidence],
+      repaired: input.repaired,
+    }),
+    phone: fieldEvidence({
+      value: input.info.phone,
+      confidence: input.info.phone ? 90 : 30,
+      source: input.info.phone ? "ocr" : "fallback",
+      evidence: [...ocrEvidence, ...repairedEvidence],
+      repaired: input.repaired,
+    }),
+    email: fieldEvidence({
+      value: input.info.email,
+      confidence: input.info.email ? 90 : 30,
+      source: input.info.email ? "ocr" : "fallback",
+      evidence: [...ocrEvidence, ...repairedEvidence],
+      repaired: input.repaired,
+    }),
+    websiteUrl: fieldEvidence({
+      value: input.info.websiteUrl,
+      confidence: input.info.websiteUrl ? 84 : 30,
+      source: input.info.websiteUrl ? "ocr" : "fallback",
+      evidence: [...ocrEvidence, ...repairedEvidence],
+      repaired: input.repaired,
+    }),
+    socialUrl: fieldEvidence({
+      value: input.info.socialUrl,
+      confidence: input.info.socialUrl ? 84 : 30,
+      source: input.info.socialUrl ? "ocr" : "fallback",
+      evidence: [...ocrEvidence, ...repairedEvidence],
+      repaired: input.repaired,
+    }),
+    services: fieldEvidence({
+      value: input.understanding.services,
+      confidence: input.understanding.services.length ? 78 : 40,
+      source: input.understanding.services.length ? "ocr" : "inferred",
+      evidence: [...ocrEvidence, ...input.understanding.services.slice(0, 2), ...repairedEvidence],
+      repaired: input.repaired,
+    }),
+    brandColors: fieldEvidence({
+      value: input.understanding.theme.palette,
+      confidence: input.understanding.theme.palette.length ? 76 : 35,
+      source: input.understanding.theme.palette.length ? "image" : "fallback",
+      evidence: [...visualEvidence, "Palette derived from sampled colors and visual/logo cues.", ...repairedEvidence],
+      repaired: input.repaired,
+    }),
   };
 }
 
@@ -358,8 +452,14 @@ function repairGeminiUnderstanding(value: unknown, input: {
       socialUrl: contact.social,
       services: services.join(", "),
     }),
+    fieldEvidence: undefined,
     reportMarkdown: asString(source.reportMarkdown, fallback.reportMarkdown),
   };
+  repaired.fieldEvidence = buildFieldEvidence({
+    info: repaired.enrichedInfo,
+    understanding: repaired,
+    repaired: true,
+  });
 
   const parsed = openAIBusinessUnderstandingSchema.safeParse(repaired);
   if (!parsed.success) {
@@ -429,6 +529,7 @@ Required top-level keys:
 rawOcrText, cleanedText, visualClues, businessNameCandidates, selectedBusinessName,
 businessNameConfidence, businessNameReason, industry, theme, services, contact,
 seoKeywords, missingInformation, assumptions, enrichedInfo, reportMarkdown.
+Optional but preferred key: fieldEvidence with businessName, category, location, phone, email, websiteUrl, socialUrl, services, brandColors.
 Use arrays for all list fields. Use numbers from 0-100 for confidence fields.
 Use empty strings for unknown contact/enrichedInfo fields instead of omitting them.
 
@@ -508,8 +609,18 @@ ${userContext(input)}`,
 
     logModelRoute(route, input.generationId);
 
+    const understandingWithEvidence = parsed.data.fieldEvidence
+      ? parsed.data
+      : {
+          ...parsed.data,
+          fieldEvidence: buildFieldEvidence({
+            info: parsed.data.enrichedInfo,
+            understanding: parsed.data,
+          }),
+        };
+
     return {
-        understanding: sanitizeOpenAIUnderstanding(applyVisiblePageCategory(parsed.data, input.rawOcrText)),
+        understanding: sanitizeOpenAIUnderstanding(applyVisiblePageCategory(understandingWithEvidence, input.rawOcrText)),
       model,
       provider: "gemini",
       route,
@@ -557,9 +668,18 @@ async function generateWithOpenAI(input: {
   if (!response.output_parsed) {
     throw new Error("OpenAI did not return structured business intelligence.");
   }
+  const understandingWithEvidence = response.output_parsed.fieldEvidence
+    ? response.output_parsed
+    : {
+        ...response.output_parsed,
+        fieldEvidence: buildFieldEvidence({
+          info: response.output_parsed.enrichedInfo,
+          understanding: response.output_parsed,
+        }),
+      };
 
   return {
-    understanding: sanitizeOpenAIUnderstanding(applyVisiblePageCategory(response.output_parsed, input.rawOcrText)),
+    understanding: sanitizeOpenAIUnderstanding(applyVisiblePageCategory(understandingWithEvidence, input.rawOcrText)),
     model,
     provider: "openai",
     route,

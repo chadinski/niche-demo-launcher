@@ -8,6 +8,7 @@ export type GenerationStage =
   | "section"
   | "qa"
   | "visual-qa"
+  | "outreach"
   | "vision"
   | "fallback";
 
@@ -19,6 +20,7 @@ const DEFAULT_SECTION_MODEL = "gemini-2.5-pro";
 const DEFAULT_QA_MODEL = "gemini-2.5-flash";
 const DEFAULT_INSPIRATION_MODEL = "gemini-2.5-flash";
 const DEFAULT_CONTRACT_MODEL = "gemini-2.5-pro";
+const DEFAULT_OUTREACH_MODEL = "gemini-2.5-flash";
 const DEFAULT_GEMINI_FALLBACK_MODELS = [
   "gemini-2.5-flash-lite",
   "gemini-3.1-flash-lite",
@@ -47,6 +49,7 @@ export const CREATIVE_MODEL = process.env.CREATIVE_MODEL || process.env.PLANNER_
 export const DESIGN_SYSTEM_MODEL = process.env.DESIGN_SYSTEM_MODEL || process.env.PLANNER_MODEL || DEFAULT_CONTRACT_MODEL;
 export const PAGE_CONTRACT_MODEL = process.env.PAGE_CONTRACT_MODEL || process.env.PLANNER_MODEL || DEFAULT_CONTRACT_MODEL;
 export const VISUAL_QA_MODEL = process.env.VISUAL_QA_MODEL || process.env.QA_MODEL || DEFAULT_QA_MODEL;
+export const OUTREACH_MODEL = process.env.OUTREACH_MODEL || process.env.QA_MODEL || DEFAULT_OUTREACH_MODEL;
 export const VISION_MODEL = process.env.VISION_MODEL;
 
 export const MODEL_CONFIG = {
@@ -59,6 +62,7 @@ export const MODEL_CONFIG = {
   section: SECTION_MODEL,
   qa: QA_MODEL,
   visualQa: VISUAL_QA_MODEL,
+  outreach: OUTREACH_MODEL,
   vision: VISION_MODEL,
   fallback:
     process.env.FALLBACK_MODEL ||
@@ -93,6 +97,8 @@ export function getModelForStage(stage: GenerationStage): string {
       return MODEL_CONFIG.qa;
     case "visual-qa":
       return MODEL_CONFIG.visualQa;
+    case "outreach":
+      return MODEL_CONFIG.outreach;
     case "vision":
       return MODEL_CONFIG.vision || MODEL_CONFIG.gemini || MODEL_CONFIG.fallback;
     case "fallback":

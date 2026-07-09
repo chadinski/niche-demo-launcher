@@ -100,6 +100,7 @@ const messageTabs: Array<{ key: keyof SalesMessages; label: string }> = [
 
 type BusyAction = "image" | "parse" | "website" | "message" | "both" | "save" | "deploy" | null;
 type GenerationMode = "standard" | "more-luxury" | "more-local" | "more-bold";
+type GenerationDepth = "fast-draft" | "premium-final";
 type ModelMetadata = {
   stage: string;
   provider: string;
@@ -167,6 +168,11 @@ const generationModes: Array<{ key: GenerationMode; label: string; directive: st
   { key: "more-luxury", label: "More luxury", directive: "Generation direction: make the next website feel more luxury, editorial, premium, spacious, and refined while keeping facts accurate." },
   { key: "more-local", label: "More local", directive: "Generation direction: make the next website feel warmer, more local/community-rooted, practical, approachable, and easy to contact." },
   { key: "more-bold", label: "More bold", directive: "Generation direction: make the next website feel bolder, higher-energy, more modern, more visually dramatic, and more action-led." },
+];
+
+const generationDepthOptions: Array<{ key: GenerationDepth; label: string; description: string }> = [
+  { key: "fast-draft", label: "Fast Draft", description: "Quick screening mode with lightweight QA and no expensive revision loop." },
+  { key: "premium-final", label: "Premium Final", description: "Slower contract pipeline with visual QA and targeted section revisions." },
 ];
 
 type ReadinessCheck = {
@@ -502,6 +508,7 @@ export function DemoWorkspace() {
   const [businessReport, setBusinessReport] = useState("");
   const [extractionReviewed, setExtractionReviewed] = useState(false);
   const [generationMode, setGenerationMode] = useState<GenerationMode>("standard");
+  const [generationDepth, setGenerationDepth] = useState<GenerationDepth>("fast-draft");
   const [generationPlan, setGenerationPlan] = useState<GenerationPlan | null>(null);
   const [sectionOutputs, setSectionOutputs] = useState<SectionOutput[]>([]);
   const [skippedSections, setSkippedSections] = useState<string[]>([]);
@@ -551,22 +558,35 @@ export function DemoWorkspace() {
   );
   const extractionReviewItems = useMemo(() => {
     if (!businessUnderstanding) return [];
+    const evidence = businessUnderstanding.fieldEvidence;
     const hasContact = Boolean(info.phone || info.email || info.socialUrl || info.websiteUrl);
     const hasServices = Boolean(info.services.trim());
     const hasLocation = Boolean(info.location.trim());
+    const evidenceText = (key: keyof NonNullable<BusinessUnderstanding["fieldEvidence"]>, fallback: string) =>
+      evidence?.[key]?.evidence?.filter(Boolean).join(" ") || fallback;
+    const evidenceSource = (key: keyof NonNullable<BusinessUnderstanding["fieldEvidence"]>) =>
+      evidence?.[key]?.source;
+    const evidenceReview = (key: keyof NonNullable<BusinessUnderstanding["fieldEvidence"]>) =>
+      evidence?.[key]?.needsReview;
+    const evidenceConfidence = (key: keyof NonNullable<BusinessUnderstanding["fieldEvidence"]>, fallback: number) =>
+      evidence?.[key]?.confidence ?? fallback;
 
     return [
       {
         label: "Business name",
         value: info.businessName || businessUnderstanding.selectedBusinessName || "Your Business Name",
-        confidence: businessUnderstanding.businessNameConfidence,
-        detail: businessUnderstanding.businessNameReason,
+        confidence: evidenceConfidence("businessName", businessUnderstanding.businessNameConfidence),
+        detail: evidenceText("businessName", businessUnderstanding.businessNameReason),
+        source: evidenceSource("businessName"),
+        needsReview: evidenceReview("businessName"),
       },
       {
         label: "Industry",
         value: businessUnderstanding.industry.primaryIndustry,
-        confidence: businessUnderstanding.industry.confidence,
-        detail: businessUnderstanding.industry.explanation,
+        confidence: evidenceConfidence("category", businessUnderstanding.industry.confidence),
+        detail: evidenceText("category", businessUnderstanding.industry.explanation),
+        source: evidenceSource("category"),
+        needsReview: evidenceReview("category"),
       },
       {
         label: "Website category",
@@ -577,8 +597,10 @@ export function DemoWorkspace() {
       {
         label: "Services / products",
         value: info.services || "Needs service confirmation",
-        confidence: hasServices ? 74 : 35,
-        detail: hasServices ? "Services are available for section planning." : "Add or confirm services before outreach.",
+        confidence: evidenceConfidence("services", hasServices ? 74 : 35),
+        detail: evidenceText("services", hasServices ? "Services are available for section planning." : "Add or confirm services before outreach."),
+        source: evidenceSource("services"),
+        needsReview: evidenceReview("services"),
       },
       {
         label: "Contact route",
@@ -589,8 +611,10 @@ export function DemoWorkspace() {
       {
         label: "Location",
         value: info.location || "Location not confirmed",
-        confidence: hasLocation ? 72 : 34,
-        detail: hasLocation ? "Location/service area is available." : "Location can remain omitted, but should be reviewed.",
+        confidence: evidenceConfidence("location", hasLocation ? 72 : 34),
+        detail: evidenceText("location", hasLocation ? "Location/service area is available." : "Location can remain omitted, but should be reviewed."),
+        source: evidenceSource("location"),
+        needsReview: evidenceReview("location"),
       },
     ];
   }, [businessUnderstanding, info]);
@@ -934,6 +958,7 @@ export function DemoWorkspace() {
         body: JSON.stringify({
           generationId: activeGenerationId,
           info: sourceInfo,
+          generationDepth,
           generationMode,
           visualPreferences: designTokenPreferences,
           archetypeId: selectedArchetypeId || undefined,
@@ -1087,7 +1112,56 @@ export function DemoWorkspace() {
 
       return streamedResult;
     },
-    [businessUnderstanding, designTokenPreferences, generationMode, imageDataUrl, imageFile, isActiveGeneration, selectedArchetypeId, visualPrefs],
+    [businessUnderstanding, designTokenPreferences, generationDepth, generationMode, imageDataUrl, imageFile, isActiveGeneration, selectedArchetypeId, visualPrefs],
+  );
+
+  const requestPersonalizedMessages = useCallback(
+    async (sourceInfo: BusinessInfo, websiteHtml = "") => {
+      const fallback = generateSalesMessages(sourceInfo, tone, DEFAULT_SETTINGS);
+
+      try {
+        const response = await fetch("/api/generate-outreach", {
+          method: "POST",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            businessInfo: sourceInfo,
+            extractionReport: businessUnderstanding,
+            generatedDemoUrl: sourceInfo.demoUrl,
+            websiteQualitySummary: websiteHtml ? auditWebsite(websiteHtml, sourceInfo) : undefined,
+            tone,
+            packagePrice: sourceInfo.packagePrice,
+            settings: DEFAULT_SETTINGS,
+          }),
+        });
+        const payload = await response.json() as {
+          messages?: SalesMessages;
+          usedAI?: boolean;
+          modelMetadata?: ModelMetadata;
+          warnings?: string[];
+          error?: string;
+        };
+
+        if (!response.ok || !payload.messages) {
+          throw new Error(payload.error || "Personalized outreach failed.");
+        }
+
+        if (payload.modelMetadata) {
+          setModelMetadata((current) => [...current.filter((item) => item.stage !== "outreach"), payload.modelMetadata as ModelMetadata]);
+        }
+        if (payload.usedAI) {
+          toast.success("AI-personalized messages generated for manual review");
+        } else if (payload.warnings?.length) {
+          toast.info("Safe fallback outreach copy was used");
+        }
+
+        return payload.messages;
+      } catch {
+        toast.info("Using safe fallback outreach copy");
+        return fallback;
+      }
+    },
+    [businessUnderstanding, tone],
   );
 
   const requireGenerationReady = useCallback(() => {
@@ -1153,9 +1227,9 @@ export function DemoWorkspace() {
   const handleGenerateMessages = () =>
     runAction(
       "message",
-      (activeGenerationId) => {
+      async (activeGenerationId) => {
         if (!isActiveGeneration(activeGenerationId)) return;
-        setMessages(generateSalesMessages(info, tone, DEFAULT_SETTINGS));
+        setMessages(await requestPersonalizedMessages(info, html));
       },
       "Outreach messages generated",
     );
@@ -1170,7 +1244,7 @@ export function DemoWorkspace() {
         const generated = await requestAIWebsiteHTML(nextInfo, activeGenerationId);
         if (!generated) return;
         const nextHtml = generated.html;
-        const nextMessages = generateSalesMessages(nextInfo, tone, DEFAULT_SETTINGS);
+        const nextMessages = await requestPersonalizedMessages(nextInfo, nextHtml);
         const nextAudit = auditWebsite(nextHtml, nextInfo);
         if (!isActiveGeneration(activeGenerationId)) return;
         const nextPlan: GenerationPlan = generated.generationPlan ?? {
@@ -1894,7 +1968,7 @@ export function DemoWorkspace() {
               </Button>
               <Button variant="outline" onClick={handleGenerateMessages} loading={busy === "message"} disabled={actionInProgress}>
                 <MessageCircle className="size-4" />
-                Generate Sales Message
+                Generate Personalized Messages
               </Button>
               <Button className="sm:col-span-2" onClick={handleGenerateBoth} loading={busy === "both"} disabled={generationDisabled}>
                 <WandSparkles className="size-4" />
@@ -1957,6 +2031,27 @@ export function DemoWorkspace() {
                     </div>
                   </div>
                 ) : null}
+                <div className="mt-3">
+                  <div className="text-[0.62rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Generation depth</div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {generationDepthOptions.map((option) => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        className={cn(
+                          "rounded-xl border p-3 text-left transition",
+                          generationDepth === option.key
+                            ? "border-brand-300 bg-brand-50 text-brand-800"
+                            : "border-[#e4e6ee] bg-white text-[#747b8f] hover:border-brand-200",
+                        )}
+                        onClick={() => setGenerationDepth(option.key)}
+                      >
+                        <span className="block text-xs font-extrabold">{option.label}</span>
+                        <span className="mt-1 block text-[0.68rem] leading-4 text-current/70">{option.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="mt-3">
                   <div className="text-[0.62rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Regenerate direction</div>
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -2301,7 +2396,7 @@ export function DemoWorkspace() {
                   </p>
                   <Button variant="outline" className="mt-5" onClick={handleGenerateMessages} loading={busy === "message"} disabled={actionInProgress}>
                     <Sparkles className="size-4" />
-                    Generate Sales Messages
+                    Generate Personalized Messages
                   </Button>
                 </div>
               </div>
@@ -2425,15 +2520,22 @@ function ConfidenceReviewRow({
   value,
   confidence,
   detail,
+  source,
+  needsReview,
   compact = false,
 }: {
   label: string;
   value: string;
   confidence: number;
   detail: string;
+  source?: string;
+  needsReview?: boolean;
   compact?: boolean;
 }) {
-  const tone = confidenceTone(confidence);
+  const tone = needsReview ? "review" : confidenceTone(confidence);
+  const readableSource = source
+    ? source.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+    : "Source not reported";
 
   return (
     <div
@@ -2463,6 +2565,16 @@ function ConfidenceReviewRow({
         >
           {confidenceLabel(confidence)} {confidence}/100
         </span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[0.62rem] font-bold text-[#687083]">
+          Source: {readableSource}
+        </span>
+        {needsReview ? (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.62rem] font-bold text-amber-800">
+            Needs review
+          </span>
+        ) : null}
       </div>
       <p className={cn("mt-2 text-xs leading-5 text-[#687083]", compact ? "line-clamp-2" : "line-clamp-3")}>{detail}</p>
     </div>

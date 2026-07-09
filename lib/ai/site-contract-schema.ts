@@ -128,6 +128,15 @@ export const visualQAResultSchema = z.object({
   issues: stringArray,
   sectionIssues: z.array(visualQASectionIssueSchema).default([]),
   globalRevisionInstruction: z.string().default("Improve the generated HTML to satisfy the creative contract and design system."),
+  renderQA: z.object({
+    available: z.boolean().default(false),
+    findings: z.array(z.object({
+      severity: z.enum(["low", "medium", "high"]).default("medium"),
+      issue: z.string().default("Render QA finding."),
+      viewport: z.enum(["desktop", "mobile", "global"]).default("global"),
+    })).default([]),
+    warnings: stringArray,
+  }).optional(),
 });
 
 export type SectionContract = z.infer<typeof sectionContractSchema>;

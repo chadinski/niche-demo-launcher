@@ -74,6 +74,7 @@ export interface BusinessIntelligence {
   screenshotName?: string;
   screenshotDataUrl?: string;
   screenshotSaved?: boolean;
+  generationDepth?: "fast-draft" | "premium-final";
   generationMode?: string;
   archetypeId?: string;
   visualPreferences?: unknown;

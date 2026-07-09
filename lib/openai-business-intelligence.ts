@@ -4,6 +4,14 @@ import type { BusinessInfo } from "@/lib/types";
 import type { BusinessUnderstanding } from "@/lib/industry-theme-engine";
 
 const confidence = z.number().min(0).max(100);
+const fieldEvidenceSource = z.enum(["image", "ocr", "user_input", "inferred", "fallback"]);
+const extractedFieldEvidenceSchema = z.object({
+  value: z.union([z.string(), z.array(z.string())]),
+  confidence,
+  source: fieldEvidenceSource,
+  evidence: z.array(z.string()),
+  needsReview: z.boolean(),
+});
 
 export const openAIBusinessInfoSchema = z.object({
   businessName: z.string(),
@@ -87,6 +95,17 @@ export const openAIBusinessUnderstandingSchema = z.object({
   missingInformation: z.array(z.string()),
   assumptions: z.array(z.string()),
   enrichedInfo: openAIBusinessInfoSchema,
+  fieldEvidence: z.object({
+    businessName: extractedFieldEvidenceSchema,
+    category: extractedFieldEvidenceSchema,
+    location: extractedFieldEvidenceSchema,
+    phone: extractedFieldEvidenceSchema,
+    email: extractedFieldEvidenceSchema,
+    websiteUrl: extractedFieldEvidenceSchema,
+    socialUrl: extractedFieldEvidenceSchema,
+    services: extractedFieldEvidenceSchema,
+    brandColors: extractedFieldEvidenceSchema,
+  }).optional(),
   reportMarkdown: z.string(),
 });
 
@@ -100,6 +119,7 @@ export const openAIBusinessIntelligenceRequestSchema = z.object({
 });
 
 export type OpenAIBusinessInfo = z.infer<typeof openAIBusinessInfoSchema>;
+export type ExtractedFieldEvidence = z.infer<typeof extractedFieldEvidenceSchema>;
 export type OpenAIBusinessUnderstanding = z.infer<typeof openAIBusinessUnderstandingSchema>;
 export type OpenAIBusinessIntelligenceRequest = z.infer<typeof openAIBusinessIntelligenceRequestSchema>;
 
@@ -120,6 +140,8 @@ export function toOpenAIBusinessInfo(info: BusinessInfo): OpenAIBusinessInfo {
 }
 
 export function sanitizeOpenAIUnderstanding(value: OpenAIBusinessUnderstanding): BusinessUnderstanding {
+  const evidence = value.fieldEvidence;
+
   return {
     ...value,
     theme: {
@@ -140,5 +162,6 @@ export function sanitizeOpenAIUnderstanding(value: OpenAIBusinessUnderstanding):
       services: value.enrichedInfo.services || value.services.join(", "),
       brandColors: value.enrichedInfo.brandColors || value.theme.palette.join(", "),
     },
+    fieldEvidence: evidence,
   };
 }

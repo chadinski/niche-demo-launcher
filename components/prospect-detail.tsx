@@ -176,6 +176,7 @@ export function ProspectDetail() {
         body: JSON.stringify({
           generationId: activeGenerationId,
           info,
+          generationDepth: "premium-final",
           generationMode: "more-luxury",
           visualPreferences: prospect.business_intelligence?.visualPreferences,
           archetypeId: prospect.business_intelligence?.archetypeId,
@@ -211,6 +212,7 @@ export function ProspectDetail() {
           ...intelligence,
           ...prospect.business_intelligence,
           generationId: activeGenerationId,
+          generationDepth: "premium-final",
           generationMode: "more-luxury",
           archetypeId: prospect.business_intelligence?.archetypeId,
           visualPreferences: prospect.business_intelligence?.visualPreferences,
