@@ -13,6 +13,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getAutomationStatus } from "@/app/deployment-actions";
+import { upsertSettings, type SettingsResult } from "@/app/settings/actions";
 import { PageHeading } from "@/components/page-heading";
 import { Button, Card } from "@/components/ui";
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
@@ -27,8 +28,16 @@ const tones: MessageTone[] = [
   "Local business friendly",
 ];
 
-export function SettingsForm() {
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+export function SettingsForm({
+  initialSettings = DEFAULT_SETTINGS,
+  initialPersistenceMode = "local-demo",
+}: {
+  initialSettings?: AppSettings;
+  initialPersistenceMode?: SettingsResult["mode"];
+}) {
+  const [settings, setSettings] = useState<AppSettings>({ ...DEFAULT_SETTINGS, ...initialSettings });
+  const [persistenceMode, setPersistenceMode] = useState<SettingsResult["mode"]>(initialPersistenceMode);
+  const [saving, setSaving] = useState(false);
   const [serviceStatus, setServiceStatus] = useState({
     ai: false,
     gemini: false,
@@ -43,13 +52,14 @@ export function SettingsForm() {
   });
 
   useEffect(() => {
+    if (initialPersistenceMode === "remote") return;
     try {
       const saved = localStorage.getItem("niche-demo-launcher-settings");
       if (saved) queueMicrotask(() => setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(saved) }));
     } catch {
       // Defaults remain available.
     }
-  }, []);
+  }, [initialPersistenceMode]);
 
   useEffect(() => {
     void getAutomationStatus().then(setServiceStatus).catch(() => {
@@ -60,9 +70,25 @@ export function SettingsForm() {
   const update = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) =>
     setSettings((current) => ({ ...current, [key]: value }));
 
-  const save = () => {
-    localStorage.setItem("niche-demo-launcher-settings", JSON.stringify(settings));
-    toast.success("Settings saved");
+  const save = async () => {
+    setSaving(true);
+    try {
+      const result = await upsertSettings(settings);
+      setPersistenceMode(result.mode);
+      setSettings(result.settings);
+
+      if (result.mode === "local-demo") {
+        localStorage.setItem("niche-demo-launcher-settings", JSON.stringify(settings));
+        toast.success("Settings saved locally for this development browser");
+      } else {
+        localStorage.removeItem("niche-demo-launcher-settings");
+        toast.success("Settings saved to Supabase");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Settings could not be saved");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -71,7 +97,7 @@ export function SettingsForm() {
         eyebrow="Workspace configuration"
         title="Settings"
         description="Set sender identity, pricing defaults, follow-up cadence, and server-side integration status for Seraphim."
-        action={<Button onClick={save}><Save className="size-4" /> Save Settings</Button>}
+        action={<Button onClick={save} loading={saving}><Save className="size-4" /> Save Settings</Button>}
       />
 
       <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -148,8 +174,8 @@ export function SettingsForm() {
             </div>
             <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
               {serviceStatus.supabase
-                ? "Supabase is enabled for authenticated CRM records."
-                : `Supabase is not enabled yet. Missing: ${serviceStatus.supabaseMissing.join(", ") || "Supabase variables"}. The app will use local browser storage only.`}
+                ? `Supabase is enabled. Settings persistence mode: ${persistenceMode === "remote" ? "remote per-user settings" : "local development fallback"}.`
+                : `Supabase is not enabled yet. Missing: ${serviceStatus.supabaseMissing.join(", ") || "Supabase variables"}. Local browser settings are allowed only in development.`}
             </div>
           </Card>
 

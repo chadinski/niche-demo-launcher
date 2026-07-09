@@ -17,6 +17,7 @@ import {
 } from "@/app/data-actions";
 
 const STORAGE_KEY = "niche-demo-launcher-prospects";
+type PersistenceMode = "remote" | "local-demo";
 
 const legacyStatusMap: Record<string, OutreachStatus> = {
   not_sent: "new",
@@ -88,6 +89,7 @@ const ProspectContext = createContext<ProspectContextValue | null>(null);
 export function ProspectProvider({ children }: { children: ReactNode }) {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [persistenceMode, setPersistenceMode] = useState<PersistenceMode>("local-demo");
 
   useEffect(() => {
     let active = true;
@@ -96,14 +98,20 @@ export function ProspectProvider({ children }: { children: ReactNode }) {
         const remote = await listProspects();
         if (!active) return;
         if (remote.configured) {
+          setPersistenceMode("remote");
+          window.localStorage.removeItem(STORAGE_KEY);
           setProspects(remote.data.map(normalizeProspect));
         } else {
+          setPersistenceMode("local-demo");
           const stored = readStoredProspects();
           if (stored) setProspects(stored);
         }
       } catch {
-        const stored = readStoredProspects();
-        if (stored && active) setProspects(stored);
+        if (process.env.NODE_ENV !== "production") {
+          setPersistenceMode("local-demo");
+          const stored = readStoredProspects();
+          if (stored && active) setProspects(stored);
+        }
       } finally {
         if (active) setHydrated(true);
       }
@@ -116,12 +124,17 @@ export function ProspectProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hydrated) return;
+    if (persistenceMode === "remote") {
+      window.localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(prospects));
     } catch {
       // Remote persistence and in-memory state remain usable if storage is full or blocked.
     }
-  }, [hydrated, prospects]);
+  }, [hydrated, persistenceMode, prospects]);
 
   const saveProspect = useCallback((prospect: Prospect) => {
     setProspects((current) => {
@@ -130,7 +143,7 @@ export function ProspectProvider({ children }: { children: ReactNode }) {
       return current.map((item) => (item.id === prospect.id ? prospect : item));
     });
     void upsertProspect(prospect).catch(() => {
-      // Local storage remains the offline fallback when remote persistence fails.
+      // In remote mode, keep only the in-memory optimistic update.
     });
   }, []);
 
@@ -143,7 +156,7 @@ export function ProspectProvider({ children }: { children: ReactNode }) {
       ),
     );
     void patchProspect(id, patch).catch(() => {
-      // Keep the optimistic local update in offline or demo mode.
+      // Keep the optimistic in-memory update. Local persistence is development-only.
     });
   }, []);
 
