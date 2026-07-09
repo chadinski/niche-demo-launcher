@@ -109,7 +109,13 @@ Screenshot and pasted-info extraction use the server-side AI route in `app/api/b
 
 ## Firecrawl Lead Finder
 
-The `/leads` page implements Phase 1 of Firecrawl lead generation. Enter a niche and location, and Seraphim calls `app/api/leads/search/route.ts`, which uses `lib/leads/firecrawl-lead-search.ts` to query Firecrawl web search. Results are normalized into typed lead candidates, scored for website opportunity, contact availability, social-first presence, local intent, and commercial niche fit, then displayed for manual review.
+The `/leads` page implements Phase 1 of Firecrawl lead generation. Enter a niche, choose a country/region, and Seraphim calls `app/api/leads/search/route.ts`, which uses `lib/leads/firecrawl-lead-search.ts` to query Firecrawl web search. Results are normalized into typed lead candidates, scored for website opportunity, contact availability, social-first presence, local intent, and commercial niche fit, then displayed for manual review.
+
+Lead Finder supports region targeting through `lib/leads/regions.ts`. The first supported markets are the United States with all 50 states, Jamaica with parish targeting, and Trinidad and Tobago with major regional corporations/boroughs. The selected country, region, and optional city/area are composed into the Firecrawl search location while preserving the older freeform `location` API field for backward compatibility.
+
+Lead Finder also includes a ranked industry targeting layer in `lib/leads/industry-targets.ts`. It prioritizes the industries most likely to lose calls, bookings, trust, inquiries, or sales from a weak or missing website: funeral and memorial businesses, tourism and hospitality, contractors and home services, clinics and med spas, restaurants and caterers, auto services, real estate, events, beauty and wellness, education, professional services, security systems, printing/signage, nonprofits, and visual retail. Each target defines why it is worth targeting, common digital weaknesses, best website offer, outreach hook, search terms, qualification signals, and avoid signals.
+
+The selected target industry now influences Firecrawl queries, candidate scoring, visible strategy guidance, and saved prospect notes. This keeps lead generation focused on niches where a premium demo website has a clear before-and-after sales story.
 
 Saving a candidate creates a normal Seraphim prospect with status `profile_extracted`. It does not generate a demo, deploy a site, send outreach, submit forms, or contact anyone automatically. Each saved lead includes the source URL, source summary, score reasons, warnings, and a reminder to verify facts before generation or outreach.
 

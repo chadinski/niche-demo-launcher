@@ -4,6 +4,9 @@ export type LeadSourceType = "website" | "social" | "directory" | "search-result
 
 export interface LeadCandidate {
   id: string;
+  targetIndustryId: string;
+  targetIndustryRank: number;
+  targetIndustryPriority: string;
   businessName: string;
   category: string;
   location: string;
@@ -17,6 +20,8 @@ export interface LeadCandidate {
   sourceType: LeadSourceType;
   services: string;
   opportunity: string;
+  websiteOffer: string;
+  outreachHook: string;
   leadScore: number;
   leadTemperature: LeadTemperature;
   scoreReasons: string[];
@@ -26,14 +31,19 @@ export interface LeadCandidate {
 }
 
 export interface LeadSearchRequest {
+  targetIndustryId?: string;
   industry: string;
   location: string;
+  country?: string;
+  region?: string;
+  city?: string;
   limit?: number;
 }
 
 export interface LeadSearchResponse {
   configured: boolean;
   query: string;
+  targetIndustryId: string;
   candidates: LeadCandidate[];
   warnings: string[];
   searchedAt: string;

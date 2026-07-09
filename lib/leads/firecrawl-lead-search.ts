@@ -1,5 +1,6 @@
 import { normalizeLeadCandidate } from "@/lib/leads/lead-qualification";
 import type { LeadCandidate } from "@/lib/leads/types";
+import { buildLeadIndustrySearchPhrase, getLeadIndustryTarget } from "@/lib/leads/industry-targets";
 
 type FirecrawlSearchResult = {
   title?: string;
@@ -40,30 +41,38 @@ function normalizeResults(payload: FirecrawlPayload | null) {
 }
 
 export async function searchFirecrawlLeads(input: {
+  targetIndustryId?: string;
   industry: string;
   location: string;
+  country?: string;
+  region?: string;
+  city?: string;
   limit: number;
 }): Promise<{
   configured: boolean;
   query: string;
+  targetIndustryId: string;
   candidates: LeadCandidate[];
   warnings: string[];
 }> {
   const apiKey = process.env.FIRECRAWL_API_KEY;
-  const industry = clean(input.industry, 80);
+  const target = getLeadIndustryTarget(input.targetIndustryId || "");
+  const industry = clean(input.industry || target.searchLabel, 120);
   const location = clean(input.location, 80);
   const limit = Math.min(20, Math.max(5, input.limit || 10));
   const query = [
-    industry || "local business",
+    buildLeadIndustrySearchPhrase(target, industry),
     location,
-    "business contact website Facebook Instagram WhatsApp",
+    "business contact website Facebook Instagram WhatsApp quote booking",
     "-jobs -hiring",
+    target.avoidSignals.map((signal) => `-${signal.replace(/\s+/g, " ")}`).join(" "),
   ].filter(Boolean).join(" ");
 
   if (!apiKey) {
     return {
       configured: false,
       query,
+      targetIndustryId: target.id,
       candidates: [],
       warnings: ["FIRECRAWL_API_KEY is not configured, so live lead search is unavailable."],
     };
@@ -94,6 +103,7 @@ export async function searchFirecrawlLeads(input: {
       return {
         configured: true,
         query,
+        targetIndustryId: target.id,
         candidates: [],
         warnings: [payload?.error || `Firecrawl search failed with status ${response.status}.`],
       };
@@ -101,7 +111,7 @@ export async function searchFirecrawlLeads(input: {
 
     const seen = new Set<string>();
     const candidates = normalizeResults(payload)
-      .map((result) => normalizeLeadCandidate(result, industry, location))
+      .map((result) => normalizeLeadCandidate(result, industry, location, target))
       .filter((candidate): candidate is LeadCandidate => Boolean(candidate))
       .filter((candidate) => {
         const key = candidate.sourceUrl || `${candidate.businessName}|${candidate.sourceTitle}`;
@@ -114,6 +124,7 @@ export async function searchFirecrawlLeads(input: {
     return {
       configured: true,
       query,
+      targetIndustryId: target.id,
       candidates,
       warnings: candidates.length ? [] : ["Firecrawl returned results, but none looked like usable business leads."],
     };
@@ -121,6 +132,7 @@ export async function searchFirecrawlLeads(input: {
     return {
       configured: true,
       query,
+      targetIndustryId: target.id,
       candidates: [],
       warnings: [error instanceof Error ? error.message : "Firecrawl lead search could not complete."],
     };
