@@ -1,6 +1,7 @@
 "use server";
 
 import { Buffer } from "node:buffer";
+import { requireServerUser, ServerAuthError } from "@/lib/auth/server-guard";
 import { slugify } from "@/lib/utils";
 import type { DeploymentResult } from "@/lib/types";
 
@@ -150,6 +151,16 @@ async function deployToVercel(name: string, html: string) {
 }
 
 export async function deployGeneratedWebsite(input: DeployInput): Promise<DeploymentResult> {
+  try {
+    await requireServerUser();
+  } catch (error) {
+    return {
+      ok: false,
+      status: "failed",
+      message: error instanceof ServerAuthError ? error.message : "Authentication required before deployment.",
+    };
+  }
+
   const missing = requiredEnv();
   if (missing.length) {
     return {

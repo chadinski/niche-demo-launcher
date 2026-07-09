@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 
 export function LoginForm() {
   const supabase = createClient();
+  const localDemoAvailable = !supabase && process.env.NODE_ENV !== "production";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,8 +17,12 @@ export function LoginForm() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!supabase) {
-      toast.info("Supabase is not configured. The app is running in local demo mode.");
-      window.location.href = "/";
+      if (localDemoAvailable) {
+        toast.info("Supabase is not configured. The app is running in local development demo mode.");
+        window.location.href = "/";
+        return;
+      }
+      toast.error("Supabase must be configured before Seraphim can run in production.");
       return;
     }
     setLoading(true);
@@ -32,8 +37,12 @@ export function LoginForm() {
 
   const signInWithGoogle = async () => {
     if (!supabase) {
-      toast.info("Supabase is not configured. The app is running in local demo mode.");
-      window.location.href = "/";
+      if (localDemoAvailable) {
+        toast.info("Supabase is not configured. The app is running in local development demo mode.");
+        window.location.href = "/";
+        return;
+      }
+      toast.error("Supabase must be configured before Seraphim can run in production.");
       return;
     }
 
@@ -85,7 +94,7 @@ export function LoginForm() {
             <p className="mt-8 text-[0.68rem] font-bold tracking-[0.16em] text-brand-600 uppercase">Niche Technologies</p>
             <h2 className="mt-2 text-3xl font-extrabold tracking-[-0.05em]">Sign in to your workspace</h2>
             <p className="mt-3 text-sm leading-6 text-[#747b8f]">
-              Use your Supabase email and password, or continue with your Google account. Without Supabase credentials, local demo mode remains available.
+              Use your Supabase email and password, or continue with your Google account. Local demo mode is available only during development.
             </p>
             <div className="mt-8 space-y-4">
               <label>
@@ -98,7 +107,7 @@ export function LoginForm() {
               </label>
             </div>
             <Button className="mt-6 w-full min-h-11" type="submit" loading={loading}>
-              {supabase ? <><LogIn className="size-4" /> Sign In</> : <><LockKeyhole className="size-4" /> Enter Local Demo</>}
+              {supabase || !localDemoAvailable ? <><LogIn className="size-4" /> Sign In</> : <><LockKeyhole className="size-4" /> Enter Local Demo</>}
             </Button>
             <div className="my-5 flex items-center gap-3 text-xs font-semibold text-[#959aaa]">
               <span className="h-px flex-1 bg-[#e7e8ef]" />

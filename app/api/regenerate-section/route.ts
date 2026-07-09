@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { getRoutesForStage, runWithModelRouteRetry, type ModelRoute } from "@/lib/ai/modelRouter";
 import { buildSectionPrompt } from "@/lib/ai/prompts/section";
+import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
 import type { WebsitePlan } from "@/lib/ai/prompts/planner";
 import {
   DEFAULT_CREATIVE_CONTRACT,
@@ -204,6 +205,16 @@ async function generateSection(prompt: string) {
 }
 
 export async function POST(request: Request) {
+  try {
+    await requireServerUser();
+  } catch (error) {
+    const authError = authErrorResponse(error);
+    if (authError) {
+      return NextResponse.json(authError.body, { status: authError.status });
+    }
+    throw error;
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = regenerateSectionSchema.safeParse(body);
 

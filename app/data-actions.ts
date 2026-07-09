@@ -1,6 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import {
+  requireConfiguredSupabaseInProduction,
+  requireServerUser,
+} from "@/lib/auth/server-guard";
 import { createClient } from "@/lib/supabase/server";
 import type { OutreachStatus, Prospect } from "@/lib/types";
 
@@ -11,6 +15,7 @@ function withoutUndefined<T extends Record<string, unknown>>(value: T) {
 }
 
 export async function listProspects() {
+  requireConfiguredSupabaseInProduction();
   const supabase = await createClient();
   if (!supabase) return { configured: false, data: [] as Prospect[] };
 
@@ -29,6 +34,7 @@ export async function listProspects() {
 }
 
 export async function upsertProspect(prospect: Prospect) {
+  await requireServerUser();
   const supabase = await createClient();
   if (!supabase) return { configured: false };
 
@@ -53,6 +59,7 @@ export async function patchProspect(
   id: string,
   patch: Partial<Prospect>,
 ) {
+  await requireServerUser();
   const supabase = await createClient();
   if (!supabase) return { configured: false };
 

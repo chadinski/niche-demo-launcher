@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
 import { searchFirecrawlLeads } from "@/lib/leads/firecrawl-lead-search";
 import { buildLeadSearchLocation } from "@/lib/leads/regions";
 
@@ -21,6 +22,8 @@ const noStoreHeaders = {
 
 export async function POST(request: Request) {
   try {
+    await requireServerUser();
+
     const json = await request.json().catch(() => ({}));
     const input = requestSchema.parse(json);
     const result = await searchFirecrawlLeads({
@@ -41,6 +44,11 @@ export async function POST(request: Request) {
       { headers: noStoreHeaders },
     );
   } catch (error) {
+    const authError = authErrorResponse(error);
+    if (authError) {
+      return NextResponse.json(authError.body, { status: authError.status, headers: noStoreHeaders });
+    }
+
     const message = error instanceof z.ZodError
       ? error.issues.map((issue) => issue.message).join(" ")
       : error instanceof Error

@@ -20,6 +20,7 @@ import {
   runWithModelRouteRetry,
   type ModelRoute,
 } from "@/lib/ai/modelRouter";
+import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
 import type { BusinessInfo } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -566,6 +567,16 @@ async function generateWithOpenAI(input: {
 }
 
 export async function POST(request: Request) {
+  try {
+    await requireServerUser();
+  } catch (error) {
+    const authError = authErrorResponse(error);
+    if (authError) {
+      return NextResponse.json(authError.body, { status: authError.status });
+    }
+    throw error;
+  }
+
   const requestBody = await request.json().catch(() => null);
   const requestGenerationId = isRecord(requestBody) ? asString(requestBody.generationId) : "";
   const noStoreHeaders = { "Cache-Control": "no-store, no-cache, must-revalidate" };

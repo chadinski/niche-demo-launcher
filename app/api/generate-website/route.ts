@@ -9,6 +9,7 @@ import { buildDesignSystemPrompt } from "@/lib/ai/prompts/design-system";
 import { buildPageContractPrompt } from "@/lib/ai/prompts/page-contract";
 import { buildVisualQAPrompt } from "@/lib/ai/prompts/visual-qa";
 import { getRoutesForStage, runWithModelRouteRetry, type ModelRoute } from "@/lib/ai/modelRouter";
+import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
 import {
   DEFAULT_CREATIVE_CONTRACT,
   DEFAULT_DESIGN_SYSTEM_CONTRACT,
@@ -2809,8 +2810,19 @@ async function streamSectionGenerationPipeline(input: {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
   const noStoreHeaders = { "Cache-Control": "no-store, no-cache, must-revalidate" };
+
+  try {
+    await requireServerUser();
+  } catch (error) {
+    const authError = authErrorResponse(error);
+    if (authError) {
+      return NextResponse.json(authError.body, { status: authError.status, headers: noStoreHeaders });
+    }
+    throw error;
+  }
+
+  const body = await request.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);
 
   if (!parsed.success) {
