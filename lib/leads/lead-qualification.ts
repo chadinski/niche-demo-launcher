@@ -1,5 +1,6 @@
 import type { LeadCandidate, LeadSourceType } from "@/lib/leads/types";
 import type { LeadTemperature } from "@/lib/types";
+import { leadIndustryPriorityWeight, type LeadIndustryTarget } from "@/lib/leads/industry-targets";
 
 type RawLeadResult = {
   title?: string;
@@ -96,6 +97,7 @@ function temperature(score: number): LeadTemperature {
 
 function scoreCandidate(input: {
   type: LeadSourceType;
+  target: LeadIndustryTarget;
   phone: string;
   email: string;
   websiteUrl: string;
@@ -107,6 +109,19 @@ function scoreCandidate(input: {
   let score = 24;
   const reasons: string[] = [];
   const text = `${input.category} ${input.location} ${input.snippet}`.toLowerCase();
+  const targetMatches = input.target.qualificationSignals.filter((signal) => text.includes(signal.toLowerCase()));
+  const avoidMatches = input.target.avoidSignals.filter((signal) => text.includes(signal.toLowerCase()));
+
+  const priorityBoost = leadIndustryPriorityWeight(input.target.priority);
+  if (priorityBoost) {
+    score += priorityBoost;
+    reasons.push(`${input.target.priority} priority niche with strong website-sales fit.`);
+  }
+
+  if (targetMatches.length) {
+    score += Math.min(14, targetMatches.length * 4);
+    reasons.push(`Matches target signals: ${targetMatches.slice(0, 4).join(", ")}.`);
+  }
 
   if (!input.websiteUrl) {
     score += 20;
@@ -149,6 +164,11 @@ function scoreCandidate(input: {
     reasons.push("Directory discovery suggests customers may be finding scattered business information.");
   }
 
+  if (avoidMatches.length) {
+    score -= Math.min(18, avoidMatches.length * 6);
+    reasons.push(`Review carefully; possible low-fit signals detected: ${avoidMatches.slice(0, 3).join(", ")}.`);
+  }
+
   const finalScore = Math.min(100, Math.max(0, score));
   const leadTemperature = temperature(finalScore);
   return {
@@ -164,7 +184,12 @@ function scoreCandidate(input: {
   };
 }
 
-export function normalizeLeadCandidate(result: RawLeadResult, industry: string, location: string): LeadCandidate | null {
+export function normalizeLeadCandidate(
+  result: RawLeadResult,
+  industry: string,
+  location: string,
+  target: LeadIndustryTarget,
+): LeadCandidate | null {
   const sourceUrl = compact(result.url || "", 300);
   const sourceTitle = compact(result.title || "", 160);
   const sourceSnippet = compact(
@@ -185,6 +210,7 @@ export function normalizeLeadCandidate(result: RawLeadResult, industry: string, 
   const inferredLocation = location || compact(sourceSnippet.match(/\b(Kingston|Portmore|Montego Bay|Ocho Rios|Jamaica|Mandeville|Spanish Town)\b/i)?.[0] || "", 80);
   const scoring = scoreCandidate({
     type,
+    target,
     phone,
     email,
     websiteUrl,
@@ -200,6 +226,9 @@ export function normalizeLeadCandidate(result: RawLeadResult, industry: string, 
 
   return {
     id: stableId(`${sourceUrl}|${sourceTitle}|${industry}|${location}`),
+    targetIndustryId: target.id,
+    targetIndustryRank: target.rank,
+    targetIndustryPriority: target.priority,
     businessName,
     category,
     location: inferredLocation,
@@ -214,7 +243,9 @@ export function normalizeLeadCandidate(result: RawLeadResult, industry: string, 
     services: category,
     opportunity: websiteUrl
       ? "Review the existing website for mobile clarity, CTA strength, and premium presentation."
-      : "Business appears to need a clearer standalone website path beyond scattered search or social results.",
+      : target.worthTargeting,
+    websiteOffer: target.bestWebsiteOffer,
+    outreachHook: target.outreachHook,
     leadScore: scoring.score,
     leadTemperature: scoring.temperature,
     scoreReasons: scoring.reasons,

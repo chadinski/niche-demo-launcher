@@ -13,24 +13,15 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { PageHeading } from "@/components/page-heading";
 import { useProspects } from "@/components/prospect-provider";
 import { Button, Card, EmptyState, buttonClass } from "@/components/ui";
+import { getLeadIndustryTarget, LEAD_INDUSTRY_TARGETS } from "@/lib/leads/industry-targets";
+import { buildLeadSearchLocation, getLeadCountry, LEAD_REGION_COUNTRIES, type LeadCountryCode } from "@/lib/leads/regions";
 import type { LeadCandidate, LeadSearchResponse } from "@/lib/leads/types";
 import type { LeadTemperature, Prospect } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-const defaultIndustries = [
-  "Auto detailing",
-  "Pet store",
-  "Restaurant",
-  "Home services",
-  "Beauty salon",
-  "Dental clinic",
-  "Fitness studio",
-  "Real estate",
-];
 
 function temperatureClass(temperature: LeadTemperature) {
   if (temperature === "Hot") return "border-rose-200 bg-rose-50 text-rose-700";
@@ -43,6 +34,7 @@ function rawInfoForCandidate(candidate: LeadCandidate) {
     `Business: ${candidate.businessName}`,
     `Category: ${candidate.category}`,
     candidate.location && `Location: ${candidate.location}`,
+    `Target industry: #${candidate.targetIndustryRank} ${candidate.targetIndustryPriority} - ${candidate.category}`,
     candidate.phone && `Phone: ${candidate.phone}`,
     candidate.email && `Email: ${candidate.email}`,
     candidate.websiteUrl && `Website: ${candidate.websiteUrl}`,
@@ -51,6 +43,8 @@ function rawInfoForCandidate(candidate: LeadCandidate) {
     `Source title: ${candidate.sourceTitle}`,
     candidate.sourceSnippet && `Source summary: ${candidate.sourceSnippet}`,
     `Opportunity: ${candidate.opportunity}`,
+    `Best website offer: ${candidate.websiteOffer}`,
+    `Outreach hook: ${candidate.outreachHook}`,
   ].filter(Boolean).join("\n");
 }
 
@@ -86,7 +80,7 @@ function buildProspect(candidate: LeadCandidate): Prospect {
       summary: `${candidate.businessName} appears to be a ${candidate.category}${candidate.location ? ` in ${candidate.location}` : ""}.`,
       targetCustomer: "Local customers comparing providers online.",
       onlineWeakness: candidate.opportunity,
-      websiteStrategy: "Review the public source, verify facts, then prepare a specific website demo only if the lead is a good fit.",
+      websiteStrategy: candidate.websiteOffer,
       bestCta: candidate.phone ? "Call for availability" : "Request availability",
       suggestedPackage: "Premium local website",
       suggestedPriceRange: "$1,000+",
@@ -98,6 +92,9 @@ function buildProspect(candidate: LeadCandidate): Prospect {
       ],
       extractionReportMarkdown: [
         `## Firecrawl lead candidate`,
+        `Target industry: #${candidate.targetIndustryRank} ${candidate.targetIndustryPriority}`,
+        `Best website offer: ${candidate.websiteOffer}`,
+        `Outreach hook: ${candidate.outreachHook}`,
         `Source type: ${candidate.sourceType}`,
         `Confidence: ${candidate.confidence}/100`,
         `Warnings: ${candidate.warnings.length ? candidate.warnings.join("; ") : "None"}`,
@@ -117,6 +114,8 @@ function buildProspect(candidate: LeadCandidate): Prospect {
     outreach_status: "profile_extracted",
     notes: [
       "Imported from Firecrawl Lead Finder.",
+      `Target strategy: #${candidate.targetIndustryRank} ${candidate.targetIndustryPriority}. ${candidate.websiteOffer}`,
+      `Outreach hook: ${candidate.outreachHook}`,
       "Verify the source and contact details before generating a demo or preparing outreach.",
       ...candidate.warnings,
     ].join("\n"),
@@ -130,20 +129,43 @@ function buildProspect(candidate: LeadCandidate): Prospect {
 
 export function LeadFinder() {
   const { prospects, saveProspect } = useProspects();
-  const [industry, setIndustry] = useState("Auto detailing");
-  const [location, setLocation] = useState("Kingston Jamaica");
+  const [targetIndustryId, setTargetIndustryId] = useState(LEAD_INDUSTRY_TARGETS[0].id);
+  const selectedTarget = getLeadIndustryTarget(targetIndustryId);
+  const [industry, setIndustry] = useState(selectedTarget.searchLabel);
+  const [countryCode, setCountryCode] = useState<LeadCountryCode>("JM");
+  const [region, setRegion] = useState("Kingston");
+  const [city, setCity] = useState("Kingston");
   const [limit, setLimit] = useState(10);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<LeadSearchResponse | null>(null);
   const [savedMap, setSavedMap] = useState<Record<string, string>>({});
+  const selectedCountry = getLeadCountry(countryCode);
+  const searchLocation = buildLeadSearchLocation({
+    city,
+    region,
+    country: countryCode,
+  });
 
   const existingSources = useMemo(
     () => new Set(prospects.map((prospect) => prospect.source).filter(Boolean)),
     [prospects],
   );
 
-  const searchLeads = async (event: React.FormEvent<HTMLFormElement>) => {
+  const changeCountry = (nextCountryCode: LeadCountryCode) => {
+    const nextCountry = getLeadCountry(nextCountryCode);
+    setCountryCode(nextCountry.code);
+    setRegion(nextCountry.defaultRegion);
+    setCity(nextCountry.defaultCity);
+  };
+
+  const changeTargetIndustry = (nextTargetId: string) => {
+    const nextTarget = getLeadIndustryTarget(nextTargetId);
+    setTargetIndustryId(nextTarget.id);
+    setIndustry(nextTarget.searchLabel);
+  };
+
+  const searchLeads = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
     setError("");
@@ -152,7 +174,15 @@ export function LeadFinder() {
       const response = await fetch("/api/leads/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ industry, location, limit }),
+        body: JSON.stringify({
+          industry,
+          targetIndustryId,
+          country: countryCode,
+          region,
+          city,
+          location: searchLocation,
+          limit,
+        }),
       });
       const payload = (await response.json()) as LeadSearchResponse;
       setResult(payload);
@@ -175,35 +205,74 @@ export function LeadFinder() {
       <PageHeading
         eyebrow="Firecrawl lead engine"
         title="Lead Finder"
-        description="Search for local business prospects, qualify the opportunity, and save promising leads for manual demo generation and outreach approval."
+        description="Search priority industries by region, qualify the website opportunity, and save promising leads for manual demo generation and outreach approval."
       />
 
       <Card className="overflow-hidden">
-        <form onSubmit={searchLeads} className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_140px_auto] lg:items-end">
+        <form onSubmit={searchLeads} className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,.9fr)_minmax(0,1fr)_minmax(0,1fr)_120px_auto] lg:items-end">
           <label>
-            <span className="field-label">Industry or niche</span>
-            <input
+            <span className="field-label">Target industry</span>
+            <select
               className="field-input"
-              list="lead-industries"
-              value={industry}
-              onChange={(event) => setIndustry(event.target.value)}
-              placeholder="Auto detailing, pet store, restaurant..."
-              required
-            />
-            <datalist id="lead-industries">
-              {defaultIndustries.map((item) => (
-                <option key={item} value={item} />
+              value={targetIndustryId}
+              onChange={(event) => changeTargetIndustry(event.target.value)}
+            >
+              {LEAD_INDUSTRY_TARGETS.map((target) => (
+                <option key={target.id} value={target.id}>
+                  {target.rank}. {target.industry}
+                </option>
               ))}
-            </datalist>
+            </select>
           </label>
 
           <label>
-            <span className="field-label">Location</span>
+            <span className="field-label">Search niche</span>
             <input
               className="field-input"
-              value={location}
-              onChange={(event) => setLocation(event.target.value)}
-              placeholder="Kingston Jamaica"
+              value={industry}
+              onChange={(event) => setIndustry(event.target.value)}
+              placeholder={selectedTarget.searchLabel}
+              required
+            />
+          </label>
+
+          <label>
+            <span className="field-label">Country</span>
+            <select
+              className="field-input"
+              value={countryCode}
+              onChange={(event) => changeCountry(event.target.value as LeadCountryCode)}
+            >
+              {LEAD_REGION_COUNTRIES.map((country) => (
+                <option key={country.code} value={country.code}>
+                  {country.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span className="field-label">{selectedCountry.regionLabel}</span>
+            <select
+              className="field-input"
+              value={region}
+              onChange={(event) => setRegion(event.target.value)}
+            >
+              {selectedCountry.regions.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span className="field-label">{selectedCountry.cityLabel}</span>
+            <input
+              className="field-input"
+              value={city}
+              onChange={(event) => setCity(event.target.value)}
+              placeholder={selectedCountry.defaultCity}
             />
           </label>
 
@@ -227,8 +296,38 @@ export function LeadFinder() {
         </form>
 
         <div className="border-t border-[#ececf2] bg-[#fafafd] px-5 py-3 text-xs leading-5 text-[#747b8f]">
-          Firecrawl is used only for discovery and qualification. Seraphim does not send messages automatically.
+          Search region: <span className="font-bold text-[#4a5165]">{searchLocation || "No region selected"}</span>.
+          {" "}Firecrawl is used only for discovery and qualification. Seraphim does not send messages automatically.
           Verify each result before saving, demo generation, or outreach.
+        </div>
+      </Card>
+
+      <Card className="grid gap-5 p-5 lg:grid-cols-[1fr_1fr_1fr]">
+        <div>
+          <div className="text-[0.66rem] font-bold tracking-[0.14em] text-brand-600 uppercase">
+            Target strategy
+          </div>
+          <h2 className="mt-2 text-xl font-black tracking-[-0.045em] text-ink-950">
+            #{selectedTarget.rank} - {selectedTarget.priority} priority
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[#62697c]">{selectedTarget.worthTargeting}</p>
+        </div>
+        <div>
+          <div className="text-[0.66rem] font-bold tracking-[0.14em] text-[#9aa0b0] uppercase">
+            Common weaknesses
+          </div>
+          <ul className="mt-2 space-y-2 text-sm leading-6 text-[#596075]">
+            {selectedTarget.commonWeaknesses.slice(0, 5).map((weakness) => (
+              <li key={weakness}>- {weakness}</li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <div className="text-[0.66rem] font-bold tracking-[0.14em] text-[#9aa0b0] uppercase">
+            Offer and hook
+          </div>
+          <p className="mt-2 text-sm font-semibold leading-6 text-[#343b4e]">{selectedTarget.bestWebsiteOffer}</p>
+          <p className="mt-2 text-sm leading-6 text-[#62697c]">{selectedTarget.outreachHook}</p>
         </div>
       </Card>
 
@@ -292,7 +391,10 @@ export function LeadFinder() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold", temperatureClass(candidate.leadTemperature))}>
                             <Flame className="size-3.5" />
-                            {candidate.leadTemperature} · {candidate.leadScore}
+                            {candidate.leadTemperature} - {candidate.leadScore}
+                          </span>
+                          <span className="rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                            #{candidate.targetIndustryRank} {candidate.targetIndustryPriority}
                           </span>
                           <span className="rounded-full border border-[#e3e5ed] bg-white px-2.5 py-1 text-xs font-bold text-[#667086]">
                             {candidate.sourceType}
@@ -309,7 +411,7 @@ export function LeadFinder() {
                           <span>{candidate.category}</span>
                           {candidate.location ? (
                             <>
-                              <span aria-hidden="true">·</span>
+                              <span aria-hidden="true">-</span>
                               <span className="inline-flex items-center gap-1">
                                 <MapPin className="size-3.5" />
                                 {candidate.location}
@@ -322,8 +424,10 @@ export function LeadFinder() {
                         </p>
 
                         <div className="mt-4 grid gap-3 text-xs text-[#697184] sm:grid-cols-2">
-                          <Detail label="Contact" value={[candidate.phone, candidate.email].filter(Boolean).join(" · ") || "Not found in result"} />
+                          <Detail label="Contact" value={[candidate.phone, candidate.email].filter(Boolean).join(" - ") || "Not found in result"} />
                           <Detail label="Opportunity" value={candidate.opportunity} />
+                          <Detail label="Website offer" value={candidate.websiteOffer} />
+                          <Detail label="Outreach hook" value={candidate.outreachHook} />
                         </div>
 
                         {candidate.scoreReasons.length ? (
@@ -391,7 +495,7 @@ export function LeadFinder() {
             <EmptyState
               icon={<Sparkles className="size-5" />}
               title="No lead candidates yet"
-              description="Try a more specific niche and location, such as Auto detailing in Kingston Jamaica."
+              description="Try a more specific niche and region, such as Auto detailing in Kingston Jamaica or Beauty salon in Miami Florida."
             />
           )}
         </Card>
@@ -400,7 +504,7 @@ export function LeadFinder() {
           <EmptyState
             icon={<Search className="size-5" />}
             title="Start a lead search"
-            description="Enter a niche and location to find candidate businesses for manual review."
+            description="Choose a country, region, and niche to find candidate businesses for manual review."
           />
         </Card>
       )}
