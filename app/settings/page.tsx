@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { getSettings } from "@/app/settings/actions";
 import { SettingsForm } from "@/components/settings-form";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Settings",
   description:
