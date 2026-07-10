@@ -4,11 +4,11 @@ import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
 import { updateLeadCandidateStatus } from "@/lib/leads/persistence";
 
 const requestSchema = z.object({
-  candidateId: z.string().optional(),
-  sourceUrl: z.string().optional(),
-  businessName: z.string().optional(),
+  candidateId: z.string().uuid().optional(),
+  sourceUrl: z.string().trim().max(300).optional(),
+  businessName: z.string().trim().max(180).optional(),
   status: z.enum(["new", "saved", "rejected", "contacted", "blacklisted"]),
-  reason: z.string().optional(),
+  reason: z.string().trim().max(500).optional(),
 });
 
 export async function POST(request: Request) {

@@ -78,7 +78,7 @@ export async function POST(request: Request) {
         warnings: [message],
         searchedAt: new Date().toISOString(),
       },
-      { status: 400, headers: noStoreHeaders },
+      { status: error instanceof z.ZodError ? 400 : 503, headers: noStoreHeaders },
     );
   }
 }

@@ -31,6 +31,20 @@ const socialHosts = [
   "twitter.com",
 ];
 
+const genericTitles = new Set([
+  "facebook",
+  "instagram",
+  "youtube",
+  "tiktok",
+  "linkedin",
+  "official site",
+  "home",
+  "google maps",
+  "yelp",
+]);
+
+const trackingParameters = /^(utm_|fbclid$|gclid$|msclkid$|mc_cid$|mc_eid$)/i;
+
 function compact(value: string, maxLength = 240) {
   return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
@@ -43,6 +57,34 @@ function stableId(value: string) {
   return `firecrawl-${Math.abs(hash).toString(36)}`;
 }
 
+export function canonicalizeLeadUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return trimmed;
+
+    url.username = "";
+    url.password = "";
+    url.hash = "";
+    url.hostname = url.hostname.replace(/^www\./i, "").toLowerCase();
+
+    for (const key of Array.from(url.searchParams.keys())) {
+      if (trackingParameters.test(key)) url.searchParams.delete(key);
+    }
+
+    if ((url.protocol === "http:" && url.port === "80") || (url.protocol === "https:" && url.port === "443")) {
+      url.port = "";
+    }
+
+    url.pathname = url.pathname.replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+    return url.toString();
+  } catch {
+    return trimmed;
+  }
+}
+
 function hostname(url: string) {
   try {
     return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
@@ -51,11 +93,15 @@ function hostname(url: string) {
   }
 }
 
+function hostMatches(host: string, domain: string) {
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
 function sourceType(url: string): LeadSourceType {
   const host = hostname(url);
   if (!host) return "search-result";
-  if (socialHosts.some((item) => host.includes(item))) return "social";
-  if (directoryHosts.some((item) => host.includes(item))) return "directory";
+  if (socialHosts.some((item) => hostMatches(host, item))) return "social";
+  if (directoryHosts.some((item) => hostMatches(host, item))) return "directory";
   return "website";
 }
 
@@ -68,7 +114,7 @@ function stripTitleNoise(title: string) {
 
 function inferBusinessName(result: RawLeadResult, url: string, industry: string) {
   const title = stripTitleNoise(compact(result.title || "", 120));
-  if (title && !/^https?:\/\//i.test(title)) return title;
+  if (title && !/^https?:\/\//i.test(title) && !genericTitles.has(title.toLowerCase())) return title;
 
   const host = hostname(url);
   const hostName = host
@@ -78,7 +124,9 @@ function inferBusinessName(result: RawLeadResult, url: string, industry: string)
     .replace(/[-_]/g, " ")
     .trim();
 
-  return hostName ? hostName.replace(/\b\w/g, (char) => char.toUpperCase()) : compact(industry || "Untitled lead", 80);
+  return hostName && !genericTitles.has(hostName.toLowerCase())
+    ? hostName.replace(/\b\w/g, (char) => char.toUpperCase())
+    : compact(industry || "Untitled lead", 80);
 }
 
 function extractEmail(text: string) {
@@ -190,7 +238,7 @@ export function normalizeLeadCandidate(
   location: string,
   target: LeadIndustryTarget,
 ): LeadCandidate | null {
-  const sourceUrl = compact(result.url || "", 300);
+  const sourceUrl = compact(canonicalizeLeadUrl(result.url || ""), 300);
   const sourceTitle = compact(result.title || "", 160);
   const sourceSnippet = compact(
     [result.description, result.summary, result.markdown].filter(Boolean).join(" "),
