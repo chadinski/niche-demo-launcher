@@ -4,7 +4,8 @@ import { openAIBusinessUnderstandingSchema } from "@/lib/openai-business-intelli
 import { auditWebsite } from "@/lib/automation/quality-audit";
 import { clearGenerationStorage, GENERATION_STORAGE_KEYS } from "@/lib/generation/session";
 import { getLeadIndustryTarget } from "@/lib/leads/industry-targets";
-import { normalizeLeadCandidate } from "@/lib/leads/lead-qualification";
+import { normalizeLeadCandidate, canonicalizeLeadUrl } from "@/lib/leads/lead-qualification";
+import { searchFirecrawlLeads } from "@/lib/leads/firecrawl-lead-search";
 import { parseBusinessInfo } from "@/lib/generators/parser";
 import type { BusinessInfo } from "@/lib/types";
 
@@ -192,5 +193,47 @@ describe("lead candidate normalization", () => {
 
     expect(first?.id).toBe(second?.id);
     expect(first?.leadScore).toBeGreaterThan(40);
+  });
+
+  it("uses a canonical source URL for tracking variants", () => {
+    const first = normalizeLeadCandidate(
+      { title: "Example Business", url: "HTTPS://WWW.Example.com/profile/?utm_source=search#contact", description: "Local service" },
+      "home services",
+      "Kingston, Jamaica",
+      getLeadIndustryTarget("contractors-home-services"),
+    );
+    const second = normalizeLeadCandidate(
+      { title: "Example Business", url: "https://example.com/profile", description: "Local service" },
+      "home services",
+      "Kingston, Jamaica",
+      getLeadIndustryTarget("contractors-home-services"),
+    );
+
+    expect(canonicalizeLeadUrl(first?.sourceUrl || "")).toBe("https://example.com/profile");
+    expect(first?.id).toBe(second?.id);
+  });
+
+  it("passes Firecrawl geo targeting and surfaces API warnings", async () => {
+    vi.stubEnv("FIRECRAWL_API_KEY", "fc-test");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      warning: "Some results were omitted.",
+      data: { web: [{ title: "Example Business", url: "https://example.com", description: "Home service in Kingston" }] },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await searchFirecrawlLeads({
+      targetIndustryId: "contractors-home-services",
+      industry: "Home services",
+      location: "Kingston Jamaica",
+      country: "jm",
+      limit: 5,
+    });
+    const request = JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string) as Record<string, unknown>;
+
+    expect(request.country).toBe("JM");
+    expect(request.location).toBe("Kingston Jamaica");
+    expect(request.ignoreInvalidURLs).toBe(true);
+    expect(result.warnings).toContain("Some results were omitted.");
   });
 });

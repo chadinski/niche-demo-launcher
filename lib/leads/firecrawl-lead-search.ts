@@ -16,10 +16,16 @@ type FirecrawlPayload = {
     web?: unknown[];
   } | unknown[];
   error?: string;
+  warning?: string;
 };
 
 function clean(value: string, maxLength = 120) {
   return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function countryCode(value: string | undefined) {
+  const normalized = value?.trim().toUpperCase() || "";
+  return /^[A-Z]{2}$/.test(normalized) ? normalized : "";
 }
 
 function normalizeResults(payload: FirecrawlPayload | null) {
@@ -59,6 +65,7 @@ export async function searchFirecrawlLeads(input: {
   const target = getLeadIndustryTarget(input.targetIndustryId || "");
   const industry = clean(input.industry || target.searchLabel, 120);
   const location = clean(input.location, 80);
+  const country = countryCode(input.country);
   const limit = Math.min(20, Math.max(5, input.limit || 10));
   const query = [
     buildLeadIndustrySearchPhrase(target, industry),
@@ -89,6 +96,9 @@ export async function searchFirecrawlLeads(input: {
         query,
         limit,
         sources: ["web"],
+        ...(location ? { location } : {}),
+        ...(country ? { country } : {}),
+        ignoreInvalidURLs: true,
         timeout: 20000,
         scrapeOptions: {
           formats: [{ type: "summary" }],
@@ -105,7 +115,7 @@ export async function searchFirecrawlLeads(input: {
         query,
         targetIndustryId: target.id,
         candidates: [],
-        warnings: [payload?.error || `Firecrawl search failed with status ${response.status}.`],
+        warnings: [payload?.error || payload?.warning || `Firecrawl search failed with status ${response.status}.`],
       };
     }
 
@@ -120,13 +130,17 @@ export async function searchFirecrawlLeads(input: {
         return true;
       })
       .sort((a, b) => b.leadScore - a.leadScore);
+    const warnings = [
+      payload.warning,
+      ...(candidates.length ? [] : ["Firecrawl returned results, but none looked like usable business leads."]),
+    ].filter((warning): warning is string => Boolean(warning));
 
     return {
       configured: true,
       query,
       targetIndustryId: target.id,
       candidates,
-      warnings: candidates.length ? [] : ["Firecrawl returned results, but none looked like usable business leads."],
+      warnings,
     };
   } catch (error) {
     return {

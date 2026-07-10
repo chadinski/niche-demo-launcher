@@ -1,11 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import type { ServerUserAccess } from "@/lib/auth/server-guard";
+import { canonicalizeLeadUrl } from "@/lib/leads/lead-qualification";
 import type { LeadCandidate } from "@/lib/leads/types";
 
 type LeadStatus = NonNullable<LeadCandidate["status"]>;
 
 function candidateKey(candidate: LeadCandidate) {
-  return candidate.sourceUrl || `${candidate.businessName}|${candidate.sourceTitle}`;
+  return canonicalizeLeadUrl(candidate.sourceUrl) || `${candidate.businessName}|${candidate.sourceTitle}`;
 }
 
 export async function persistLeadSearch(input: {
@@ -132,26 +133,29 @@ export async function updateLeadCandidateStatus(input: {
     return { configured: false };
   }
 
-  if (input.status === "blacklisted" && input.sourceUrl) {
-    await supabase.from("lead_blacklist").upsert({
-      user_id: input.user.userId,
-      business_name: input.businessName || "",
-      source_url: input.sourceUrl,
-      reason: input.reason || "Rejected from Lead Finder",
-    }, { onConflict: "user_id,source_url" });
-  }
-
+  const sourceUrl = canonicalizeLeadUrl(input.sourceUrl || "");
   let query = supabase
     .from("lead_candidates")
     .update({ status: input.status })
     .eq("user_id", input.user.userId);
 
   if (input.candidateId) query = query.eq("id", input.candidateId);
-  else if (input.sourceUrl) query = query.eq("source_url", input.sourceUrl);
+  else if (sourceUrl) query = query.eq("source_url", sourceUrl);
   else throw new Error("Candidate id or source URL is required.");
 
-  const { error } = await query;
+  const { data: updated, error } = await query.select("id, source_url").maybeSingle();
   if (error) throw new Error(error.message);
+  if (!updated) throw new Error("Lead candidate was not found or is no longer accessible.");
 
-  return { configured: true };
+  if (input.status === "blacklisted" && updated.source_url) {
+    const { error: blacklistError } = await supabase.from("lead_blacklist").upsert({
+      user_id: input.user.userId,
+      business_name: input.businessName || "",
+      source_url: String(updated.source_url),
+      reason: input.reason || "Rejected from Lead Finder",
+    }, { onConflict: "user_id,source_url" });
+    if (blacklistError) throw new Error(blacklistError.message);
+  }
+
+  return { configured: true, candidateId: String(updated.id), status: input.status };
 }
