@@ -14,6 +14,9 @@ import {
 } from "@/lib/ai/site-contract-schema";
 import type { DesignTokens } from "@/lib/design/tokens";
 import { getArchetypeById } from "@/lib/archetypes";
+import { guardApiRequest, idempotencyKey } from "@/lib/security/request-guards";
+import { ApiError, userSafeError } from "@/lib/security/api-error";
+import { completeUsage, reserveUsage, type UsageReservation } from "@/lib/usage/entitlements";
 
 const regenerateSectionSchema = z.object({
   sectionIndex: z.number().int().min(0),
@@ -133,6 +136,7 @@ async function generateTextWithGemini(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(route.model)}:generateContent`,
     {
       method: "POST",
+      signal:AbortSignal.timeout(45_000),
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": apiKey,
@@ -205,14 +209,19 @@ async function generateSection(prompt: string) {
 }
 
 export async function POST(request: Request) {
+  let reservation:UsageReservation|undefined;
+  let requestId="";
+  let user;
   try {
-    await requireServerUser();
+    user=await requireServerUser();
+    requestId=guardApiRequest(request,{userId:user.userId,route:"regenerate-section",maxBytes:750_000,limit:6}).requestId;
   } catch (error) {
     const authError = authErrorResponse(error);
     if (authError) {
       return NextResponse.json(authError.body, { status: authError.status });
     }
-    throw error;
+    const safe=userSafeError(error,"The section request could not be accepted.");
+    return NextResponse.json({...safe.body,requestId},{status:safe.status});
   }
 
   const body = await request.json().catch(() => null);
@@ -256,6 +265,13 @@ export async function POST(request: Request) {
       { error: `No section found at index ${parsed.data.sectionIndex}.` },
       { status: 400 },
     );
+  }
+
+  try {
+    reservation=await reserveUsage(user!,"regeneration",idempotencyKey(request,`${requestId}:regeneration:${parsed.data.sectionIndex}`),requestId);
+  } catch(error) {
+    const safe=userSafeError(error,"Usage could not be verified. No section generation was started.");
+    return NextResponse.json({...safe.body,requestId},{status:safe.status});
   }
 
   const sectionContract: SectionContract & { correctiveFeedback?: string[] } = {
@@ -318,15 +334,19 @@ export async function POST(request: Request) {
       correctiveFeedback: parsed.data.feedback ? [parsed.data.feedback] : undefined,
     });
     const result = await generateSection(prompt);
+    await completeUsage(reservation,"succeeded",{provider:result.modelMetadata.provider,model:result.modelMetadata.model});
     return NextResponse.json({
       html: result.html,
       sectionIndex: parsed.data.sectionIndex,
-      modelMetadata: result.modelMetadata,
+      requestId,
+      usage:{used:reservation.used,limit:reservation.limit},
     });
   } catch (error) {
+    if(reservation)await completeUsage(reservation,"failed",{errorCode:error instanceof ApiError?error.code:"REGENERATION_FAILED"});
+    const safe=userSafeError(error,"Section regeneration failed. Your original section is unchanged.");
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Section regeneration failed." },
-      { status: 503 },
+      { ...safe.body,requestId },
+      { status:safe.status },
     );
   }
 }

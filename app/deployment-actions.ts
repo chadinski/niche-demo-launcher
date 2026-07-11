@@ -1,7 +1,12 @@
 "use server";
 
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
+import { z } from "zod";
 import { requireServerUser, ServerAuthError } from "@/lib/auth/server-guard";
+import { deploymentAccess } from "@/lib/security/deployment-access";
+import { completeUsage, reserveUsage, type UsageReservation } from "@/lib/usage/entitlements";
+import { checkRateLimit } from "@/lib/security/request-guards";
 import { slugify } from "@/lib/utils";
 import type { DeploymentResult } from "@/lib/types";
 
@@ -9,6 +14,7 @@ type DeployInput = {
   businessName: string;
   html: string;
 };
+const deploySchema=z.object({businessName:z.string().trim().min(1).max(180),html:z.string().min(100).max(2_500_000)});
 
 const GITHUB_OWNER_PATTERN = /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i;
 
@@ -37,29 +43,19 @@ function githubOwner() {
 }
 
 export async function getAutomationStatus() {
-  const githubMissing = githubMissingEnv();
-  const supabaseMissing = [
-    process.env.NEXT_PUBLIC_SUPABASE_URL ? "" : "NEXT_PUBLIC_SUPABASE_URL",
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "" : "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  ].filter(Boolean);
-
+  const user=await requireServerUser();
+  const access=deploymentAccess(user);
   return {
-    ai: Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY),
-    gemini: Boolean(process.env.GEMINI_API_KEY),
-    openai: Boolean(process.env.OPENAI_API_KEY),
-    supabase: supabaseMissing.length === 0,
-    github: githubMissing.length === 0,
-    vercel: Boolean(process.env.VERCEL_TOKEN),
-    deploymentReady: requiredEnv().length === 0,
-    missing: requiredEnv(),
-    githubMissing,
-    supabaseMissing,
+    generationReady:Boolean(process.env.GEMINI_API_KEY||process.env.OPENAI_API_KEY),
+    managedDeploymentAvailable:access.allowed&&requiredEnv().length===0,
+    managedDeploymentReason:access.allowed?requiredEnv().length?"Managed deployment is temporarily unavailable.":"Approved beta access":access.reason,
   };
 }
 
 async function githubRequest(path: string, init: RequestInit = {}) {
   const response = await fetch(`https://api.github.com${path}`, {
     ...init,
+    signal:AbortSignal.timeout(30_000),
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
@@ -87,7 +83,7 @@ async function ensureRepo(repo: string) {
       method: "POST",
       body: JSON.stringify({
         name: repo,
-        private: false,
+        private: true,
         auto_init: true,
         description: "Generated Seraphim website deployment.",
       }),
@@ -135,6 +131,7 @@ async function deployToVercel(name: string, html: string) {
       files: [{ file: "index.html", data: html }],
       projectSettings: { framework: null },
     }),
+    signal:AbortSignal.timeout(45_000),
   });
 
   const body = await response.json().catch(() => ({}));
@@ -151,8 +148,10 @@ async function deployToVercel(name: string, html: string) {
 }
 
 export async function deployGeneratedWebsite(input: DeployInput): Promise<DeploymentResult> {
+  let user;
+  let reservation:UsageReservation|undefined;
   try {
-    await requireServerUser();
+    user=await requireServerUser();
   } catch (error) {
     return {
       ok: false,
@@ -160,6 +159,12 @@ export async function deployGeneratedWebsite(input: DeployInput): Promise<Deploy
       message: error instanceof ServerAuthError ? error.message : "Authentication required before deployment.",
     };
   }
+
+  const access=deploymentAccess(user);
+  if(!access.allowed)return{ok:false,status:"setup_required",message:access.reason};
+  if(!checkRateLimit(`managed-deployment:${user.userId}`,3,60_000).allowed)return{ok:false,status:"failed",message:"Too many deployment requests. Wait a minute and try again."};
+  const parsed=deploySchema.safeParse(input);
+  if(!parsed.success)return{ok:false,status:"failed",message:"Review the project name and generated HTML before deployment."};
 
   const missing = requiredEnv();
   if (missing.length) {
@@ -171,26 +176,21 @@ export async function deployGeneratedWebsite(input: DeployInput): Promise<Deploy
     };
   }
 
-  if (!input.html.trim()) {
-    return {
-      ok: false,
-      status: "failed",
-      message: "Generate a website before deploying.",
-    };
-  }
-
-  const slug = slugify(input.businessName || "seraphim-site") || "seraphim-site";
-  const repo = `${process.env.GITHUB_REPO_PREFIX || "niche-demo"}-${slug}`.slice(0, 80);
+  const slug = slugify(parsed.data.businessName || "seraphim-site") || "seraphim-site";
+  const tenantSuffix=createHash("sha256").update(user.userId).digest("hex").slice(0,10);
+  const repo = `${process.env.GITHUB_REPO_PREFIX || "niche-demo"}-${tenantSuffix}-${slug}`.slice(0,80);
 
   try {
+    reservation=await reserveUsage(user,"deployment",createHash("sha256").update(`${repo}:${parsed.data.html}`).digest("hex"),`deploy-${tenantSuffix}`);
     let repoUrl = "";
     if (githubMissingEnv().length === 0) {
       await ensureRepo(repo);
-      await upsertIndexHtml(repo, input.html);
+      await upsertIndexHtml(repo, parsed.data.html);
       repoUrl = `https://github.com/${githubOwner()}/${repo}`;
     }
 
-    const url = await deployToVercel(repo, input.html);
+    const url = await deployToVercel(repo, parsed.data.html);
+    await completeUsage(reservation,"succeeded",{provider:"vercel"});
 
     return {
       ok: true,
@@ -199,11 +199,12 @@ export async function deployGeneratedWebsite(input: DeployInput): Promise<Deploy
       url,
       repoUrl,
     };
-  } catch (error) {
+  } catch {
+    if(reservation)await completeUsage(reservation,"failed",{errorCode:"DEPLOYMENT_FAILED"});
     return {
       ok: false,
       status: "failed",
-      message: error instanceof Error ? error.message : "Deployment failed.",
+      message: "Managed deployment failed. Your generated HTML is still available to download.",
     };
   }
 }

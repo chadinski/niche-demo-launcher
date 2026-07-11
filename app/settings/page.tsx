@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Settings",
   description:
-    "Configure sender defaults, generation preferences, and server-side integration readiness.",
+    "Manage your agency profile, proposal defaults, and outreach preferences.",
+  robots:{index:false,follow:false},
 };
 
 export default async function SettingsPage() {

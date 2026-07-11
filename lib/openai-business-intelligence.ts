@@ -109,10 +109,15 @@ export const openAIBusinessUnderstandingSchema = z.object({
   reportMarkdown: z.string(),
 });
 
+export const safeImageDataUrlSchema = z.string().max(8_000_000).refine(
+  (value) => !value || /^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=\r\n]+$/i.test(value),
+  "Only base64-encoded PNG, JPEG, or WebP images are accepted.",
+);
+
 export const openAIBusinessIntelligenceRequestSchema = z.object({
   generationId: z.string().min(1).max(80),
   rawOcrText: z.string().max(24000).optional().default(""),
-  imageDataUrl: z.string().max(18_000_000).optional().default(""),
+  imageDataUrl: safeImageDataUrlSchema.optional().default(""),
   imageName: z.string().max(180).optional().default(""),
   brandColors: z.string().max(500).optional().default(""),
   currentInfo: openAIBusinessInfoSchema.partial().optional().default({}),

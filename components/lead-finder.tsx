@@ -174,7 +174,7 @@ export function LeadFinder() {
     try {
       const response = await fetch("/api/leads/search", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({
           industry,
           targetIndustryId,

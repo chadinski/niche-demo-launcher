@@ -1,0 +1,9 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { guardApiRequest } from "@/lib/security/request-guards";
+import { serverLog } from "@/lib/observability/logger";
+import { userSafeError } from "@/lib/security/api-error";
+const schema=z.object({confirmation:z.literal("DELETE")});
+export async function DELETE(request:Request){let requestId="";try{const user=await requireServerUser();requestId=guardApiRequest(request,{userId:user.userId,route:"account-delete",maxBytes:5_000,limit:2,windowMs:300_000}).requestId;schema.parse(await request.json().catch(()=>null));if(user.mode!=="remote")return NextResponse.json({error:"Account deletion is unavailable in local demo mode.",code:"DELETE_UNAVAILABLE",requestId},{status:400});const admin=createAdminClient();if(!admin)return NextResponse.json({error:"Account deletion is temporarily unavailable. Contact support.",code:"DELETE_UNAVAILABLE",requestId},{status:503});const{error}=await admin.auth.admin.deleteUser(user.userId);if(error)throw error;serverLog("info","account.deleted",{requestId,userIdHash:user.userId.slice(0,8)});return NextResponse.json({deleted:true,requestId},{headers:{"Cache-Control":"no-store"}})}catch(error){const auth=authErrorResponse(error);if(auth)return NextResponse.json({...auth.body,requestId},{status:auth.status});if(error instanceof z.ZodError)return NextResponse.json({error:"Type DELETE to confirm permanent deletion.",code:"CONFIRMATION_REQUIRED",requestId},{status:400});const safe=userSafeError(error,"Account deletion failed. No confirmation was applied.");serverLog("error","account.delete_failed",{requestId});return NextResponse.json({...safe.body,requestId},{status:safe.status})}}

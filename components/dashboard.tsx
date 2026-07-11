@@ -124,13 +124,13 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
   return (
     <div className="space-y-7">
       <PageHeading
-        eyebrow="Sales workspace"
-        title="Good morning, Chad."
-        description="Your private command center for turning business information into premium websites and respectful, personalized outreach."
+        eyebrow="Workspace home"
+        title="Welcome back."
+        description="Choose the next useful step: add a lead, verify business details, create a demo, or follow up with a prospect."
         action={
           <Link href="/create" className={buttonClass("primary", "min-h-11 px-4")}>
             <Plus className="size-4" />
-            Create New Site
+            Create Demo
           </Link>
         }
       />

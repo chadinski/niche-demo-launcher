@@ -1,18 +1,22 @@
 # Seraphim
 
-Private internal command center for Niche Technologies. Paste business information, generate a premium single-file website, deploy the demo, prepare personalized outreach, and track the real prospect.
+Seraphim is a self-service SaaS workspace for freelance web designers, agencies, and lead-generation specialists. Find or import prospective businesses, verify their information, generate premium single-file website demos, prepare manually approved outreach, and track the prospect.
+
+Public marketing pages are indexable. Account data, application routes, prospect records, and generated concept sites remain private/noindex. Shared provider credentials are protected by server-side authentication, quotas, rate limits, and feature flags.
+
+> Public-beta note: billing is not connected. The database-backed entitlement system supports Trial, Starter, Pro, and Admin plans without presenting a fake checkout. Managed deployment is disabled by default and HTML export remains available.
 
 ## Core Workflow
 
-1. Paste messy business information into **Create Site**.
+1. Create and verify an account, then complete the short onboarding flow.
+2. Paste messy business information into **Create Demo**.
    You can also import a business screenshot or photo. OpenAI vision analyzes the image, extracts the business facts, classifies the industry, and populates the profile.
-2. Optionally use **Lead Finder** to search Firecrawl for niche/location lead candidates, qualify them, and save selected businesses as prospects.
-3. Parse and review the extracted facts.
-4. Generate a private `noindex` single-file `index.html`.
-5. Generate WhatsApp, email, DM, and follow-up messages.
-6. Deploy the demo to Vercel or paste an existing live URL.
-7. Copy a message or open a WhatsApp/email draft.
-8. Manually approve sending and update the prospect status.
+3. Optionally use **Leads** to search Firecrawl for niche/location candidates, qualify them, and save selected businesses as prospects.
+4. Parse and review extracted facts and evidence.
+5. Generate a private `noindex` single-file `index.html` using a Fast or Premium allowance.
+6. Review in the scriptless sandbox, refine, and download HTML. Approved beta users may use managed deployment.
+7. Generate WhatsApp, email, DM, and follow-up drafts.
+8. Manually approve sending and update prospect status.
 
 The app does not bulk-send or automatically submit outreach.
 
@@ -43,8 +47,8 @@ When Supabase variables are blank in development, the app runs in local demo mod
 ## Supabase Setup
 
 1. Create a Supabase project.
-2. Run `supabase/schema.sql` in the SQL editor.
-3. Create the private internal user in Supabase Auth.
+2. Run `supabase/schema.sql` for a new project, then apply migrations in `supabase/migrations/` in filename order. Existing projects apply only unapplied migrations.
+3. Configure self-service email authentication and required redirect URLs.
 4. Optionally run `supabase/seed.sql` after the user exists.
 5. Add the project URL and anon key to `.env.local`.
 6. Add the same variables to Vercel production.
@@ -183,16 +187,30 @@ npm run build
 
 CI runs the same checks through `.github/workflows/ci.yml` on pull requests and pushes to `main`.
 
-Key UI paths:
+Key public paths:
 
-- `/` dashboard
-- `/leads` Firecrawl lead finder
-- `/create` generation workspace
+- `/` product landing page
+- `/features`, `/how-it-works`, `/pricing`
+- `/login`, `/signup`, `/forgot-password`, `/reset-password`
+- `/privacy`, `/terms`, `/acceptable-use`, `/support`
+
+Key authenticated paths:
+
+- `/dashboard` home and onboarding checklist
+- `/leads` lead discovery
+- `/create` guided demo workspace
 - `/prospects` CRM list
 - `/prospects/[id]` prospect detail
-- `/settings` deployment and workspace configuration
-- `/settings` app defaults and integrations
-- `/login` Supabase sign-in
+- `/usage` entitlement usage
+- `/settings` customer-facing agency and proposal defaults
+- `/help`, `/account`
+- `/admin` server-role-verified operator diagnostics
+
+Operational documentation:
+
+- `docs/launch-audit-2026-07-11.md`
+- `docs/public-beta-runbook.md`
+- `docs/public-beta-launch-checklist.md`
 
 ## Vercel Deployment
 

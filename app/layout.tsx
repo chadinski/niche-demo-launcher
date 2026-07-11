@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Toaster } from "sonner";
-import { AppShell } from "@/components/app-shell";
-import { ProspectProvider } from "@/components/prospect-provider";
+import { RootProviders } from "@/components/root-providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,11 +8,11 @@ export const metadata: Metadata = {
     ? new URL(process.env.NEXT_PUBLIC_APP_URL)
     : undefined,
   title: {
-    default: "Seraphim",
+    default: "Seraphim — Prospect demos and outreach workspace",
     template: "%s | Seraphim",
   },
   description:
-    "Private website generation and prospect outreach command center for Niche Technologies.",
+    "Find prospects, create premium website demos, and prepare personalized outreach from one workspace.",
   applicationName: "Seraphim",
   authors: [{ name: "Niche Technologies" }],
   creator: "Niche Technologies",
@@ -22,17 +21,17 @@ export const metadata: Metadata = {
     telephone: false,
   },
   robots: {
-    index: false,
-    follow: false,
+    index: true,
+    follow: true,
     googleBot: {
-      index: false,
-      follow: false,
+      index: true,
+      follow: true,
     },
   },
   openGraph: {
     title: "Seraphim",
     description:
-      "Private website generation and prospect outreach command center for Niche Technologies.",
+      "Find prospects, create premium website demos, and prepare personalized outreach from one workspace.",
     type: "website",
     siteName: "Seraphim",
   },
@@ -52,8 +51,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <ProspectProvider>
-          <AppShell>{children}</AppShell>
+        <RootProviders>
+          {children}
           <Toaster
             richColors
             position="bottom-right"
@@ -65,7 +64,7 @@ export default function RootLayout({
               },
             }}
           />
-        </ProspectProvider>
+        </RootProviders>
       </body>
     </html>
   );

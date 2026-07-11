@@ -172,6 +172,7 @@ export function ProspectDetail() {
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
+          "X-Idempotency-Key": `${activeGenerationId}:premium-final`,
         },
         body: JSON.stringify({
           generationId: activeGenerationId,

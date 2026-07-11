@@ -6,6 +6,7 @@ import {
   type AiProvider,
   type GenerationStage,
 } from "@/lib/ai/modelConfig";
+import { serverLog } from "@/lib/observability/logger";
 
 export type ModelRoute = {
   stage: GenerationStage;
@@ -135,9 +136,7 @@ export function getRoutesForStage(
 }
 
 export function logModelRoute(route: ModelRoute, generationId: string) {
-  console.info(
-    `[generation:${generationId}] ${route.stage} handled by ${route.provider}:${route.model}${route.fallback ? " (fallback)" : ""}`,
-  );
+  serverLog("info","ai.route_selected",{generationId,stage:route.stage,provider:route.provider,model:route.model,fallback:route.fallback});
 }
 
 export async function runWithModelRouteRetry<T>(
@@ -153,12 +152,15 @@ export async function runWithModelRouteRetry<T>(
   let lastError: unknown;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const startedAt=Date.now();
     try {
       const result = await operation(route, attempt);
       recordModelRouteSuccess(route);
+      serverLog("info","ai.stage_completed",{stage:route.stage,provider:route.provider,model:route.model,fallback:route.fallback,attempt,latencyMs:Date.now()-startedAt});
       return result;
     } catch (error) {
       lastError = error;
+      serverLog("warn","ai.stage_attempt_failed",{stage:route.stage,provider:route.provider,model:route.model,fallback:route.fallback,attempt,latencyMs:Date.now()-startedAt});
       if (attempt >= retries) break;
       await sleep(retryDelay(attempt));
     }

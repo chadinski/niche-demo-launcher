@@ -1,0 +1,2 @@
+import type { MetadataRoute } from "next";
+export default function sitemap():MetadataRoute.Sitemap{const base=(process.env.NEXT_PUBLIC_APP_URL||"https://niche-demo-launcher.vercel.app").replace(/\/$/,"");return["","/features","/how-it-works","/pricing","/privacy","/terms","/acceptable-use","/support"].map(path=>({url:`${base}${path}`,lastModified:new Date(),changeFrequency:path?"monthly":"weekly",priority:path?0.7:1}))}

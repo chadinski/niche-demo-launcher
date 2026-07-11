@@ -1,0 +1,1 @@
+import type { Metadata } from "next";import { OnboardingForm } from "@/components/onboarding-form";export const metadata:Metadata={title:"Set Up Your Workspace",robots:{index:false,follow:false}};export default function Page(){return <OnboardingForm/>}

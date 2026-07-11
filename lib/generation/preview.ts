@@ -60,17 +60,28 @@ const previewResetCss = `
 `;
 
 export function createPreviewHtml(html: string) {
-  if (!html.trim() || html.includes("data-niche-preview-reset")) {
-    return html;
+  const safeHtml=sanitizePreviewHtml(html);
+  if (!safeHtml.trim() || safeHtml.includes("data-niche-preview-reset")) {
+    return safeHtml;
   }
 
-  if (/<head[^>]*>/i.test(html)) {
-    if (/<\/head>/i.test(html)) {
-      return html.replace(/<\/head>/i, `${previewResetCss}</head>`);
+  if (/<head[^>]*>/i.test(safeHtml)) {
+    if (/<\/head>/i.test(safeHtml)) {
+      return safeHtml.replace(/<\/head>/i, `${previewResetCss}</head>`);
     }
 
-    return html.replace(/<head([^>]*)>/i, `<head$1>${previewResetCss}`);
+    return safeHtml.replace(/<head([^>]*)>/i, `<head$1>${previewResetCss}`);
   }
 
-  return `${previewResetCss}${html}`;
+  return `${previewResetCss}${safeHtml}`;
+}
+
+export function sanitizePreviewHtml(html:string){
+  return html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi,"")
+    .replace(/<(?:iframe|object|embed|base)\b[^>]*>[\s\S]*?<\/(?:iframe|object|embed|base)\s*>/gi,"")
+    .replace(/<(?:iframe|object|embed|base)\b[^>]*\/?>/gi,"")
+    .replace(/<meta\b[^>]*http-equiv\s*=\s*["']?refresh["']?[^>]*>/gi,"")
+    .replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi,"")
+    .replace(/\s+(href|src|action|formaction)\s*=\s*(["'])\s*(?:javascript:|data:text\/html)[\s\S]*?\2/gi,' $1="#"');
 }

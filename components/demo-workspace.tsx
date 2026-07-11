@@ -42,6 +42,7 @@ import {
 import { toast } from "sonner";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { DesignPreferences, type DesignPreferenceValues } from "@/components/DesignPreferences";
+import { markOnboardingProgress } from "@/app/onboarding/actions";
 import { deployGeneratedWebsite } from "@/app/deployment-actions";
 import { PageHeading } from "@/components/page-heading";
 import { Button, Card, SectionLabel } from "@/components/ui";
@@ -487,7 +488,7 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
-export function DemoWorkspace() {
+export function DemoWorkspace({firstProject=false}:{firstProject?:boolean}) {
   const { saveProspect, setStatus, updateProspect } = useProspects();
   const [generationId, setGenerationId] = useState(() => createGenerationId());
   const [info, setInfo] = useState<BusinessInfo>(() => emptyBusinessInfo());
@@ -499,6 +500,7 @@ export function DemoWorkspace() {
   const [messageTab, setMessageTab] = useState<keyof SalesMessages>("whatsapp");
   const [prospectId, setProspectId] = useState<string | null>(null);
   const [confirmSent, setConfirmSent] = useState(false);
+  const [exported, setExported] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [imageDataUrl, setImageDataUrl] = useState("");
@@ -671,6 +673,7 @@ export function DemoWorkspace() {
     setMessageTab("whatsapp");
     setProspectId(null);
     setConfirmSent(false);
+    setExported(false);
     setImageFile(null);
     setImagePreview("");
     setImageDataUrl("");
@@ -698,6 +701,7 @@ export function DemoWorkspace() {
 
   const clearGeneratedArtifacts = useCallback(() => {
     setHtml("");
+    setExported(false);
     setMessages(null);
     setOutputTab("preview");
     setProspectId(null);
@@ -799,7 +803,7 @@ export function DemoWorkspace() {
         method: "POST",
         cache: "no-store",
         signal: controller.signal,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Idempotency-Key": `${activeGenerationId}:extraction` },
         body: JSON.stringify({
           generationId: activeGenerationId,
           rawOcrText: sourceInfo.rawInfo,
@@ -868,12 +872,12 @@ export function DemoWorkspace() {
   };
 
   const importBusinessImage = async (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Choose a PNG, JPG, WebP, or other image file");
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      toast.error("Choose a PNG, JPEG, or WebP image");
       return;
     }
-    if (file.size > 12 * 1024 * 1024) {
-      toast.error("The image must be 12 MB or smaller");
+    if (file.size > 6 * 1024 * 1024) {
+      toast.error("The image must be 6 MB or smaller");
       return;
     }
 
@@ -927,7 +931,7 @@ export function DemoWorkspace() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "AI screenshot extraction failed. Check the provider key and try again.",
+          : "Screenshot extraction failed. Try again or enter the business information manually.",
       );
     } finally {
       if (isActiveGeneration(activeGenerationId)) setBusy(null);
@@ -948,12 +952,15 @@ export function DemoWorkspace() {
 
   const requestAIWebsiteHTML = useCallback(
     async (sourceInfo: BusinessInfo, activeGenerationId: string) => {
+      const controller = startGenerationRequest(activeGenerationId);
       const response = await fetch("/api/generate-website", {
         method: "POST",
         cache: "no-store",
+        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
+          "X-Idempotency-Key": `${activeGenerationId}:${generationDepth}`,
         },
         body: JSON.stringify({
           generationId: activeGenerationId,
@@ -1112,7 +1119,7 @@ export function DemoWorkspace() {
 
       return streamedResult;
     },
-    [businessUnderstanding, designTokenPreferences, generationDepth, generationMode, imageDataUrl, imageFile, isActiveGeneration, selectedArchetypeId, visualPrefs],
+    [businessUnderstanding, designTokenPreferences, generationDepth, generationMode, imageDataUrl, imageFile, isActiveGeneration, selectedArchetypeId, startGenerationRequest, visualPrefs],
   );
 
   const requestPersonalizedMessages = useCallback(
@@ -1123,7 +1130,7 @@ export function DemoWorkspace() {
         const response = await fetch("/api/generate-outreach", {
           method: "POST",
           cache: "no-store",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Idempotency-Key": crypto.randomUUID() },
           body: JSON.stringify({
             businessInfo: sourceInfo,
             extractionReport: businessUnderstanding,
@@ -1215,6 +1222,7 @@ export function DemoWorkspace() {
         });
         saveProspect(prospect);
         setProspectId(prospect.id);
+        void markOnboardingProgress("first_demo_generated");
         if (generated.qualityGate && !generated.qualityGate.passed) {
           toast.warning(`Premium QA revised or flagged this page: ${generated.qualityGate.score}/10`);
         } else if (!nextAudit.passed) {
@@ -1230,6 +1238,7 @@ export function DemoWorkspace() {
       async (activeGenerationId) => {
         if (!isActiveGeneration(activeGenerationId)) return;
         setMessages(await requestPersonalizedMessages(info, html));
+        void markOnboardingProgress("first_outreach_prepared");
       },
       "Outreach messages generated",
     );
@@ -1279,6 +1288,8 @@ export function DemoWorkspace() {
         });
         saveProspect(prospect);
         setProspectId(prospect.id);
+        void markOnboardingProgress("first_demo_generated");
+        void markOnboardingProgress("first_outreach_prepared");
         if (generated.qualityGate && !generated.qualityGate.passed) {
           toast.warning(`Premium QA revised or flagged this page: ${generated.qualityGate.score}/10`);
         } else if (!nextAudit.passed) {
@@ -1384,6 +1395,7 @@ export function DemoWorkspace() {
         const prospect = buildProspect();
         saveProspect(prospect);
         setProspectId(prospect.id);
+        void markOnboardingProgress("lead_added");
       },
       prospectId ? "Prospect updated" : "Prospect saved",
     );
@@ -1409,6 +1421,8 @@ export function DemoWorkspace() {
     anchor.download = "index.html";
     anchor.click();
     URL.revokeObjectURL(href);
+    setExported(true);
+    void markOnboardingProgress("first_demo_reviewed");
     toast.success("index.html downloaded");
   };
 
@@ -1516,7 +1530,7 @@ export function DemoWorkspace() {
       const response = await fetch("/api/regenerate-section", {
         method: "POST",
         cache: "no-store",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({
           sectionIndex,
           plan: generationPlan.premiumPlan ?? generationPlan,
@@ -1567,9 +1581,20 @@ export function DemoWorkspace() {
   const actionInProgress = Boolean(busy);
   const generationNeedsReview = Boolean(businessUnderstanding && !extractionReviewed);
   const generationDisabled = actionInProgress || generationNeedsReview;
+  const workflowStages=[
+    ["Add a business",Boolean(info.rawInfo||info.businessName)],
+    ["Verify information",Boolean(info.businessName&&(extractionReviewed||!businessUnderstanding))],
+    ["Choose design",Boolean(info.businessName)],
+    ["Generate website",Boolean(html)],
+    ["Review and refine",Boolean(html&&generationPlan)],
+    ["Deploy or export",Boolean(info.demoUrl||exported)],
+    ["Prepare outreach",Boolean(messages)],
+    ["Track prospect",Boolean(prospectId)],
+  ] as const;
 
   return (
     <div className="space-y-7">
+      {firstProject?<div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm leading-6 text-brand-900"><strong>Your first project starts here.</strong> Add one business, verify the facts, and use Fast Draft. Advanced controls can wait.</div>:null}
       <PageHeading
         eyebrow="Website workspace"
         title="Create a production-ready site"
@@ -1592,25 +1617,21 @@ export function DemoWorkspace() {
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        {[
-          ["01", "Import or paste", "Use a screenshot, photo, listing, or notes."],
-          ["02", "Generate and review", "Create the site and personalized copy."],
-          ["03", "Deploy and contact", "Add the URL, approve, then open a draft."],
-        ].map(([number, title, text], index) => (
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Demo workflow progress">
+        {workflowStages.map(([title,complete], index) => (
           <div
-            key={number}
+            key={title}
             className={cn(
-              "flex items-center gap-4 rounded-2xl border p-4",
-              index === 0 ? "border-brand-200 bg-brand-50/60" : "border-[#e7e8ef] bg-white",
+              "flex items-center gap-3 rounded-xl border p-3",
+              complete ? "border-emerald-200 bg-emerald-50/60" : index===workflowStages.findIndex(item=>!item[1])?"border-brand-200 bg-brand-50/60":"border-[#e7e8ef] bg-white",
             )}
           >
-            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-xs font-extrabold text-brand-700 shadow-sm">
-              {number}
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white text-xs font-extrabold text-brand-700 shadow-sm">
+              {complete?<CheckCircle2 className="size-4 text-emerald-600"/>:String(index+1).padStart(2,"0")}
             </span>
             <div>
               <p className="text-sm font-bold">{title}</p>
-              <p className="mt-0.5 text-xs text-[#858b9d]">{text}</p>
+              <p className="mt-0.5 text-xs text-[#858b9d]">{complete?"Completed":index===workflowStages.findIndex(item=>!item[1])?"Current step":"Up next"}</p>
             </div>
           </div>
         ))}
@@ -1765,7 +1786,7 @@ export function DemoWorkspace() {
             <input
               ref={imageInputRef}
               type="file"
-              accept="image/*"
+              accept="image/png,image/jpeg,image/webp"
               className="sr-only"
               onChange={(event) => {
                 const file = event.target.files?.[0];
@@ -1867,7 +1888,7 @@ export function DemoWorkspace() {
                 </span>
                 <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1 text-[0.68rem] font-bold text-[#697084] shadow-sm">
                   <FileImage className="size-3.5 text-brand-600" />
-                  PNG, JPG or WebP - 12 MB max
+                  PNG, JPG or WebP - 6 MB max
                 </span>
               </button>
             )}
@@ -1940,27 +1961,22 @@ export function DemoWorkspace() {
               title="Generate"
               description="Generate only after extracted facts are reviewed and approved."
             />
-            <label className="mt-5 block">
-              <span className="field-label">Business Type</span>
-              <select
-                className="field-input"
-                value={selectedArchetypeId}
-                onChange={(event) => handleArchetypeChange(event.target.value)}
-              >
-                <option value="">Auto-detect from business facts</option>
-                {ARCHETYPES.map((archetype) => (
-                  <option key={archetype.id} value={archetype.id}>
-                    {archetype.name}
-                  </option>
-                ))}
-              </select>
-              <span className="mt-1 block text-[0.7rem] leading-5 text-[#7d8496]">
-                Archetypes set the section rhythm, visual tone, and QA checks while your exact business facts stay protected.
-              </span>
-            </label>
             <div className="mt-5">
-              <DesignPreferences onChange={setVisualPrefs} value={visualPrefs} />
+              <span className="field-label">Generation quality</span>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {generationDepthOptions.map((option) => (
+                  <button key={option.key} type="button" className={cn("rounded-xl border p-3 text-left",generationDepth===option.key?"border-brand-300 bg-brand-50 text-brand-800":"border-[#e4e6ee] bg-white text-[#747b8f]")} onClick={()=>setGenerationDepth(option.key)}>
+                    <span className="block text-xs font-extrabold">{option.label}</span><span className="mt-1 block text-[.68rem] leading-4">{option.description}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs leading-5 text-[#7d8496]">This action uses one {generationDepth === "premium-final" ? "premium generation" : "fast generation"} allowance. Failed provider calls are recorded separately and do not count after refund.</p>
             </div>
+            <details className="mt-5 rounded-xl border border-[#e4e6ee] bg-[#fafafd] p-4">
+              <summary className="cursor-pointer text-sm font-extrabold">Advanced design controls</summary>
+              <label className="mt-4 block"><span className="field-label">Business type</span><select className="field-input" value={selectedArchetypeId} onChange={(event)=>handleArchetypeChange(event.target.value)}><option value="">Auto-detect from business facts</option>{ARCHETYPES.map((archetype)=><option key={archetype.id} value={archetype.id}>{archetype.name}</option>)}</select></label>
+              <div className="mt-5"><DesignPreferences onChange={setVisualPrefs} value={visualPrefs} /></div>
+            </details>
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
               <Button variant="outline" onClick={handleGenerateWebsite} loading={busy === "website"} disabled={generationDisabled}>
                 <Globe2 className="size-4" />
@@ -2032,27 +2048,6 @@ export function DemoWorkspace() {
                   </div>
                 ) : null}
                 <div className="mt-3">
-                  <div className="text-[0.62rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Generation depth</div>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {generationDepthOptions.map((option) => (
-                      <button
-                        key={option.key}
-                        type="button"
-                        className={cn(
-                          "rounded-xl border p-3 text-left transition",
-                          generationDepth === option.key
-                            ? "border-brand-300 bg-brand-50 text-brand-800"
-                            : "border-[#e4e6ee] bg-white text-[#747b8f] hover:border-brand-200",
-                        )}
-                        onClick={() => setGenerationDepth(option.key)}
-                      >
-                        <span className="block text-xs font-extrabold">{option.label}</span>
-                        <span className="mt-1 block text-[0.68rem] leading-4 text-current/70">{option.description}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="mt-3">
                   <div className="text-[0.62rem] font-bold tracking-[0.12em] text-[#9a9faf] uppercase">Regenerate direction</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {generationModes.map((mode) => (
@@ -2099,7 +2094,7 @@ export function DemoWorkspace() {
                   <SlidersHorizontal className="size-4" />
                   Category
                 </Button>
-                <Button onClick={() => setExtractionReviewed(true)} disabled={actionInProgress}>
+                <Button onClick={() => {setExtractionReviewed(true);void markOnboardingProgress("facts_verified");}} disabled={actionInProgress}>
                   <CheckCircle2 className="size-4" />
                   Approve
                 </Button>

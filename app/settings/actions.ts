@@ -9,6 +9,9 @@ import {
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
 import { createClient } from "@/lib/supabase/server";
 import type { AppSettings } from "@/lib/types";
+import { z } from "zod";
+
+const settingsSchema=z.object({companyName:z.string().trim().min(1).max(120),senderName:z.string().trim().max(120),senderEmail:z.string().trim().max(320),whatsappNumber:z.string().trim().max(80),website:z.string().trim().max(300),defaultPackagePrice:z.string().trim().max(80),defaultCurrency:z.string().trim().regex(/^[A-Z]{3}$/),defaultTone:z.enum(["Friendly","Direct","Premium","Soft sell","Confident","Local business friendly"]),defaultWebsiteStyle:z.string().trim().max(120),defaultFollowUpCadence:z.string().trim().regex(/^\d+(?:,\d+){0,8}$/),deploymentMode:z.enum(["manual","automatic"]),mailingAddress:z.string().trim().max(500)});
 
 type SettingsRow = {
   company_name?: string | null;
@@ -104,6 +107,7 @@ export async function getSettings(): Promise<SettingsResult> {
 }
 
 export async function upsertSettings(settings: AppSettings): Promise<SettingsResult> {
+  const parsed=settingsSchema.parse(settings);
   const user = await requireServerUser();
   const supabase = await createClient();
 
@@ -111,13 +115,13 @@ export async function upsertSettings(settings: AppSettings): Promise<SettingsRes
     return {
       configured: false,
       mode: "local-demo",
-      settings,
+      settings:parsed,
     };
   }
 
   const { data, error } = await supabase
     .from("app_settings")
-    .upsert(settingsToRow(settings, user), { onConflict: "user_id" })
+    .upsert(settingsToRow(parsed, user), { onConflict: "user_id" })
     .select("*")
     .single();
 

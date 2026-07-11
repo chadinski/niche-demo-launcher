@@ -1,0 +1,3 @@
+import { requireServerUser } from "@/lib/auth/server-guard";
+import { createClient } from "@/lib/supabase/server";
+export async function getAdminAccess(){const user=await requireServerUser();if(user.mode!=="remote")return{allowed:false,user};const envAdmins=new Set((process.env.ADMIN_EMAILS||"").split(",").map(item=>item.trim().toLowerCase()).filter(Boolean));if(user.email&&envAdmins.has(user.email.toLowerCase()))return{allowed:true,user};const supabase=await createClient();const{data}=supabase?await supabase.from("user_profiles").select("role").eq("user_id",user.userId).maybeSingle():{data:null};return{allowed:data?.role==="admin",user}}

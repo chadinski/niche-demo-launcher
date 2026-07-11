@@ -3,72 +3,13 @@ import { z } from "zod";
 import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
 import { DEFAULT_SETTINGS } from "@/lib/mock-data";
 import { generateAIOutreach } from "@/lib/outreach/ai-outreach";
+import { guardApiRequest, idempotencyKey } from "@/lib/security/request-guards";
+import { ApiError, userSafeError } from "@/lib/security/api-error";
+import { completeUsage, reserveUsage, type UsageReservation } from "@/lib/usage/entitlements";
 import type { AppSettings, BusinessInfo, MessageTone } from "@/lib/types";
 
-const businessInfoSchema = z.object({
-  rawInfo: z.string().default(""),
-  businessName: z.string().default(""),
-  category: z.string().default(""),
-  location: z.string().default(""),
-  phone: z.string().default(""),
-  email: z.string().default(""),
-  websiteUrl: z.string().default(""),
-  socialUrl: z.string().default(""),
-  services: z.string().default(""),
-  brandColors: z.string().default(""),
-  notes: z.string().default(""),
-  painPoints: z.string().default(""),
-  packagePrice: z.string().default(""),
-  demoUrl: z.string().default(""),
-});
+const short=z.string().trim().max(500).default("");
+const businessInfoSchema=z.object({rawInfo:z.string().max(24_000).default(""),businessName:z.string().max(180).default(""),category:short,location:short,phone:short,email:z.string().max(320).default(""),websiteUrl:z.string().max(500).default(""),socialUrl:z.string().max(500).default(""),services:z.string().max(4_000).default(""),brandColors:short,notes:z.string().max(4_000).default(""),painPoints:z.string().max(4_000).default(""),packagePrice:z.string().max(80).default(""),demoUrl:z.string().max(500).default("")});
+const requestSchema=z.object({businessInfo:businessInfoSchema,extractionReport:z.unknown().optional(),painPoints:z.array(z.string().max(500)).max(20).default([]),generatedDemoUrl:z.string().max(500).default(""),websiteQualitySummary:z.unknown().optional(),tone:z.string().max(80).default("Friendly"),packagePrice:z.string().max(80).default(""),settings:z.unknown().optional(),channelRequirements:z.array(z.string().max(80)).max(10).default([])});
 
-const requestSchema = z.object({
-  businessInfo: businessInfoSchema,
-  extractionReport: z.unknown().optional(),
-  painPoints: z.array(z.string()).optional().default([]),
-  generatedDemoUrl: z.string().optional().default(""),
-  websiteQualitySummary: z.unknown().optional(),
-  tone: z.string().optional().default("Friendly"),
-  packagePrice: z.string().optional().default(""),
-  settings: z.unknown().optional(),
-  channelRequirements: z.array(z.string()).optional().default([]),
-});
-
-export async function POST(request: Request) {
-  const headers = { "Cache-Control": "no-store, no-cache, must-revalidate" };
-
-  try {
-    await requireServerUser();
-  } catch (error) {
-    const authError = authErrorResponse(error);
-    if (authError) return NextResponse.json(authError.body, { status: authError.status, headers });
-    throw error;
-  }
-
-  try {
-    const body = await request.json().catch(() => null);
-    const input = requestSchema.parse(body);
-    const settings = { ...DEFAULT_SETTINGS, ...(typeof input.settings === "object" && input.settings ? input.settings : {}) } as AppSettings;
-    const result = await generateAIOutreach({
-      businessInfo: input.businessInfo as BusinessInfo,
-      extractionReport: input.extractionReport,
-      painPoints: input.painPoints,
-      generatedDemoUrl: input.generatedDemoUrl,
-      websiteQualitySummary: input.websiteQualitySummary,
-      tone: input.tone as MessageTone,
-      packagePrice: input.packagePrice,
-      settings,
-      channelRequirements: input.channelRequirements,
-    });
-
-    return NextResponse.json(result, { headers });
-  } catch (error) {
-    const status = error instanceof z.ZodError ? 400 : 503;
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Outreach generation failed.",
-      },
-      { status, headers },
-    );
-  }
-}
+export async function POST(request:Request){const headers={"Cache-Control":"no-store, no-cache, must-revalidate"};let reservation:UsageReservation|undefined;let requestId="";try{const user=await requireServerUser();requestId=guardApiRequest(request,{userId:user.userId,route:"generate-outreach",maxBytes:250_000,limit:8}).requestId;const body=await request.json().catch(()=>null);const input=requestSchema.parse(body);reservation=await reserveUsage(user,"outreach_generation",idempotencyKey(request,`${requestId}:outreach`),requestId);const settings={...DEFAULT_SETTINGS,...(typeof input.settings==="object"&&input.settings?input.settings:{})} as AppSettings;const result=await generateAIOutreach({businessInfo:input.businessInfo as BusinessInfo,extractionReport:input.extractionReport,painPoints:input.painPoints,generatedDemoUrl:input.generatedDemoUrl,websiteQualitySummary:input.websiteQualitySummary,tone:input.tone as MessageTone,packagePrice:input.packagePrice,settings,channelRequirements:input.channelRequirements});await completeUsage(reservation,"succeeded",{provider:result.modelMetadata?.provider,model:result.modelMetadata?.model});const customerResult={...result};delete customerResult.modelMetadata;return NextResponse.json({...customerResult,requestId,usage:{used:reservation.used,limit:reservation.limit}},{headers})}catch(error){if(reservation)await completeUsage(reservation,"failed",{errorCode:error instanceof ApiError?error.code:"OUTREACH_PROVIDER_FAILED"});const auth=authErrorResponse(error);if(auth)return NextResponse.json({...auth.body,requestId},{status:auth.status,headers});if(error instanceof z.ZodError)return NextResponse.json({error:"Review the outreach request fields.",code:"INVALID_REQUEST",requestId},{status:400,headers});const safe=userSafeError(error,"Outreach generation failed. Try again or use the existing deterministic draft.");return NextResponse.json({...safe.body,requestId},{status:safe.status,headers})}}

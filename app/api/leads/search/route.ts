@@ -4,81 +4,9 @@ import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
 import { searchFirecrawlLeads } from "@/lib/leads/firecrawl-lead-search";
 import { persistLeadSearch } from "@/lib/leads/persistence";
 import { buildLeadSearchLocation } from "@/lib/leads/regions";
-
-const requestSchema = z.object({
-  targetIndustryId: z.string().trim().max(80).optional().default(""),
-  industry: z.string().trim().min(2).max(80),
-  location: z.string().trim().max(80).default(""),
-  country: z.string().trim().max(40).optional().default(""),
-  region: z.string().trim().max(80).optional().default(""),
-  city: z.string().trim().max(80).optional().default(""),
-  limit: z.number().int().min(5).max(20).default(10),
-});
-
-const noStoreHeaders = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-  Pragma: "no-cache",
-  Expires: "0",
-};
-
-export async function POST(request: Request) {
-  try {
-    const user = await requireServerUser();
-
-    const json = await request.json().catch(() => ({}));
-    const input = requestSchema.parse(json);
-    const location = buildLeadSearchLocation({
-      city: input.city,
-      region: input.region,
-      country: input.country,
-      fallbackLocation: input.location,
-    });
-    const result = await searchFirecrawlLeads({
-      ...input,
-      location,
-    });
-    const persisted = await persistLeadSearch({
-      user,
-      targetIndustryId: result.targetIndustryId,
-      industry: input.industry,
-      country: input.country,
-      region: input.region,
-      city: input.city,
-      query: result.query,
-      candidates: result.candidates,
-    });
-
-    return NextResponse.json(
-      {
-        ...result,
-        candidates: persisted.candidates,
-        searchRunId: persisted.searchRunId,
-        searchedAt: new Date().toISOString(),
-      },
-      { headers: noStoreHeaders },
-    );
-  } catch (error) {
-    const authError = authErrorResponse(error);
-    if (authError) {
-      return NextResponse.json(authError.body, { status: authError.status, headers: noStoreHeaders });
-    }
-
-    const message = error instanceof z.ZodError
-      ? error.issues.map((issue) => issue.message).join(" ")
-      : error instanceof Error
-        ? error.message
-        : "Lead search could not complete.";
-
-    return NextResponse.json(
-      {
-        configured: Boolean(process.env.FIRECRAWL_API_KEY),
-        query: "",
-        targetIndustryId: "",
-        candidates: [],
-        warnings: [message],
-        searchedAt: new Date().toISOString(),
-      },
-      { status: error instanceof z.ZodError ? 400 : 503, headers: noStoreHeaders },
-    );
-  }
-}
+import { guardApiRequest, idempotencyKey } from "@/lib/security/request-guards";
+import { ApiError, userSafeError } from "@/lib/security/api-error";
+import { completeUsage, reserveUsage, type UsageReservation } from "@/lib/usage/entitlements";
+const requestSchema=z.object({targetIndustryId:z.string().trim().max(80).default(""),industry:z.string().trim().min(2).max(80),location:z.string().trim().max(80).default(""),country:z.string().trim().max(40).default(""),region:z.string().trim().max(80).default(""),city:z.string().trim().max(80).default(""),limit:z.number().int().min(5).max(20).default(10)});
+const headers={"Cache-Control":"no-store, no-cache, must-revalidate, proxy-revalidate",Pragma:"no-cache",Expires:"0"};
+export async function POST(request:Request){let reservation:UsageReservation|undefined;let requestId="";try{const user=await requireServerUser();requestId=guardApiRequest(request,{userId:user.userId,route:"lead-search",maxBytes:50_000,limit:5}).requestId;const input=requestSchema.parse(await request.json().catch(()=>null));reservation=await reserveUsage(user,"lead_search",idempotencyKey(request,`${requestId}:lead-search`),requestId);const location=buildLeadSearchLocation({city:input.city,region:input.region,country:input.country,fallbackLocation:input.location});const result=await searchFirecrawlLeads({...input,location});const persisted=await persistLeadSearch({user,targetIndustryId:result.targetIndustryId,industry:input.industry,country:input.country,region:input.region,city:input.city,query:result.query,candidates:result.candidates});await completeUsage(reservation,"succeeded",{provider:"firecrawl"});return NextResponse.json({...result,candidates:persisted.candidates,searchRunId:persisted.searchRunId,searchedAt:new Date().toISOString(),requestId,usage:{used:reservation.used,limit:reservation.limit}},{headers})}catch(error){if(reservation)await completeUsage(reservation,"failed",{errorCode:error instanceof ApiError?error.code:"LEAD_SEARCH_FAILED"});const auth=authErrorResponse(error);if(auth)return NextResponse.json({...auth.body,requestId},{status:auth.status,headers});if(error instanceof z.ZodError)return NextResponse.json({error:"Review the lead-search fields.",code:"INVALID_REQUEST",requestId},{status:400,headers});const safe=userSafeError(error,"Lead search could not complete. No outreach was sent.");return NextResponse.json({configured:Boolean(process.env.FIRECRAWL_API_KEY),query:"",targetIndustryId:"",candidates:[],warnings:[safe.body.error],code:safe.body.code,requestId,searchedAt:new Date().toISOString()},{status:safe.status,headers})}}

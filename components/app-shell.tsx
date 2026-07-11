@@ -13,6 +13,9 @@ import {
   Settings,
   Sparkles,
   Target,
+  Gauge,
+  HelpCircle,
+  UserRound,
   Users,
   X,
 } from "lucide-react";
@@ -23,12 +26,31 @@ import { createClient } from "@/lib/supabase/client";
 import { clearWorkspaceStorage } from "@/lib/generation/session";
 
 const navigation = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/leads", label: "Lead Finder", icon: Target },
-  { href: "/create", label: "Create Site", icon: Sparkles },
+  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+  { href: "/leads", label: "Leads", icon: Target },
+  { href: "/create", label: "Create Demo", icon: Sparkles },
   { href: "/prospects", label: "Prospects", icon: Users },
+  { href: "/usage", label: "Usage", icon: Gauge },
+  { href: "/help", label: "Help", icon: HelpCircle },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/account", label: "Account", icon: UserRound },
 ];
+
+const publicPaths = new Set([
+  "/",
+  "/features",
+  "/how-it-works",
+  "/pricing",
+  "/privacy",
+  "/terms",
+  "/acceptable-use",
+  "/support",
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/service-unavailable",
+]);
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -51,7 +73,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [mobileOpen]);
 
-  if (pathname === "/login") return <>{children}</>;
+  if (publicPaths.has(pathname)) return <>{children}</>;
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -121,7 +143,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="min-w-0 lg:col-start-2">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[#e7e8ef] bg-white/88 px-4 backdrop-blur-xl sm:px-6 lg:hidden">
-          <Link href="/" className="flex items-center gap-2.5 font-bold tracking-[-0.03em]">
+          <Link href="/dashboard" className="flex items-center gap-2.5 font-bold tracking-[-0.03em]">
             <span className="grid size-9 place-items-center rounded-xl bg-brand-600 text-white">
               <BriefcaseBusiness className="size-4" />
             </span>
@@ -171,7 +193,7 @@ function Sidebar({
             Seraphim
           </div>
           <div className="text-[0.68rem] font-semibold tracking-[0.12em] text-[#969bad] uppercase">
-            Private command center
+            Prospect demo workspace
           </div>
         </div>
       </div>
@@ -179,7 +201,7 @@ function Sidebar({
       <div className="px-4 pt-5">
         <Link href="/create" className={buttonClass("primary", "w-full min-h-11")} onClick={onNavigate}>
           <Plus className="size-4" />
-          Create New Site
+          Create Demo
         </Link>
       </div>
 
@@ -190,7 +212,7 @@ function Sidebar({
         <div className="space-y-1">
           {navigation.map((item) => {
             const active =
-              item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+              item.href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(item.href);
             const Icon = item.icon;
             return (
               <Link
@@ -216,10 +238,10 @@ function Sidebar({
       <div className="m-4 rounded-2xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white p-4">
         <div className="flex items-center gap-2 text-xs font-bold text-brand-700">
           <Sparkles className="size-4" />
-          Ready to launch
+          Review before sharing
         </div>
         <p className="mt-2 text-xs leading-5 text-[#70778b]">
-          Paste business info, generate the site, then approve outreach manually.
+          Verify extracted facts, review every demo, and approve outreach manually.
         </p>
       </div>
 
@@ -241,8 +263,8 @@ function Sidebar({
           CT
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-bold">Chad</div>
-          <div className="truncate text-xs text-[#8b91a2]">Niche Technologies</div>
+          <div className="truncate text-sm font-bold">Your workspace</div>
+          <div className="truncate text-xs text-[#8b91a2]">Seraphim</div>
         </div>
         <PanelLeftClose className="size-4 text-[#a1a6b5]" aria-hidden="true" />
         </div>

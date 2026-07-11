@@ -1,0 +1,1 @@
+import type { Metadata } from "next";import { ForgotPasswordForm } from "@/components/password-forms";export const metadata:Metadata={title:"Forgot Password"};export default function Page(){return <ForgotPasswordForm/>}
