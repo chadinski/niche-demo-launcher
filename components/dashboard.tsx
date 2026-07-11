@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowUpRight,
   CalendarClock,
@@ -108,7 +109,7 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
 
   const pipeline = [
     { label: "New", count: prospects.filter((p) => p.outreach_status === "new").length, color: "bg-slate-400" },
-    { label: "Profile", count: prospects.filter((p) => p.outreach_status === "profile_extracted").length, color: "bg-violet-500" },
+    { label: "Profile", count: prospects.filter((p) => p.outreach_status === "profile_extracted").length, color: "bg-brand-500" },
     { label: "Generated", count: prospects.filter((p) => p.outreach_status === "demo_generated").length, color: "bg-indigo-500" },
     { label: "Deployed", count: prospects.filter((p) => p.outreach_status === "demo_deployed").length, color: "bg-cyan-500" },
     { label: "Contacted", count: prospects.filter((p) => p.outreach_status === "contacted").length, color: "bg-blue-500" },
@@ -136,18 +137,26 @@ export function Dashboard({ nowIso }: { nowIso: string }) {
       />
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,.9fr)]">
-        <Card className="surface-grid relative overflow-hidden border-white/10 bg-ink-950 p-6 text-white shadow-[0_28px_90px_rgba(21,26,45,.28)] sm:p-8">
-          <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_65%_35%,rgba(168,85,247,.34),transparent_17rem)]" />
+        <Card className="surface-grid relative overflow-hidden border-white/10 bg-[linear-gradient(135deg,#063b4c_0%,#075f77_48%,#0b94b2_100%)] p-6 text-white shadow-[0_28px_90px_rgba(7,95,119,.28)] sm:p-8">
+          <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_65%_35%,rgba(53,196,223,.34),transparent_17rem)]" />
           <div className="relative max-w-3xl">
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-[0.68rem] font-bold tracking-[0.13em] text-brand-100 uppercase">
-              <Sparkles className="size-3.5" />
-              Seraphim workflow
-            </span>
-            <h2 className="mt-8 max-w-2xl text-[clamp(2rem,5vw,4.5rem)] leading-[0.9] font-black tracking-[-0.075em]">
-              Build the demo. Shape the message. Keep the send manual.
+            <div className="flex items-center gap-3">
+              <span className="grid size-14 place-items-center rounded-2xl bg-white p-1.5 shadow-[0_12px_30px_rgba(1,29,38,.22)]">
+                <Image src="/seraphim-logo.png" alt="Seraphim" width={96} height={96} className="size-full object-contain" priority />
+              </span>
+              <div>
+                <span className="inline-flex items-center gap-2 text-[0.68rem] font-bold tracking-[0.16em] text-brand-100 uppercase">
+                  <Sparkles className="size-3.5" />
+                  Seraphim workspace
+                </span>
+                <p className="mt-1 text-sm font-semibold text-white/70">Your next best client opportunity</p>
+              </div>
+            </div>
+            <h2 className="mt-8 max-w-2xl text-[clamp(2rem,5vw,4.5rem)] leading-[0.9] font-black tracking-[-0.075em] text-balance">
+              Turn a verified business into a premium first impression.
             </h2>
             <p className="mt-5 max-w-xl text-sm leading-6 text-white/62">
-              A focused workspace for one-person agency speed: capture the business, generate a polished Seraphim site, attach the live URL, then approve outreach with context.
+              Capture the business, generate a polished demo, and prepare thoughtful outreach—all from one focused workspace.
             </p>
             <div className="mt-7 grid gap-3 sm:grid-cols-3">
               {[

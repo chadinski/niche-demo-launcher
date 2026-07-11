@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -1594,6 +1595,19 @@ export function DemoWorkspace({firstProject=false}:{firstProject?:boolean}) {
 
   return (
     <div className="space-y-7">
+      <div className="relative overflow-hidden rounded-2xl border border-brand-200 bg-gradient-to-r from-brand-50 via-white to-white p-4 shadow-[0_12px_34px_rgba(8,120,149,.08)] sm:p-5">
+        <div className="absolute -top-16 -right-10 size-40 rounded-full bg-brand-100/70 blur-3xl" aria-hidden="true" />
+        <div className="relative flex items-center gap-4">
+          <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-white p-1.5 shadow-sm ring-1 ring-brand-100">
+            <Image src="/seraphim-logo.png" alt="Seraphim" width={96} height={96} className="size-full object-contain" priority />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[0.68rem] font-bold tracking-[0.15em] text-brand-700 uppercase">Seraphim demo studio</p>
+            <h2 className="mt-1 text-lg font-extrabold tracking-[-0.035em] text-ink-950 sm:text-xl">From verified facts to a demo your prospect can feel.</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-5 text-[#687084]">Follow the steps below. Seraphim saves your work as you go and keeps outreach manual until you approve it.</p>
+          </div>
+        </div>
+      </div>
       {firstProject?<div className="rounded-2xl border border-brand-200 bg-brand-50 p-4 text-sm leading-6 text-brand-900"><strong>Your first project starts here.</strong> Add one business, verify the facts, and use Fast Draft. Advanced controls can wait.</div>:null}
       <PageHeading
         eyebrow="Website workspace"

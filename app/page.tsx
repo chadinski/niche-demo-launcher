@@ -22,7 +22,7 @@ export default function MarketingHomePage() {
       <PublicHeader />
       <main>
         <section className="relative overflow-hidden border-b border-[#e7e8ef] bg-white px-4 py-20 sm:px-6 sm:py-28">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(124,58,237,.12),transparent_32rem)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_25%,rgba(11,148,178,.14),transparent_32rem)]" />
           <div className="relative mx-auto grid max-w-7xl items-center gap-14 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,.95fr)]">
             <div>
               <p className="text-xs font-extrabold tracking-[0.16em] text-brand-700 uppercase">Prospect-to-client workspace</p>
@@ -33,7 +33,7 @@ export default function MarketingHomePage() {
                 Find prospects, verify their business information, create premium website concepts, and prepare respectful outreach from one focused workspace.
               </p>
               <div className="mt-9 flex flex-wrap gap-3">
-                <Link href="/signup" className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-brand-600 px-5 font-bold text-white shadow-[0_14px_35px_rgba(124,58,237,.25)] hover:bg-brand-700">
+                <Link href="/signup" className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-brand-600 px-5 font-bold text-white shadow-[0_14px_35px_rgba(11,148,178,.25)] hover:bg-brand-700">
                   Request beta access <ArrowRight className="size-4" />
                 </Link>
                 <Link href="/how-it-works" className="inline-flex min-h-12 items-center rounded-xl border border-[#dfe1e9] bg-white px-5 font-bold hover:bg-[#f7f7fa]">

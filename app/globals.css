@@ -3,13 +3,16 @@
 @theme {
   --color-ink-950: #151a2d;
   --color-ink-800: #27314d;
-  --color-brand-50: #faf5ff;
-  --color-brand-100: #f3e8ff;
-  --color-brand-200: #e9d5ff;
-  --color-brand-300: #d8b4fe;
-  --color-brand-500: #a855f7;
-  --color-brand-600: #8b5cf6;
-  --color-brand-700: #6d28d9;
+  --color-brand-50: #ecfbff;
+  --color-brand-100: #d5f6fc;
+  --color-brand-200: #afeaf5;
+  --color-brand-300: #77d9eb;
+  --color-brand-400: #35c4df;
+  --color-brand-500: #16aeca;
+  --color-brand-600: #0b94b2;
+  --color-brand-700: #087895;
+  --color-brand-800: #096078;
+  --color-brand-900: #0a4a5c;
   --color-mint-50: #f7fee7;
   --color-mint-500: #84cc16;
   --color-warm-50: #faf9f6;
@@ -18,13 +21,13 @@
 
 :root {
   color-scheme: light;
-  --app-background: #fbf8ff;
+  --app-background: #f6fcfe;
   --panel: #ffffff;
   --panel-muted: #fafafd;
   --border: #e8e9f0;
   --muted: #70778b;
   --shadow-card: 0 1px 2px rgba(21, 26, 45, 0.03), 0 12px 34px rgba(21, 26, 45, 0.06);
-  --shadow-float: 0 22px 60px rgba(109, 40, 217, 0.14);
+  --shadow-float: 0 22px 60px rgba(8, 120, 149, 0.16);
 }
 
 * {
@@ -40,9 +43,9 @@ body {
   margin: 0;
   color: #151a2d;
   background:
-    radial-gradient(circle at 80% -10%, rgba(168, 85, 247, 0.16), transparent 30rem),
+    radial-gradient(circle at 80% -10%, rgba(22, 174, 202, 0.16), transparent 30rem),
     radial-gradient(circle at 6% 18%, rgba(132, 204, 22, 0.08), transparent 24rem),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.68), rgba(250, 245, 255, 0.72)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(236, 251, 255, 0.76)),
     var(--app-background);
   font-family: var(--font-sans);
   text-rendering: optimizeLegibility;
@@ -67,13 +70,13 @@ a {
 }
 
 :focus-visible {
-  outline: 3px solid rgba(168, 85, 247, 0.42);
+  outline: 3px solid rgba(22, 174, 202, 0.46);
   outline-offset: 2px;
 }
 
 ::selection {
   color: #ffffff;
-  background: #7c3aed;
+  background: #087895;
 }
 
 .skip-link {
@@ -125,9 +128,9 @@ a {
 }
 
 .field-input:focus {
-  border-color: #a855f7;
+  border-color: #0b94b2;
   outline: none;
-  box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.14);
+  box-shadow: 0 0 0 4px rgba(22, 174, 202, 0.16);
 }
 
 .field-input:disabled {
@@ -138,8 +141,8 @@ a {
 
 .surface-grid {
   background-image:
-    linear-gradient(rgba(124, 58, 237, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124, 58, 237, 0.06) 1px, transparent 1px);
+    linear-gradient(rgba(8, 120, 149, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(8, 120, 149, 0.06) 1px, transparent 1px);
   background-size: 28px 28px;
 }
 
@@ -153,7 +156,7 @@ a {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background:
     radial-gradient(circle at 50% 45%, rgba(59, 130, 246, 0.24), transparent 13rem),
-    radial-gradient(circle at 65% 35%, rgba(168, 85, 247, 0.28), transparent 11rem),
+    radial-gradient(circle at 65% 35%, rgba(22, 174, 202, 0.28), transparent 11rem),
     linear-gradient(145deg, rgba(5, 10, 27, 0.86), rgba(12, 16, 37, 0.72));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 30px 90px rgba(5, 10, 27, 0.38);
 }
@@ -166,7 +169,7 @@ a {
   background:
     radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.72), transparent 0.35rem),
     radial-gradient(circle at 38% 28%, rgba(147, 197, 253, 0.86), transparent 3.2rem),
-    radial-gradient(circle at 70% 75%, rgba(168, 85, 247, 0.38), transparent 6.5rem),
+    radial-gradient(circle at 70% 75%, rgba(22, 174, 202, 0.38), transparent 6.5rem),
     linear-gradient(135deg, rgba(7, 89, 133, 0.9), rgba(15, 23, 42, 0.96));
   box-shadow:
     inset -34px -22px 60px rgba(0, 0, 0, 0.44),

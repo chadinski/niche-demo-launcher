@@ -7,7 +7,7 @@ type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger";
 export function buttonClass(variant: ButtonVariant = "primary", className?: string) {
   const variants: Record<ButtonVariant, string> = {
     primary:
-      "border-brand-600 bg-brand-600 text-white shadow-[0_10px_24px_rgba(124,58,237,.22)] hover:-translate-y-0.5 hover:bg-brand-700",
+      "border-brand-600 bg-brand-600 text-white shadow-[0_10px_24px_rgba(8,120,149,.22)] hover:-translate-y-0.5 hover:bg-brand-700",
     secondary: "border-brand-700 bg-brand-700 text-white hover:-translate-y-0.5 hover:bg-brand-600",
     outline: "border-[#dfe1ea] bg-white text-ink-800 hover:border-brand-500 hover:text-brand-700",
     ghost: "border-transparent bg-transparent text-[#60677b] hover:bg-[#f1f1f6] hover:text-ink-950",

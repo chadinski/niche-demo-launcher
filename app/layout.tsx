@@ -17,6 +17,9 @@ export const metadata: Metadata = {
   authors: [{ name: "Niche Technologies" }],
   creator: "Niche Technologies",
   publisher: "Niche Technologies",
+  icons: {
+    icon: "/seraphim-logo.png",
+  },
   formatDetection: {
     telephone: false,
   },
@@ -40,7 +43,7 @@ export const metadata: Metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#6d28d9",
+  themeColor: "#0b94b2",
 };
 
 export default function RootLayout({
