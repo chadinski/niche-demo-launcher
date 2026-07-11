@@ -954,6 +954,41 @@ export function DemoWorkspace({firstProject=false}:{firstProject?:boolean}) {
   const requestAIWebsiteHTML = useCallback(
     async (sourceInfo: BusinessInfo, activeGenerationId: string) => {
       const controller = startGenerationRequest(activeGenerationId);
+      const requestBody = {
+        generationId: activeGenerationId,
+        info: sourceInfo,
+        generationDepth,
+        generationMode,
+        visualPreferences: designTokenPreferences,
+        archetypeId: selectedArchetypeId || undefined,
+        imageName: imageFile?.name || "",
+        sourceImageDataUrl: imageDataUrl,
+        businessUnderstanding,
+      };
+      if (generationDepth === "premium-final" && process.env.NEXT_PUBLIC_PREMIUM_GENERATION_ASYNC === "1") {
+        const queued = await fetch("/api/generation-jobs", {
+          method: "POST",
+          cache: "no-store",
+          signal: controller.signal,
+          headers: { "Content-Type": "application/json", "X-Idempotency-Key": `${activeGenerationId}:premium-final` },
+          body: JSON.stringify(requestBody),
+        });
+        const queuedPayload = await queued.json() as { error?: string };
+        if (!queued.ok) throw new Error(queuedPayload.error || "Premium generation could not be queued.");
+        for (;;) {
+          if (!isActiveGeneration(activeGenerationId)) return null;
+          await new Promise<void>((resolve, reject) => {
+            const timer = window.setTimeout(resolve, 1800);
+            controller.signal.addEventListener("abort", () => { window.clearTimeout(timer); void fetch(`/api/generation-jobs/${encodeURIComponent(activeGenerationId)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel" }) }).catch(() => undefined); reject(new DOMException("Generation cancelled", "AbortError")); }, { once: true });
+          });
+          const statusResponse = await fetch(`/api/generation-jobs/${encodeURIComponent(activeGenerationId)}`, { cache: "no-store", signal: controller.signal });
+          const statusPayload = await statusResponse.json() as { job?: { status?: string; error_message?: string; result?: { html?: string; generationPlan?: GenerationPlan; qualityGate?: QualityGatePayload } } };
+          const job = statusPayload.job;
+          if (!job) throw new Error("Premium generation status could not be recovered.");
+          if (job.status === "succeeded" && job.result?.html) return { html: job.result.html, generationPlan: job.result.generationPlan, qualityGate: job.result.qualityGate };
+          if (job.status === "failed" || job.status === "cancelled") throw new Error(job.error_message || "Premium generation could not complete.");
+        }
+      }
       const response = await fetch("/api/generate-website", {
         method: "POST",
         cache: "no-store",
@@ -963,17 +998,7 @@ export function DemoWorkspace({firstProject=false}:{firstProject?:boolean}) {
           Accept: "text/event-stream",
           "X-Idempotency-Key": `${activeGenerationId}:${generationDepth}`,
         },
-        body: JSON.stringify({
-          generationId: activeGenerationId,
-          info: sourceInfo,
-          generationDepth,
-          generationMode,
-          visualPreferences: designTokenPreferences,
-          archetypeId: selectedArchetypeId || undefined,
-          imageName: imageFile?.name || "",
-          sourceImageDataUrl: imageDataUrl,
-          businessUnderstanding,
-        }),
+        body: JSON.stringify(requestBody),
       });
       const contentType = response.headers.get("content-type") || "";
 

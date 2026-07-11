@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { safeRedirectPath } from "@/lib/auth/redirect";
 import { safeImageDataUrlSchema } from "@/lib/openai-business-intelligence";
 import { deploymentAccess } from "@/lib/security/deployment-access";
-import { checkRateLimit, guardApiRequest, idempotencyKey, resetRateLimitsForTests } from "@/lib/security/request-guards";
+import { checkRateLimit, guardApiRequest, guardApiRequestAsync, idempotencyKey, resetRateLimitsForTests } from "@/lib/security/request-guards";
 import { estimatedOperationCost, operationForGeneration } from "@/lib/usage/entitlements";
 import { sanitizePreviewHtml } from "@/lib/generation/preview";
 import { friendlyAuthError } from "@/lib/auth/errors";
@@ -43,6 +43,16 @@ describe("request and abuse controls",()=>{
     expect(idempotencyKey(new Request("https://example.test",{headers:{"x-idempotency-key":"stable-key-123"}}),"fallback-key")).toBe("stable-key-123");
     expect(idempotencyKey(new Request("https://example.test",{headers:{"x-idempotency-key":"x"}}),"fallback-key")).toBe("fallback-key");
   });
+  it("uses the distributed limiter when Upstash is configured",async()=>{
+    vi.stubEnv("UPSTASH_REDIS_REST_URL","https://redis.example.test");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN","token");
+    const fetchMock=vi.fn().mockResolvedValue(new Response(JSON.stringify([{result:2},{result:1}]),{status:200}));
+    vi.stubGlobal("fetch",fetchMock);
+    const result=await guardApiRequestAsync(new Request("https://example.test/api",{method:"POST"}),{userId:"user-a",route:"distributed",maxBytes:1000,limit:3});
+    expect(result.distributed).toBe(true);
+    expect(result.rate.remaining).toBe(1);
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/pipeline"),expect.objectContaining({method:"POST"}));
+  });
 });
 
 describe("upload validation",()=>{
@@ -77,6 +87,13 @@ describe("tenant and preview hardening contracts",()=>{
     expect(sql).toMatch(/lead candidates[\s\S]*exists\(select 1 from public\.lead_search_runs/i);
     expect(sql).toMatch(/security definer[\s\S]*auth\.uid\(\)/i);
     expect(sql).toMatch(/prevent_profile_role_escalation[\s\S]*service_role/i);
+  });
+  it("ships durable Premium queue leasing and retry contracts",()=>{
+    const sql=readFileSync(resolve(process.cwd(),"supabase/migrations/202607110002_durable_generation_jobs.sql"),"utf8");
+    expect(sql).toMatch(/cancel_requested boolean/i);
+    expect(sql).toMatch(/claim_generation_job/i);
+    expect(sql).toMatch(/for update skip locked/i);
+    expect(sql).toMatch(/consume_usage_for_user/i);
   });
   it("renders untrusted generated HTML in scriptless sandboxed iframes",()=>{
     const workspace=readFileSync(resolve(process.cwd(),"components/demo-workspace.tsx"),"utf8");

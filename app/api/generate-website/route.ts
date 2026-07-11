@@ -9,9 +9,9 @@ import { buildDesignSystemPrompt } from "@/lib/ai/prompts/design-system";
 import { buildPageContractPrompt } from "@/lib/ai/prompts/page-contract";
 import { buildVisualQAPrompt } from "@/lib/ai/prompts/visual-qa";
 import { getRoutesForStage, runWithModelRouteRetry, type ModelRoute } from "@/lib/ai/modelRouter";
-import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
+import { authErrorResponse, requireGenerationWorkerUser, requireServerUser } from "@/lib/auth/server-guard";
 import { safeImageDataUrlSchema } from "@/lib/openai-business-intelligence";
-import { guardApiRequest, idempotencyKey } from "@/lib/security/request-guards";
+import { guardApiRequestAsync, idempotencyKey } from "@/lib/security/request-guards";
 import { ApiError, userSafeError } from "@/lib/security/api-error";
 import { completeUsage, operationForGeneration, reserveUsage, type UsageReservation } from "@/lib/usage/entitlements";
 import { finishGenerationJob, startGenerationJob } from "@/lib/generation/jobs";
@@ -2886,8 +2886,12 @@ export async function POST(request: Request) {
   let reservation:UsageReservation|undefined;
 
   try {
-    user=await requireServerUser();
-    requestId=guardApiRequest(request,{userId:user.userId,route:"generate-website",maxBytes:10_000_000,limit:4,windowMs:60_000}).requestId;
+    user=request.headers.get("x-seraphim-worker-secret")
+      ? await requireGenerationWorkerUser(request)
+      : await requireServerUser();
+    requestId=user.mode==="worker"
+      ? request.headers.get("x-request-id")?.slice(0,120) || crypto.randomUUID()
+      : (await guardApiRequestAsync(request,{userId:user.userId,route:"generate-website",maxBytes:10_000_000,limit:4,windowMs:60_000})).requestId;
   } catch (error) {
     const authError = authErrorResponse(error);
     if (authError) {
@@ -2974,7 +2978,7 @@ export async function POST(request: Request) {
             pipelineMetadata,
           });
           await completeUsage(reservation!,"succeeded",{provider:responsePayload.modelMetadata?.provider,model:responsePayload.modelMetadata?.model});
-          await finishGenerationJob(user!,generationId,"succeeded");
+          await finishGenerationJob(user!,generationId,"succeeded","",{html:responsePayload.html,generationPlan:responsePayload.generationPlan,qualityGate:responsePayload.qualityGate});
           send({ type: "complete", ...responsePayload,requestId,usage:{used:reservation!.used,limit:reservation!.limit} });
         } catch (error) {
           await completeUsage(reservation!,"failed",{errorCode:error instanceof ApiError?error.code:"GENERATION_FAILED"});
@@ -3055,7 +3059,7 @@ export async function POST(request: Request) {
     });
 
     await completeUsage(reservation,"succeeded",{provider:responsePayload.modelMetadata?.provider,model:responsePayload.modelMetadata?.model});
-    await finishGenerationJob(user!,generationId,"succeeded");
+    await finishGenerationJob(user!,generationId,"succeeded","",{html:responsePayload.html,generationPlan:responsePayload.generationPlan,qualityGate:responsePayload.qualityGate});
 
     const customerPayload:Record<string,unknown>={...responsePayload};
     delete customerPayload.modelMetadata;

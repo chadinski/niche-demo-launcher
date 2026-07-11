@@ -22,7 +22,7 @@ import {
 } from "@/lib/ai/modelRouter";
 import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
 import type { BusinessInfo } from "@/lib/types";
-import { guardApiRequest, idempotencyKey } from "@/lib/security/request-guards";
+import { guardApiRequestAsync, idempotencyKey } from "@/lib/security/request-guards";
 import { ApiError, userSafeError } from "@/lib/security/api-error";
 import { completeUsage, reserveUsage, type UsageReservation } from "@/lib/usage/entitlements";
 
@@ -697,7 +697,7 @@ export async function POST(request: Request) {
   let reservation:UsageReservation|undefined;
   try {
     user=await requireServerUser();
-    requestId=guardApiRequest(request,{userId:user.userId,route:"business-intelligence",maxBytes:10_000_000,limit:6}).requestId;
+    requestId=(await guardApiRequestAsync(request,{userId:user.userId,route:"business-intelligence",maxBytes:10_000_000,limit:6})).requestId;
   } catch (error) {
     const authError = authErrorResponse(error);
     if (authError) {

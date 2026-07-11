@@ -47,7 +47,7 @@ When Supabase variables are blank in development, the app runs in local demo mod
 ## Supabase Setup
 
 1. Create a Supabase project.
-2. Run `supabase/schema.sql` for a new project, then apply migrations in `supabase/migrations/` in filename order. Existing projects apply only unapplied migrations.
+2. Run `supabase/schema.sql` for a new project, then apply migrations in `supabase/migrations/` in filename order. Existing projects apply only unapplied migrations. The public-beta foundation migration must be followed by `202607110002_durable_generation_jobs.sql` before enabling queued Premium generation.
 3. Configure self-service email authentication and required redirect URLs.
 4. Optionally run `supabase/seed.sql` after the user exists.
 5. Add the project URL and anon key to `.env.local`.
@@ -102,6 +102,12 @@ GITHUB_REPO_PREFIX=niche-demo
 VERCEL_TOKEN=
 VERCEL_TEAM_ID=
 SERAPHIM_RENDER_QA=0
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+DISTRIBUTED_RATE_LIMIT_REQUIRED=0
+GENERATION_WORKER_SECRET=
+CRON_SECRET=
+NEXT_PUBLIC_PREMIUM_GENERATION_ASYNC=0
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `FIRECRAWL_API_KEY` are server-only. Never expose them through `NEXT_PUBLIC_*`.
@@ -109,6 +115,8 @@ SERAPHIM_RENDER_QA=0
 `NEXT_PUBLIC_DEFAULT_PRIMARY_COLOR` and `NEXT_PUBLIC_DEFAULT_SECONDARY_COLOR` set the default public design-token palette used by `lib/design/tokens.ts`.
 `VERCEL_TOKEN` is required for one-click demo deployment. `GITHUB_TOKEN` and `GITHUB_OWNER` are optional for deployment, but when present the generated `index.html` is also archived to a GitHub repository.
 `SERAPHIM_RENDER_QA=1` enables optional Playwright-based rendered QA when Playwright is installed in the runtime. If unavailable, Seraphim falls back to heuristic/model QA and reports a warning.
+`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` enable distributed short-window request protection. Set `DISTRIBUTED_RATE_LIMIT_REQUIRED=1` only after staging verification; otherwise the app uses a safe instance-local fallback.
+`GENERATION_WORKER_SECRET` and `CRON_SECRET` protect the durable Premium generation worker configured in `vercel.json`. Set `NEXT_PUBLIC_PREMIUM_GENERATION_ASYNC=1` after applying the durable-job migration to queue Premium requests and poll their persisted result.
 
 ## AI Model Routing
 

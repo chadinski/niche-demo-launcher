@@ -10,6 +10,8 @@
 - [ ] Confirm Trial/Starter/Pro/Admin limits and assign existing users deliberately.
 - [ ] Keep managed deployment disabled or test the exact approved-account allowlist and tenant namespaces.
 - [ ] Confirm all AI, Firecrawl, Vercel, GitHub, and Supabase budgets/alerts.
+- [ ] Apply `202607110002_durable_generation_jobs.sql`, configure the worker/Cron secrets, and prove a Premium job survives a request interruption.
+- [ ] Configure Upstash Redis and verify distributed rate limiting before setting `DISTRIBUTED_RATE_LIMIT_REQUIRED=1`.
 - [ ] Run `npm run ci` from a clean install.
 - [ ] Exercise the critical journey on 360, 430, 768, 1280, and 1440+ widths with keyboard-only navigation.
 

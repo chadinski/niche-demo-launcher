@@ -5,7 +5,7 @@ Audit date: 2026-07-11
 ## Scores
 
 - Initial launch-readiness score: **34/100**
-- Codebase readiness after this change set: **78/100**
+- Codebase readiness after this change set: **86/100**
 - Production launch remains conditional on applying the migration, configuring Supabase/email/support, exercising two-user isolation in the target project, and completing legal review.
 
 ## Baseline
@@ -30,8 +30,8 @@ The untouched branch passed `npm run lint`, `npm run typecheck`, 9 Vitest tests,
 | P1 | No usage view or truthful pricing state | Users could not understand limits | Usage page and public-beta page; no fake Stripe or checkout |
 | P1 | Legal, AI processing, acceptable use, and support surfaces absent | Trust/compliance gap | Clearly marked draft Terms/Privacy plus Acceptable Use and Support pages |
 | P1 | Test suite did not cover launch controls | Regressions likely | Redirect, upload, throttling, request size, entitlement mapping, deployment gating, migration contract, and preview sandbox tests added |
-| P2 | In-memory throttling is instance-local | Distributed bursts may span serverless instances | Atomic monthly quota still protects cost; add Redis/Upstash-style distributed short-window limiter post-beta |
-| P2 | Generation jobs run within request lifetime | Premium jobs remain exposed to platform timeout ceilings | Job state and recovery records added; move premium pipeline to a durable queue/worker before broad GA |
+| P2 | In-memory throttling is instance-local | Distributed bursts may span serverless instances | Upstash-compatible distributed limiter, fail-closed production option, and staging configuration seam added |
+| P2 | Generation jobs run within request lifetime | Premium jobs remain exposed to platform timeout ceilings | Durable Premium queue, atomic leases, cancellation/status APIs, Vercel Cron worker, result persistence, and bounded retries added; staging interruption test remains required |
 | P2 | Admin can observe readiness but cannot edit plan limits or replay jobs in UI | Operator tasks still require controlled SQL/config | Keep as explicit beta operation; add audited admin mutations later |
 | P2 | Draft legal text lacks jurisdiction/controller details | Not ready for general availability | Professional review and final company/support details are launch checklist gates |
 | P2 | No configured analytics or error-reporting vendor | Limited product/exception visibility | Provider-neutral env seams documented; no tracking is activated without a consent design |

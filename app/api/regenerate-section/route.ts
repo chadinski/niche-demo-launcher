@@ -14,7 +14,7 @@ import {
 } from "@/lib/ai/site-contract-schema";
 import type { DesignTokens } from "@/lib/design/tokens";
 import { getArchetypeById } from "@/lib/archetypes";
-import { guardApiRequest, idempotencyKey } from "@/lib/security/request-guards";
+import { guardApiRequestAsync, idempotencyKey } from "@/lib/security/request-guards";
 import { ApiError, userSafeError } from "@/lib/security/api-error";
 import { completeUsage, reserveUsage, type UsageReservation } from "@/lib/usage/entitlements";
 
@@ -214,7 +214,7 @@ export async function POST(request: Request) {
   let user;
   try {
     user=await requireServerUser();
-    requestId=guardApiRequest(request,{userId:user.userId,route:"regenerate-section",maxBytes:750_000,limit:6}).requestId;
+    requestId=(await guardApiRequestAsync(request,{userId:user.userId,route:"regenerate-section",maxBytes:750_000,limit:6})).requestId;
   } catch (error) {
     const authError = authErrorResponse(error);
     if (authError) {

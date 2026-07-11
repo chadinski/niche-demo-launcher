@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { timingSafeEqual } from "node:crypto";
 
 export type ServerUserAccess =
   | {
@@ -11,6 +13,11 @@ export type ServerUserAccess =
       mode: "local-demo";
       userId: "local-demo";
       email: null;
+    }
+  | {
+      mode: "worker";
+      userId: string;
+      email: string | null;
     };
 
 export class ServerAuthError extends Error {
@@ -62,6 +69,22 @@ export async function requireServerUser(): Promise<ServerUserAccess> {
     userId: user.id,
     email: user.email ?? null,
   };
+}
+
+export async function requireGenerationWorkerUser(request: Request): Promise<ServerUserAccess> {
+  const expected = process.env.GENERATION_WORKER_SECRET;
+  const supplied = request.headers.get("x-seraphim-worker-secret") || "";
+  const sameSecret = expected && supplied && expected.length === supplied.length
+    ? timingSafeEqual(Buffer.from(expected), Buffer.from(supplied))
+    : false;
+  if (!sameSecret) throw new ServerAuthError("Generation worker authentication failed.", 401);
+  const userId = request.headers.get("x-seraphim-worker-user-id") || "";
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) throw new ServerAuthError("Generation worker identity is invalid.", 401);
+  const admin = createAdminClient();
+  if (!admin) throw new ServerAuthError("Generation worker is not configured.", 503);
+  const { data, error } = await admin.auth.admin.getUserById(userId);
+  if (error || !data.user) throw new ServerAuthError("Generation worker identity is invalid.", 401);
+  return { mode: "worker", userId: data.user.id, email: data.user.email ?? null };
 }
 
 export async function assertInternalAccess() {

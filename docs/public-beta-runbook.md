@@ -37,7 +37,9 @@ See `.env.example`. Production requires a real HTTPS `NEXT_PUBLIC_APP_URL`, Supa
 - Keep `AUTOMATED_DEPLOYMENT_ENABLED=0` until shared-account controls and approved-account list are confirmed.
 - Configure a support email.
 - Add error reporting only after privacy/consent review.
-- Verify function duration supports Fast generation; Premium remains a controlled-beta risk until queued.
+- Configure `GENERATION_WORKER_SECRET`, `CRON_SECRET`, and set `NEXT_PUBLIC_PREMIUM_GENERATION_ASYNC=1` after applying the durable-job migration. Vercel Cron invokes `/api/internal/generation-worker` every minute; keep the worker endpoint private.
+- Configure `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, and set `DISTRIBUTED_RATE_LIMIT_REQUIRED=1` after verifying the limiter in staging.
+- Verify function duration supports Fast generation. Premium jobs are queued, leased, retried up to three times, and recoverable through `/api/generation-jobs/:generationId`.
 
 ## Seed/test data
 

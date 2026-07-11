@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authErrorResponse, requireServerUser } from "@/lib/auth/server-guard";
 import { updateLeadCandidateStatus } from "@/lib/leads/persistence";
-import { guardApiRequest } from "@/lib/security/request-guards";
+import { guardApiRequestAsync } from "@/lib/security/request-guards";
 import { userSafeError } from "@/lib/security/api-error";
 
 const requestSchema = z.object({
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
 
   try {
     const user = await requireServerUser();
-    requestId=guardApiRequest(request,{userId:user.userId,route:"lead-candidate-status",maxBytes:20_000,limit:30}).requestId;
+    requestId=(await guardApiRequestAsync(request,{userId:user.userId,route:"lead-candidate-status",maxBytes:20_000,limit:30})).requestId;
     const body = await request.json().catch(() => null);
     const input = requestSchema.parse(body);
     const result = await updateLeadCandidateStatus({ user, ...input });
