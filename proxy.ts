@@ -20,6 +20,7 @@ export async function proxy(request: NextRequest) {
     "/reset-password",
     "/auth/callback",
     "/api/health",
+    "/api/internal/generation-worker",
     "/service-unavailable",
     "/robots.txt",
     "/sitemap.xml",
