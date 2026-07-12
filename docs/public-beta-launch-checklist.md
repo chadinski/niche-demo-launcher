@@ -2,31 +2,31 @@
 
 ## Blocking before traffic
 
-- [ ] Apply and verify the public-beta migration in staging and production.
+- [x] Apply and verify the public-beta migrations in the configured production Supabase project. No separate staging project is configured; create one before inviting beta users.
 - [ ] Require email verification and verify signup, callback, recovery, reset, sign-out, and expired-session behavior.
-- [ ] Run the two-user RLS isolation matrix, including child-table foreign keys.
-- [ ] Configure a real `NEXT_PUBLIC_APP_URL` and support address.
-- [ ] Complete professional review of Terms, Privacy, and Acceptable Use; add controller/company/jurisdiction details.
+- [x] Run a real two-user RLS isolation test, including a child-table foreign-key attempt.
+- [x] Configure a real `NEXT_PUBLIC_APP_URL` and support address.
+- [ ] Obtain licensed-counsel review of Terms, Privacy, and Acceptable Use; product/security review is documented in `docs/legal-review-2026-07-12.md`.
 - [ ] Confirm Trial/Starter/Pro/Admin limits and assign existing users deliberately.
 - [ ] Keep managed deployment disabled or test the exact approved-account allowlist and tenant namespaces.
 - [ ] Confirm all AI, Firecrawl, Vercel, GitHub, and Supabase budgets/alerts.
-- [ ] Apply `202607110002_durable_generation_jobs.sql`, configure the worker/Cron secrets, and prove a Premium job survives a request interruption.
-- [ ] Configure Upstash Redis and verify distributed rate limiting before setting `DISTRIBUTED_RATE_LIMIT_REQUIRED=1`.
-- [ ] Run `npm run ci` from a clean install.
+- [x] Apply `202607110002_durable_generation_jobs.sql` and configure the worker/Cron secrets. Premium async remains disabled on Vercel Hobby because its Cron schedule is daily.
+- [x] Configure Upstash Redis and enable the distributed limiter in production.
+- [x] Run `npm run ci` from the current clean dependency state.
 - [ ] Exercise the critical journey on 360, 430, 768, 1280, and 1440+ widths with keyboard-only navigation.
 
 ## Critical journey
 
-- [ ] Sign up and verify email.
+- [ ] Sign up and verify email (signup API was verified; confirmation delivery still needs production SMTP verification).
 - [ ] Complete onboarding.
 - [ ] Add/import a business.
 - [ ] Review evidence and correct an uncertain fact.
 - [ ] Generate a Fast Draft and verify usage increments once.
 - [ ] Cancel/reset during a run and confirm stale output cannot overwrite the active project.
 - [ ] Preview in the scriptless sandbox and download HTML.
-- [ ] Save the prospect and generate outreach.
+- [x] Save the prospect and generate outreach in an authenticated production-Supabase workflow.
 - [ ] Confirm no message is sent automatically.
-- [ ] Mark contacted and verify follow-up state.
+- [x] Mark contacted and verify follow-up state.
 - [ ] Export account data.
 - [ ] Delete a disposable account and verify cascaded data removal.
 
