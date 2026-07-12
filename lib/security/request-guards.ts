@@ -29,8 +29,8 @@ export function guardApiRequest(request:Request,input:{userId:string;route:strin
 type DistributedRateLimitResult={allowed:boolean;remaining:number;retryAfterMs:number};
 
 async function checkDistributedRateLimit(key:string,limit:number,windowMs:number):Promise<DistributedRateLimitResult|null>{
-  const url=process.env.UPSTASH_REDIS_REST_URL?.replace(/\/$/,"");
-  const token=process.env.UPSTASH_REDIS_REST_TOKEN;
+  const url=(process.env.UPSTASH_REDIS_REST_URL||process.env.UPSTASH_REDIS_KV_REST_API_URL||process.env.UPSTASH_REDIS_REDIS_URL||process.env.UPSTASH_REDIS_KV_URL)?.replace(/\/$/,"");
+  const token=process.env.UPSTASH_REDIS_REST_TOKEN||process.env.UPSTASH_REDIS_KV_REST_API_TOKEN||process.env.UPSTASH_REDIS_KV_REST_API_READ_ONLY_TOKEN;
   if(!url||!token)return null;
   const ttlSeconds=Math.max(1,Math.ceil(windowMs/1000));
   try{
