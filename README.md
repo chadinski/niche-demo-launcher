@@ -47,7 +47,7 @@ When Supabase variables are blank in development, the app runs in local demo mod
 ## Supabase Setup
 
 1. Create a Supabase project.
-2. Run `supabase/schema.sql` for a new project, then apply migrations in `supabase/migrations/` in filename order. Existing projects apply only unapplied migrations. The public-beta foundation migration must be followed by `202607110002_durable_generation_jobs.sql` before enabling queued Premium generation.
+2. Run `supabase/schema.sql` for a new project, then apply every file in `supabase/migrations/` in filename order. Existing projects apply only unapplied migrations. The current order is `202607110001_public_beta_foundation.sql`, `202607110002_durable_generation_jobs.sql`, `202607130001_auth_user_bootstrap.sql`, then `202607130002_lead_search_rls.sql`.
 3. Configure self-service email authentication and required redirect URLs.
 4. Optionally run `supabase/seed.sql` after the user exists.
 5. Add the project URL and anon key to `.env.local`.
@@ -117,6 +117,7 @@ NEXT_PUBLIC_PREMIUM_GENERATION_ASYNC=0
 `SERAPHIM_RENDER_QA=1` enables optional Playwright-based rendered QA when Playwright is installed in the runtime. If unavailable, Seraphim falls back to heuristic/model QA and reports a warning.
 `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` enable distributed short-window request protection. Set `DISTRIBUTED_RATE_LIMIT_REQUIRED=1` only after staging verification; otherwise the app uses a safe instance-local fallback.
 `GENERATION_WORKER_SECRET` and `CRON_SECRET` protect the durable Premium generation worker configured in `vercel.json`. Set `NEXT_PUBLIC_PREMIUM_GENERATION_ASYNC=1` after applying the durable-job migration to queue Premium requests and poll their persisted result.
+`NEXT_PUBLIC_SUPPORT_EMAIL` must be an owned, monitored mailbox before public signup is advertised. Supabase production SMTP is a separate required configuration for confirmation and recovery delivery.
 
 ## AI Model Routing
 
@@ -127,6 +128,8 @@ Screenshot and pasted-info extraction use the server-side AI route in `app/api/b
 The `/leads` page implements Firecrawl lead generation. Enter a niche, choose a country/region, and Seraphim calls `app/api/leads/search/route.ts`, which uses `lib/leads/firecrawl-lead-search.ts` to query Firecrawl web search. Results are normalized into typed lead candidates, scored for website opportunity, contact availability, social-first presence, local intent, and commercial niche fit, then displayed for manual review.
 
 Lead Finder now persists authenticated searches to Supabase tables: `lead_search_runs`, `lead_candidates`, and `lead_blacklist`. Candidates are deduped by source URL, carry status (`new`, `saved`, `rejected`, `contacted`, `blacklisted`), and rejected/blacklisted leads are suppressed from repeated searches. Local development still has safe in-memory/browser fallback behavior; production requires Supabase.
+
+The Lead Finder API uses the distributed request guard when Upstash is configured, server-side quota reservation, safe structured failure logging, and tenant policies that prevent users from reading another account's searches or linking candidates to another account's search run.
 
 Lead Finder supports region targeting through `lib/leads/regions.ts`. The first supported markets are the United States with all 50 states, Jamaica with parish targeting, and Trinidad and Tobago with major regional corporations/boroughs. The selected country, region, and optional city/area are composed into the Firecrawl search location while preserving the older freeform `location` API field for backward compatibility.
 

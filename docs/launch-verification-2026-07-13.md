@@ -1,35 +1,49 @@
 # Launch verification — 2026-07-13
 
-This record captures the final local and production checks performed after correcting the Vercel runtime settings. It contains no credentials or user data.
+This record contains no credentials, tokens, disposable-account email addresses, or raw customer data.
 
-## Automated checks
+## Database and tenant isolation
 
-- `npm run ci` passed: lint, strict typecheck, 23 Vitest tests, and the production build.
-- The build produced the expected public, protected, API, health, and worker routes with no compilation errors.
+- Applied and verified `202607130001_auth_user_bootstrap.sql` in staging and production. The trigger creates profile, onboarding, and explicit active Trial entitlement rows for every new Auth user and backfilled all existing production users.
+- Applied and verified `202607130002_lead_search_rls.sql` in staging and production after the live test exposed missing migrated policies for lead search runs and blacklists.
+- Ran the expanded two-user staging verifier. User B could not read User A's prospect or lead search, insert a generated website for User A's prospect, link a lead candidate to User A's search, or read User A's blacklist. User A could create a search and blacklist record.
+- The same prospect/child isolation test had already passed against production. The newly restored lead policies are identical to the staging policies and the live authenticated production Lead Finder write succeeded after application.
 
-## Production runtime settings
+## Authenticated production workflow
 
-- Corrected Vercel Production `NEXT_PUBLIC_APP_URL` to `https://niche-demo-launcher.vercel.app`.
-- Enabled required distributed rate limiting with `DISTRIBUTED_RATE_LIMIT_REQUIRED=1`.
-- Kept asynchronous Premium generation disabled with `NEXT_PUBLIC_PREMIUM_GENERATION_ASYNC=0` while the project remains on the Vercel Hobby daily-Cron limit. The durable worker code remains available for a frequent scheduler.
-- Confirmed the production environment retains the Supabase, Upstash, provider, and worker-secret configuration required by the app. Secret values were not printed or committed.
-- `NEXT_PUBLIC_SUPPORT_EMAIL` remains unset; public support cannot be considered launch-ready until an owned mailbox is configured.
-- Supabase Authentication Site URL is set to `https://niche-demo-launcher.vercel.app`.
-- Supabase Authentication still shows “Set up SMTP”; the hosted email service is not a substitute for production SMTP verification and must be configured before email confirmation and password recovery can be advertised.
+Using disposable confirmed accounts against `https://niche-demo-launcher.vercel.app`:
 
-## Live deployment verification
+1. Signed in and verified automatic first-run redirect to onboarding.
+2. Completed onboarding and entered the guided first-project workflow.
+3. Imported business text, ran Gemini extraction, and approved the facts.
+4. Generated a Fast Draft and verified a successful database-backed usage event.
+5. Reviewed the generated site in an iframe with an empty sandbox token list and `no-referrer`; the generated HTML contained no script element.
+6. Opened the HTML view and successfully exercised the website download control.
+7. Generated personalized outreach, saved the prospect, and manually marked it contacted. No message was sent automatically.
+8. Verified the Usage page showed Trial allowances, provider/model metadata, failure state, and estimated cost.
+9. Deleted the disposable account and verified its Auth user and account-owned records were removed.
+10. Ran a live Firecrawl search for five candidates, persisted the search, and saved a candidate. The disposable account was then deleted.
 
-After redeploying with the corrected settings, these checks returned the expected status:
+The account-export endpoint and UI control are present and covered by route/contract tests. The Chrome test environment blocked the attachment navigation, so a downloaded JSON file still requires one manual browser confirmation outside the automation extension.
 
-- `/`, `/robots.txt`, `/sitemap.xml`, `/api/health`, `/login`, and `/signup`: HTTP 200.
-- `/dashboard` and `/create`: HTTP 307 to authentication, confirming protected-route enforcement.
-- `/api/health` returned the safe payload `{"status":"ok","service":"seraphim"}` without exposing secrets.
+## Reliability and security
 
-## Remaining external gates
+- `npm run ci` passed: ESLint, strict TypeScript, 26 Vitest assertions across two test files, and the Next.js production build.
+- `npm run test:staging:rls` passed all seven isolation assertions.
+- The production Lead Finder failure was refundable, returned a safe user message, and sent no outreach. Its root cause was fixed with a versioned RLS migration.
+- The Lead Finder now uses the distributed rate-limit guard and safe structured failure logging in addition to atomic quota reservation.
+- Managed customer deployment remains disabled. HTML export is the supported public-beta delivery path.
+- Premium asynchronous generation remains disabled on Vercel Hobby because its Cron schedule is limited to daily execution. The durable job schema, leasing, retry path, and protected worker endpoint remain installed for a future frequent scheduler.
+- Production deployment `dpl_wSeXGUveKZUvnd4DNpUkEH7s8Xo7` reached `READY` and was aliased to the public URL. The landing page, health endpoint, and robots file returned HTTP 200; a protected page redirected to sign-in and an unauthenticated protected API call returned structured `401 AUTH_REQUIRED` JSON.
+- Final production database verification reported three Lead Finder policies, an active Auth bootstrap trigger, five Auth users, five profiles, five active Trial entitlements, and zero disposable E2E users.
 
-1. Set and test production SMTP, email verification, password recovery, and email templates.
-2. Set provider budgets and alerting for AI, Firecrawl, Vercel, GitHub, and Upstash.
-3. Configure the owned support mailbox and confirm the support route in production.
-4. Obtain professional legal review and complete company/controller/jurisdiction details.
-5. Complete a fresh authenticated signup-to-outreach E2E run with a confirmed inbox.
-6. Use a frequent durable scheduler or a plan that supports it before enabling async Premium jobs.
+## External launch gates
+
+These cannot be truthfully completed without owned provider details or professional approval:
+
+1. Configure Supabase custom SMTP and verify confirmation and password-recovery delivery.
+2. Set `NEXT_PUBLIC_SUPPORT_EMAIL` to an owned, monitored mailbox and assign support/incident ownership.
+3. Configure business-approved spend and quota alerts in Gemini, Firecrawl, Vercel, Supabase, and Upstash dashboards.
+4. Obtain licensed-counsel approval of the clearly marked draft Terms, Privacy Policy, and Acceptable Use Policy.
+5. Confirm an account-export JSON download in a normal browser without the automation extension.
+6. Complete the viewport matrix and keyboard-only pass at 360, 430, 768, 1280, and 1440+ widths.

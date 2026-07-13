@@ -1,6 +1,6 @@
 # Staging Supabase setup
 
-The repository currently has one configured Supabase project: production. Create a separate staging project before inviting beta users or testing destructive account flows.
+The dedicated staging project is `niche-demo-launcher-staging` (`ccrlfsrsvipecpjkaici`). Keep it isolated from production and use it for destructive account and tenant-isolation verification.
 
 ## One-time action required from the owner
 
@@ -9,6 +9,8 @@ The repository currently has one configured Supabase project: production. Create
    - `supabase/schema.sql`
    - `supabase/migrations/202607110001_public_beta_foundation.sql`
    - `supabase/migrations/202607110002_durable_generation_jobs.sql`
+   - `supabase/migrations/202607130001_auth_user_bootstrap.sql`
+   - `supabase/migrations/202607130002_lead_search_rls.sql`
 3. From the staging project API settings, create a local ignored file at the repository root named `.env.staging.local`:
 
 ```dotenv
@@ -29,7 +31,7 @@ From the repository root:
 npm run test:staging:rls
 ```
 
-The script creates two confirmed disposable users through the staging service key, signs in as each user with the public anon key, verifies that User B cannot read User A's prospect, verifies that User B cannot insert a generated website referencing User A's prospect, and deletes the test data and users in a `finally` cleanup.
+The script creates two confirmed disposable users through the staging service key, signs in as each user with the public anon key, and verifies prospect isolation, child-record reference isolation, lead-search isolation, cross-tenant lead-candidate rejection, and lead-blacklist isolation. It deletes test data and users in a `finally` cleanup.
 
 ## Configure local staging testing
 
@@ -37,4 +39,4 @@ For authenticated app/E2E testing, temporarily point the local app at the stagin
 
 ## What I can complete after the project exists
 
-Once the staging project is created and `.env.staging.local` exists, I can run the script, inspect the result, run the application CI against staging, and document the completed staging migration/RLS evidence. No production data needs to be copied into staging.
+The project and ignored `.env.staging.local` are configured. Re-run `npm run test:staging:rls` after every migration or tenant-policy change. No production data should be copied into staging.

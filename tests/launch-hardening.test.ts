@@ -8,6 +8,7 @@ import { checkRateLimit, guardApiRequest, guardApiRequestAsync, idempotencyKey, 
 import { estimatedOperationCost, operationForGeneration } from "@/lib/usage/entitlements";
 import { sanitizePreviewHtml } from "@/lib/generation/preview";
 import { friendlyAuthError } from "@/lib/auth/errors";
+import { onboardingRedirectPath } from "@/proxy";
 
 afterEach(()=>{vi.unstubAllEnvs();resetRateLimitsForTests()});
 
@@ -21,6 +22,12 @@ describe("safe authentication redirects",()=>{
   it("maps provider errors to customer-safe authentication guidance",()=>{
     expect(friendlyAuthError("Invalid login credentials")).toBe("Email or password is incorrect.");
     expect(friendlyAuthError("Email not confirmed")).toMatch(/verify/i);
+  });
+  it("routes incomplete accounts through onboarding before protected pages",()=>{
+    expect(onboardingRedirectPath({pathname:"/dashboard",isPublic:false,isAuthPage:false,profileCompleted:false})).toBe("/onboarding");
+    expect(onboardingRedirectPath({pathname:"/login",isPublic:true,isAuthPage:true,profileCompleted:false})).toBe("/onboarding");
+    expect(onboardingRedirectPath({pathname:"/onboarding",isPublic:false,isAuthPage:false,profileCompleted:false})).toBeNull();
+    expect(onboardingRedirectPath({pathname:"/onboarding",isPublic:false,isAuthPage:false,profileCompleted:true})).toBe("/dashboard");
   });
 });
 
@@ -94,6 +101,18 @@ describe("tenant and preview hardening contracts",()=>{
     expect(sql).toMatch(/claim_generation_job/i);
     expect(sql).toMatch(/for update skip locked/i);
     expect(sql).toMatch(/consume_usage_for_user/i);
+  });
+  it("assigns every new Auth account an explicit Trial entitlement",()=>{
+    const sql=readFileSync(resolve(process.cwd(),"supabase/migrations/202607130001_auth_user_bootstrap.sql"),"utf8");
+    expect(sql).toMatch(/after insert on auth\.users/i);
+    expect(sql).toMatch(/user_entitlements[\s\S]*'trial'[\s\S]*'active'/i);
+    expect(sql).toMatch(/revoke all[\s\S]*authenticated/i);
+  });
+  it("ships complete tenant policies for lead search and blacklists",()=>{
+    const sql=readFileSync(resolve(process.cwd(),"supabase/migrations/202607130002_lead_search_rls.sql"),"utf8");
+    expect(sql).toMatch(/lead search runs[\s\S]*auth\.uid\(\)/i);
+    expect(sql).toMatch(/lead candidates[\s\S]*lead_search_runs/i);
+    expect(sql).toMatch(/lead blacklist[\s\S]*auth\.uid\(\)/i);
   });
   it("renders untrusted generated HTML in scriptless sandboxed iframes",()=>{
     const workspace=readFileSync(resolve(process.cwd(),"components/demo-workspace.tsx"),"utf8");

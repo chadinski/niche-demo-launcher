@@ -4,12 +4,16 @@
 
 1. Back up the production database.
 2. Confirm the existing base schema from `supabase/schema.sql` is present.
-3. Apply `supabase/migrations/202607110001_public_beta_foundation.sql` in a staging Supabase project.
+3. Apply every versioned migration in filename order in staging:
+   - `202607110001_public_beta_foundation.sql`
+   - `202607110002_durable_generation_jobs.sql`
+   - `202607130001_auth_user_bootstrap.sql`
+   - `202607130002_lead_search_rls.sql`
 4. Run the full application CI against staging.
 5. Create two non-admin test accounts and prove each cannot select, mutate, or reference the other's prospect and child records.
-6. Apply the same migration to production during a low-traffic window.
+6. Apply the same ordered migration set to production during a low-traffic window.
 
-The migration is additive except for replacing three permissive child-table RLS policies with tenant-reference-aware policies. Existing rows are preserved. Existing Auth users are backfilled into profile, onboarding, and Trial entitlement tables.
+The migrations are additive except for replacing permissive child-table policies with tenant-reference-aware policies. Existing rows are preserved. Existing Auth users are backfilled into profile, onboarding, and explicit active Trial entitlement rows. New Auth users receive those rows transactionally through the bootstrap trigger.
 
 ## Rollback considerations
 
@@ -44,3 +48,14 @@ See `.env.example`. Production requires a real HTTPS `NEXT_PUBLIC_APP_URL`, Supa
 ## Seed/test data
 
 Use separate staging users. Do not copy real prospect personal data into fixtures. Plan limits are seeded idempotently by the migration.
+
+## Usage and job reconciliation
+
+- The atomic quota RPC treats a `reserved` usage event older than 30 minutes as retryable and resets it when the same idempotency key is retried.
+- Review `usage_events` for `reserved` rows older than 30 minutes during incident response. Confirm the provider did not complete the request before marking a row `failed` or `refunded`.
+- Review `generation_jobs` for expired leases and exhausted retries. The worker may reclaim an expired lease; never run two manual workers with the same job lease.
+- Preserve request IDs and generation IDs in incident notes. Do not log prompts, generated HTML, tokens, contact details, or raw business data.
+
+## Account deletion and external artifacts
+
+Supabase account deletion cascades database-owned records. If managed deployment is ever enabled, the operator must separately remove the user's Vercel project and optional GitHub repository using the recorded tenant-prefixed identifiers. Until that cleanup is automated and audited, managed deployment must remain disabled for public users and HTML download remains the supported export path.

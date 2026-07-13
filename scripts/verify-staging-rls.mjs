@@ -30,6 +30,7 @@ const signIn = async (email) => {
 let userA;
 let userB;
 let prospectId;
+let leadSearchRunId;
 
 try {
   const createdA = await admin.auth.admin.createUser({ email: emailA, password, email_confirm: true });
@@ -63,16 +64,63 @@ try {
   });
   if (!childAttempt.error) throw new Error("RLS failure: User B inserted a child row for User A's prospect");
 
+  const leadSearchRun = await a.client
+    .from("lead_search_runs")
+    .insert({
+      user_id: a.user.id,
+      target_industry_id: "rls-test",
+      industry: "Test",
+      country: "Test",
+      region: "Test",
+      city: "Test",
+      query: `RLS test ${suffix}`,
+      result_count: 0,
+    })
+    .select("id")
+    .single();
+  if (leadSearchRun.error || !leadSearchRun.data) throw leadSearchRun.error || new Error("User A could not create a lead search run");
+  leadSearchRunId = leadSearchRun.data.id;
+
+  const hiddenLeadRun = await b.client.from("lead_search_runs").select("id").eq("id", leadSearchRunId).maybeSingle();
+  if (hiddenLeadRun.error) throw hiddenLeadRun.error;
+  if (hiddenLeadRun.data !== null) throw new Error("RLS failure: User B can read User A's lead search run");
+
+  const crossTenantLead = await b.client.from("lead_candidates").insert({
+    user_id: b.user.id,
+    search_run_id: leadSearchRunId,
+    business_name: "Cross-tenant test",
+    source_url: `https://example.invalid/${suffix}`,
+  });
+  if (!crossTenantLead.error) throw new Error("RLS failure: User B linked a candidate to User A's lead search run");
+
+  const blacklist = await a.client.from("lead_blacklist").insert({
+    user_id: a.user.id,
+    business_name: "Blacklist test",
+    source_url: `https://example.invalid/blacklist/${suffix}`,
+    reason: "RLS verification",
+  });
+  if (blacklist.error) throw blacklist.error;
+
+  const hiddenBlacklist = await b.client.from("lead_blacklist").select("id").eq("user_id", a.user.id);
+  if (hiddenBlacklist.error) throw hiddenBlacklist.error;
+  if (hiddenBlacklist.data.length !== 0) throw new Error("RLS failure: User B can read User A's lead blacklist");
+
   console.log(JSON.stringify({
     ok: true,
     checks: {
       userBCannotReadUserAProspect: true,
       userBCannotInsertChildForUserAProspect: true,
+      userACanCreateLeadSearchRun: true,
+      userBCannotReadUserALeadSearchRun: true,
+      userBCannotLinkCandidateToUserALeadSearchRun: true,
+      userACanWriteBlacklist: true,
+      userBCannotReadUserABlacklist: true,
     },
     errorFromBlockedChildInsert: childAttempt.error.message,
   }, null, 2));
 } finally {
   if (prospectId) await admin.from("prospects").delete().eq("id", prospectId);
+  if (leadSearchRunId) await admin.from("lead_search_runs").delete().eq("id", leadSearchRunId);
   if (userA) await admin.auth.admin.deleteUser(userA.id);
   if (userB) await admin.auth.admin.deleteUser(userB.id);
 }
