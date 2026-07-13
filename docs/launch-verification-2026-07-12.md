@@ -25,7 +25,7 @@ This record captures the checks performed against the configured production serv
 
 ## Production configuration
 
-- Configured Vercel production support email, worker secret, Cron secret, Supabase service-role key, and Upstash Redis integration.
+- Configured the Vercel production worker secret, Cron secret, Supabase service-role key, and Upstash Redis integration. `NEXT_PUBLIC_SUPPORT_EMAIL` is still blank and must be set to the owned support mailbox before public signup is advertised.
 - Enabled `DISTRIBUTED_RATE_LIMIT_REQUIRED=1` and verified the application accepts the Vercel-provided Upstash variable names.
 - Automatic Premium worker mode is disabled with `NEXT_PUBLIC_PREMIUM_GENERATION_ASYNC=0` because the current Vercel Hobby plan permits only a daily Cron schedule. The durable worker remains available for a plan or scheduler that can run it frequently.
 - Shared-account automated deployment remains disabled by default.
