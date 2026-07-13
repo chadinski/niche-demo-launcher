@@ -2,7 +2,7 @@
 
 ## Blocking before traffic
 
-- [x] Apply and verify the public-beta migrations in the configured production Supabase project. No separate staging project is configured; create one before inviting beta users.
+- [x] Apply and verify the public-beta migrations in production and in the dedicated staging Supabase project. The staging two-user verifier passed on 2026-07-13; see `docs/launch-verification-2026-07-12.md`.
 - [ ] Require email verification and verify signup, callback, recovery, reset, sign-out, and expired-session behavior.
 - [x] Run a real two-user RLS isolation test, including a child-table foreign-key attempt.
 - [x] Configure a real `NEXT_PUBLIC_APP_URL` and support address.

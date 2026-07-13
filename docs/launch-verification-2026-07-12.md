@@ -6,8 +6,16 @@ This record captures the checks performed against the configured production serv
 
 - Applied `202607110001_public_beta_foundation.sql` and `202607110002_durable_generation_jobs.sql` to the configured Supabase production project.
 - Verified the `user_profiles`, `generation_jobs`, `usage_events`, and `plan_limits` tables exist and that protected tables have tenant-aware RLS policies.
-- No separate staging Supabase project is configured in this repository, so a distinct staging migration run remains a launch gate.
+- Production verification was performed separately from the dedicated staging verification recorded below.
 - Real two-user test: User A created a prospect; User B could not select it and could not insert a generated website referencing User A's prospect. The cross-tenant mutation was rejected by RLS.
+
+## Staging verification — 2026-07-13
+
+- Created the dedicated Supabase staging project `niche-demo-launcher-staging` (`ccrlfsrsvipecpjkaici`) in East US.
+- Applied the base schema followed by `202607110001_public_beta_foundation.sql` and `202607110002_durable_generation_jobs.sql`.
+- Confirmed the staged tables and helper functions exist with a read-only object check.
+- Ran `npm run test:staging:rls` with two disposable confirmed users. User B could not read User A's prospect and could not insert a generated website referencing User A's prospect; both checks passed and the blocked mutation was rejected by RLS.
+- Disposable staging users and their prospect data were deleted by the verifier. Credentials remain only in the ignored local `.env.staging.local` file.
 
 ## Authenticated workflow
 
@@ -31,8 +39,7 @@ This record captures the checks performed against the configured production serv
 
 ## Remaining launch gates
 
-1. Create and verify a separate staging Supabase project, then repeat the migration and RLS matrix there.
-2. Configure and verify production SMTP, password recovery, and email templates.
-3. Set provider budgets/alerts for OpenAI/Gemini, Firecrawl, Vercel, GitHub, and Upstash.
-4. Obtain licensed-counsel review of the draft legal copy and fill in controller/company/jurisdiction details.
-5. Either upgrade to a plan with frequent Cron or connect a durable external scheduler before enabling async Premium jobs.
+1. Configure and verify production SMTP, password recovery, and email templates.
+2. Set provider budgets/alerts for OpenAI/Gemini, Firecrawl, Vercel, GitHub, and Upstash.
+3. Obtain licensed-counsel review of the draft legal copy and fill in controller/company/jurisdiction details.
+4. Either upgrade to a plan with frequent Cron or connect a durable external scheduler before enabling async Premium jobs.
