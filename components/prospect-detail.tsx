@@ -49,7 +49,7 @@ type ModelMetadata = {
 };
 
 type QualityGatePayload = {
-  score: number;
+  score?: number;
   passed: boolean;
   rejectionReasons: string[];
   revisionBrief?: string;
@@ -223,7 +223,7 @@ export function ProspectDetail() {
       });
 
       if (payload.qualityGate && !payload.qualityGate.passed) {
-        toast.warning(`Premium regeneration completed with QA notes: ${payload.qualityGate.score}/10`);
+        toast.warning(payload.qualityGate.score === undefined ? "Premium regeneration completed with QA findings to review." : `Premium regeneration completed with QA notes: ${payload.qualityGate.score}/10`);
       } else {
         toast.success("Premium website regenerated");
       }

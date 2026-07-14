@@ -66,6 +66,7 @@ import {
   type SectionOutput,
 } from "@/lib/generation/session";
 import { createPreviewHtml } from "@/lib/generation/preview";
+import { isEventForGeneration } from "@/lib/generation/pipeline/events";
 import { generateBusinessIntelligence } from "@/lib/automation/business-intelligence";
 import { nextFollowUpDate, statusAfterMilestone } from "@/lib/automation/follow-ups";
 import { scoreLead } from "@/lib/automation/lead-scoring";
@@ -118,7 +119,7 @@ type RegenerateSectionResponse = {
 };
 
 type QualityGatePayload = {
-  score: number;
+  score?: number;
   passed: boolean;
   rejectionReasons: string[];
   revisionBrief?: string;
@@ -133,6 +134,21 @@ type WebsiteGenerationResult = {
 };
 
 type WebsiteStreamEvent =
+  | {
+      type: "understanding-business" | "generating-website";
+      generationId: string;
+    }
+  | {
+      type: "planning-site";
+      generationId: string;
+      unifiedBrief?: { sectionOutline?: Array<{ name?: string }> };
+      generationPlan?: GenerationPlan;
+    }
+  | {
+      type: "checking-output" | "repairing-output";
+      generationId: string;
+      findings?: unknown;
+    }
   | {
       type: "plan";
       plan: { sections?: Array<{ name?: string }> };
@@ -173,8 +189,8 @@ const generationModes: Array<{ key: GenerationMode; label: string; directive: st
 ];
 
 const generationDepthOptions: Array<{ key: GenerationDepth; label: string; description: string }> = [
-  { key: "fast-draft", label: "Fast Draft", description: "Quick screening mode with lightweight QA and no expensive revision loop." },
-  { key: "premium-final", label: "Premium Final", description: "Slower contract pipeline with visual QA and targeted section revisions." },
+  { key: "fast-draft", label: "Fast Draft", description: "One unified brief and one complete-page generation, with deterministic safety checks." },
+  { key: "premium-final", label: "Premium Final", description: "The same complete-page flow plus rendered inspection, one visual QA pass, and at most one repair." },
 ];
 
 type ReadinessCheck = {
@@ -1043,23 +1059,26 @@ export function DemoWorkspace({firstProject=false}:{firstProject?:boolean}) {
       const streamMetadata: ModelMetadata[] = [];
 
       await readServerSentEvents(response, (event) => {
-        if (!isActiveGeneration(activeGenerationId)) return;
+        if (!isActiveGeneration(activeGenerationId) || !isEventForGeneration(activeGenerationId, event)) return;
 
         if (event.type === "error") {
           throw new Error(event.error || "AI website generation failed.");
         }
 
-        if (event.type === "plan") {
+        // The unified pipeline publishes customer-facing stages. Keep the old
+        // `plan` branch here as a compatibility adapter for saved/older jobs.
+        if (event.type === "planning-site" || event.type === "plan") {
+          const legacyPlan = "plan" in event ? event.plan : undefined;
           streamPlan = event.generationPlan ?? {
             generationId: activeGenerationId,
             stage: "planning",
             summary: "Streaming website generation plan",
-            sectionIds: event.plan.sections?.map((section, index) => section.name || `Section ${index + 1}`) ?? [],
-            premiumPlan: event.plan,
+            sectionIds: legacyPlan?.sections?.map((section, index) => section.name || `Section ${index + 1}`) ?? [],
+            premiumPlan: legacyPlan ?? { sections: "unifiedBrief" in event ? event.unifiedBrief?.sectionOutline ?? [] : [] },
           };
           streamSectionIds = streamPlan.sectionIds.length
             ? streamPlan.sectionIds
-            : event.plan.sections?.map((section, index) => section.name || `Section ${index + 1}`) ?? [];
+            : legacyPlan?.sections?.map((section, index) => section.name || `Section ${index + 1}`) ?? [];
           streamSections = new Array(streamSectionIds.length).fill("");
           setGenerationPlan(streamPlan);
           setSectionOutputs(
@@ -1250,7 +1269,7 @@ export function DemoWorkspace({firstProject=false}:{firstProject?:boolean}) {
         setProspectId(prospect.id);
         void markOnboardingProgress("first_demo_generated");
         if (generated.qualityGate && !generated.qualityGate.passed) {
-          toast.warning(`Premium QA revised or flagged this page: ${generated.qualityGate.score}/10`);
+          toast.warning(generated.qualityGate.score === undefined ? "Premium QA completed with findings that need review." : `Premium QA revised or flagged this page: ${generated.qualityGate.score}/10`);
         } else if (!nextAudit.passed) {
           toast.warning(`Quality audit needs review: ${nextAudit.score}/100`);
         }
@@ -1317,7 +1336,7 @@ export function DemoWorkspace({firstProject=false}:{firstProject?:boolean}) {
         void markOnboardingProgress("first_demo_generated");
         void markOnboardingProgress("first_outreach_prepared");
         if (generated.qualityGate && !generated.qualityGate.passed) {
-          toast.warning(`Premium QA revised or flagged this page: ${generated.qualityGate.score}/10`);
+          toast.warning(generated.qualityGate.score === undefined ? "Premium QA completed with findings that need review." : `Premium QA revised or flagged this page: ${generated.qualityGate.score}/10`);
         } else if (!nextAudit.passed) {
           toast.warning(`Quality audit needs review: ${nextAudit.score}/100`);
         }

@@ -37,7 +37,8 @@ export type GenerationPlan = {
   };
   seraphimGenerator?: unknown;
   qualityGate?: {
-    score: number;
+    /** Omitted when a quality dimension cannot be measured honestly. */
+    score?: number;
     passed: boolean;
     rejectionReasons: string[];
     revisionBrief?: string;

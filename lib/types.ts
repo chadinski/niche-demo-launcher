@@ -101,7 +101,7 @@ export interface BusinessIntelligence {
     };
     seraphimGenerator?: unknown;
     qualityGate?: {
-      score: number;
+      score?: number;
       passed: boolean;
       rejectionReasons: string[];
       revisionBrief?: string;

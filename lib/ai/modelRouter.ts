@@ -23,7 +23,7 @@ type CircuitState = {
 
 const CIRCUIT_FAILURE_THRESHOLD = 3;
 const CIRCUIT_RESET_MS = 60_000;
-const ROUTE_RETRIES = 2;
+const ROUTE_RETRIES = 1;
 const BASE_RETRY_DELAY_MS = 500;
 const circuitState = new Map<string, CircuitState>();
 
@@ -100,39 +100,12 @@ export function getRoutesForStage(
     },
   ];
 
-  if (primaryProvider !== "gemini") {
-    routes.push(
-      ...getGeminiFallbackModels().map((model) => ({
-        stage,
-        provider: "gemini" as const,
-        model,
-        fallback: true,
-        reason: "Gemini fallback route from centralized model config.",
-      })),
-    );
-  } else {
-    routes.push(
-      ...getGeminiFallbackModels().map((model) => ({
-        stage,
-        provider: "gemini" as const,
-        model,
-        fallback: true,
-        reason: "Gemini fallback route from centralized model config.",
-      })),
-    );
-  }
+  const fallbackModel = primaryProvider === "gemini"
+    ? (MODEL_CONFIG.openai || getGeminiFallbackModels().find((model) => model !== primaryModel))
+    : getGeminiFallbackModels()[0];
+  if (fallbackModel) routes.push({ stage, provider: inferProvider(fallbackModel), model: fallbackModel, fallback: true, reason: "Single bounded fallback route from centralized model config." });
 
-  if (MODEL_CONFIG.openai) {
-    routes.push({
-      stage,
-      provider: "openai",
-      model: MODEL_CONFIG.openai,
-      fallback: primaryProvider !== "openai",
-      reason: "OpenAI fallback route from centralized model config.",
-    });
-  }
-
-  return uniqueRoutes(routes).filter(isModelRouteAvailable);
+  return uniqueRoutes(routes).filter(isModelRouteAvailable).slice(0, 2);
 }
 
 export function logModelRoute(route: ModelRoute, generationId: string) {

@@ -86,3 +86,16 @@ export async function getGenerationJob(user: ServerUserAccess, generationId: str
   if (error) return null;
   return data;
 }
+
+export async function isGenerationCancelled(user: ServerUserAccess, generationId: string) {
+  if (user.mode === "local-demo") return false;
+  const supabase = await clientForUser(user);
+  if (!supabase) return false;
+  const { data } = await supabase
+    .from("generation_jobs")
+    .select("cancel_requested")
+    .eq("user_id", user.userId)
+    .eq("generation_id", generationId)
+    .maybeSingle();
+  return data?.cancel_requested === true;
+}

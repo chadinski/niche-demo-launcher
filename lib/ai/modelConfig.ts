@@ -4,6 +4,7 @@ export type GenerationStage =
   | "creative"
   | "design-system"
   | "planning"
+  | "complete-page"
   | "page-contract"
   | "section"
   | "qa"
@@ -43,6 +44,7 @@ function uniqueModels(values: string[]) {
 export const EXTRACTION_MODEL = process.env.EXTRACTION_MODEL;
 export const PLANNER_MODEL = process.env.PLANNER_MODEL || DEFAULT_PLANNER_MODEL;
 export const SECTION_MODEL = process.env.SECTION_MODEL || DEFAULT_SECTION_MODEL;
+export const COMPLETE_PAGE_MODEL = process.env.COMPLETE_PAGE_MODEL || process.env.SECTION_MODEL || DEFAULT_SECTION_MODEL;
 export const QA_MODEL = process.env.QA_MODEL || DEFAULT_QA_MODEL;
 export const INSPIRATION_MODEL = process.env.INSPIRATION_MODEL || DEFAULT_INSPIRATION_MODEL;
 export const CREATIVE_MODEL = process.env.CREATIVE_MODEL || process.env.PLANNER_MODEL || DEFAULT_CONTRACT_MODEL;
@@ -58,6 +60,7 @@ export const MODEL_CONFIG = {
   creative: CREATIVE_MODEL,
   designSystem: DESIGN_SYSTEM_MODEL,
   planner: PLANNER_MODEL,
+  completePage: COMPLETE_PAGE_MODEL,
   pageContract: PAGE_CONTRACT_MODEL,
   section: SECTION_MODEL,
   qa: QA_MODEL,
@@ -89,6 +92,8 @@ export function getModelForStage(stage: GenerationStage): string {
       return MODEL_CONFIG.designSystem;
     case "planning":
       return MODEL_CONFIG.planner;
+    case "complete-page":
+      return MODEL_CONFIG.completePage;
     case "page-contract":
       return MODEL_CONFIG.pageContract;
     case "section":
