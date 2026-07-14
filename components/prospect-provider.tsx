@@ -11,6 +11,7 @@ import {
 } from "react";
 import type { LeadTemperature, OutreachStatus, Prospect } from "@/lib/types";
 import {
+  deleteProspect as deleteProspectRecord,
   listProspects,
   patchProspect,
   upsertProspect,
@@ -82,6 +83,7 @@ interface ProspectContextValue {
   updateProspect: (id: string, patch: Partial<Prospect>) => void;
   getProspect: (id: string) => Prospect | undefined;
   setStatus: (id: string, status: OutreachStatus) => void;
+  deleteProspect: (id: string) => Promise<void>;
 }
 
 const ProspectContext = createContext<ProspectContextValue | null>(null);
@@ -177,9 +179,16 @@ export function ProspectProvider({ children }: { children: ReactNode }) {
     [updateProspect],
   );
 
+  const deleteProspect = useCallback(async (id: string) => {
+    const existing = prospects.find((prospect) => prospect.id === id);
+    if (!existing) return;
+    await deleteProspectRecord(id);
+    setProspects((current) => current.filter((prospect) => prospect.id !== id));
+  }, [prospects]);
+
   const value = useMemo(
-    () => ({ prospects, hydrated, saveProspect, updateProspect, getProspect, setStatus }),
-    [getProspect, hydrated, prospects, saveProspect, setStatus, updateProspect],
+    () => ({ prospects, hydrated, saveProspect, updateProspect, getProspect, setStatus, deleteProspect }),
+    [deleteProspect, getProspect, hydrated, prospects, saveProspect, setStatus, updateProspect],
   );
 
   return <ProspectContext.Provider value={value}>{children}</ProspectContext.Provider>;

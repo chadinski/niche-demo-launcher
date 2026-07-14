@@ -19,6 +19,7 @@ import {
   RefreshCcw,
   Save,
   Send,
+  Trash2,
   Trophy,
   UserRoundX,
 } from "lucide-react";
@@ -104,10 +105,12 @@ async function readGenerationStream(response: Response) {
 export function ProspectDetail() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { getProspect, updateProspect, setStatus, hydrated } = useProspects();
+  const { getProspect, updateProspect, setStatus, deleteProspect, hydrated } = useProspects();
   const prospect = getProspect(params.id);
   const [tab, setTab] = useState<DetailTab>("profile");
   const [confirmStatus, setConfirmStatus] = useState<OutreachStatus | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [regeneratingWebsite, setRegeneratingWebsite] = useState(false);
 
@@ -313,6 +316,20 @@ export function ProspectDetail() {
     }
   };
 
+  const removeProspect = async () => {
+    setDeleting(true);
+    try {
+      await deleteProspect(prospect.id);
+      toast.success("Prospect permanently deleted.");
+      router.replace("/prospects");
+    } catch {
+      toast.error("Prospect could not be deleted. It may already be unavailable.");
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -350,6 +367,10 @@ export function ProspectDetail() {
             <Button onClick={() => setConfirmStatus("contacted")}>
               <Send className="size-4" />
               Mark Sent
+            </Button>
+            <Button variant="danger" onClick={() => setConfirmDelete(true)}>
+              <Trash2 className="size-4" />
+              Delete
             </Button>
           </div>
         </div>
@@ -698,6 +719,15 @@ export function ProspectDetail() {
         destructive={confirmStatus === "lost" || confirmStatus === "opt_out"}
         onCancel={() => setConfirmStatus(null)}
         onConfirm={() => confirmStatus && applyStatus(confirmStatus)}
+      />
+      <ConfirmModal
+        open={confirmDelete}
+        title="Delete this prospect permanently?"
+        description="This removes the prospect, saved generated website, messages, and related workspace records. This cannot be undone."
+        confirmLabel={deleting ? "Deleting…" : "Delete prospect"}
+        destructive
+        onCancel={() => !deleting && setConfirmDelete(false)}
+        onConfirm={() => { if (!deleting) void removeProspect(); }}
       />
     </div>
   );

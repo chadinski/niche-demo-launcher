@@ -10,7 +10,7 @@ async function callGemini(route: ModelRoute, options: ModelCallOptions) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("Gemini is not configured.");
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(route.model)}:generateContent`, {
-    method: "POST", signal: AbortSignal.timeout(55_000), headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    method: "POST", signal: AbortSignal.timeout(90_000), headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: options.prompt }] }], generationConfig: { temperature: options.json ? 0.2 : 0.65, maxOutputTokens: options.maxOutputTokens, responseMimeType: options.json ? "application/json" : "text/plain" } }),
   });
   const payload = await response.json().catch(() => null) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; error?: { message?: string } } | null;
@@ -43,7 +43,7 @@ export async function callConfiguredModel(options: ModelCallOptions): Promise<{ 
         const text = route.provider === "gemini" ? await callGemini(route, options) : await callOpenAI(route, options);
         serverLog("info", "generation.model_call", { stage: options.stage, provider: route.provider, model: route.model, fallback: route.fallback, attempt: attempt + 1, latencyMs: Date.now() - startedAt });
         return { text, metadata: { stage: options.stage, provider: route.provider, model: route.model, fallback: route.fallback, attempt: attempt + 1, latencyMs: Date.now() - startedAt } };
-      } catch (error) { lastError = error; serverLog("warn", "generation.model_call_failed", { stage: options.stage, provider: route.provider, model: route.model, fallback: route.fallback, attempt: attempt + 1, latencyMs: Date.now() - startedAt }); if (attempt === 0) continue; }
+      } catch (error) { lastError = error; serverLog("warn", "generation.model_call_failed", { stage: options.stage, provider: route.provider, model: route.model, fallback: route.fallback, attempt: attempt + 1, latencyMs: Date.now() - startedAt, reason: error instanceof Error ? error.message.slice(0, 180) : "unknown" }); if (attempt === 0) continue; }
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Configured AI provider could not complete the request.");

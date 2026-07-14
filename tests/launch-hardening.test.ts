@@ -87,6 +87,12 @@ describe("entitlements and deployment",()=>{
 });
 
 describe("tenant and preview hardening contracts",()=>{
+  it("deletes a prospect only through the owner-scoped server action",()=>{
+    const actions=readFileSync(resolve(process.cwd(),"app/data-actions.ts"),"utf8");
+    const provider=readFileSync(resolve(process.cwd(),"components/prospect-provider.tsx"),"utf8");
+    expect(actions).toMatch(/export async function deleteProspect[\s\S]*\.delete\(\)[\s\S]*\.eq\("id", safeId\)[\s\S]*\.eq\("user_id", user\.id\)/);
+    expect(provider).toMatch(/deleteProspectRecord\(id\)[\s\S]*filter\(\(prospect\) => prospect\.id !== id\)/);
+  });
   it("ships cross-tenant child-table RLS checks in the versioned migration",()=>{
     const sql=readFileSync(resolve(process.cwd(),"supabase/migrations/202607110001_public_beta_foundation.sql"),"utf8");
     expect(sql).toMatch(/generated websites[\s\S]*exists\(select 1 from public\.prospects/i);

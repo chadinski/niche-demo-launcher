@@ -16,7 +16,11 @@ export class GenerationBudget {
   private readonly startedAt = Date.now();
 
   constructor(depth: GenerationDepth) {
-    this.maxAiCalls = depth === "premium-final" ? 4 : 3;
+    // Normal paths are still 2 (Fast) and 3 (Premium) calls. The additional
+    // capacity is deliberately reserved for an explicitly recorded provider
+    // retry/fallback and one bounded repair; it must not block the required
+    // complete-page call after a recoverable planning hiccup.
+    this.maxAiCalls = depth === "premium-final" ? 6 : 5;
     this.maxRepairCalls = 1;
     this.maxStageRetries = 1;
     this.maxOutputTokens = depth === "premium-final" ? 48_000 : 36_000;

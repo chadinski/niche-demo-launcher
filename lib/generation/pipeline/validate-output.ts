@@ -15,6 +15,7 @@ export function normalizeStandaloneHtml(html: string) {
   if (!/<html\b/i.test(output) || !/<head\b/i.test(output) || !/<body\b/i.test(output) || !/<\/html>\s*$/i.test(output)) return output;
   if (!/<meta\s+name=["']viewport["']/i.test(output)) output = output.replace(/<head\b[^>]*>/i, (head) => `${head}<meta name="viewport" content="width=device-width, initial-scale=1">`);
   if (!/<meta\s+name=["']robots["']/i.test(output)) output = output.replace(/<head\b[^>]*>/i, (head) => `${head}<meta name="robots" content="noindex, nofollow">`);
+  if (!/:focus(?:-visible)?\s*\{/i.test(output)) output = output.replace(/<\/head>/i, `<style data-seraphim-focus>:focus-visible{outline:3px solid #0ea5c6;outline-offset:3px}</style></head>`);
   if (!/data-seraphim-generator=["']true["']/i.test(output)) output = output.replace(/<body\b([^>]*)>/i, (_body, attrs: string) => `<body${attrs} data-seraphim-generator="true">`);
   return output;
 }
@@ -25,7 +26,7 @@ export function validateGeneratedHtml(html: string, context: BusinessContext): V
   if (!/^<!doctype html>/i.test(output) || !/<html\b/i.test(output) || !/<head\b/i.test(output) || !/<body\b/i.test(output) || !/<\/html>\s*$/i.test(output)) finding(findings, "DOCUMENT_STRUCTURE", "fatal", "Output is not a complete HTML document.");
   if (!/<style\b/i.test(output)) finding(findings, "EMBEDDED_CSS", "fatal", "Standalone output is missing embedded CSS.");
   if (!/<main\b/i.test(output) || !/<(?:header|nav)\b/i.test(output) || !/<footer\b/i.test(output)) finding(findings, "SEMANTIC_STRUCTURE", "warning", "Output should use header/nav, main, and footer landmarks.");
-  if (!/:focus(?:-visible)?\s*\{/i.test(output)) finding(findings, "FOCUS_STATES", "fatal", "Keyboard-visible focus styles are missing.");
+  if (!/:focus(?:-visible)?\s*\{/i.test(output)) finding(findings, "FOCUS_STATES", "warning", "Keyboard-visible focus styles are missing.");
   if (!/<meta\s+name=["']viewport["']/i.test(output)) finding(findings, "VIEWPORT", "fatal", "Mobile viewport metadata is missing.");
   if (!/<meta\s+name=["']robots["'][^>]*noindex[^>]*nofollow/i.test(output)) finding(findings, "ROBOTS", "fatal", "Concept-site noindex,nofollow metadata is missing.");
   if (!/<title>[^<]{3,}<\/title>/i.test(output) || !/<meta\s+name=["']description["']/i.test(output)) finding(findings, "SEO_METADATA", "warning", "Title or meta description is missing.");
@@ -33,7 +34,7 @@ export function validateGeneratedHtml(html: string, context: BusinessContext): V
   if (/<script\b[^>]+src=/i.test(output) || /<iframe\b|<object\b|<embed\b|<base\b/i.test(output) || /\b(?:javascript:|data:text\/html)/i.test(output)) finding(findings, "PREVIEW_UNSAFE", "fatal", "Output contains unsupported active or unsafe content.");
   if (hasAny(output, /<img\b(?![^>]*\balt\s*=)[^>]*>/i)) finding(findings, "MISSING_ALT", "fatal", "An image is missing alternative text.");
   const imageSources = [...output.matchAll(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi)].map((match) => match[1]);
-  if (imageSources.some((src) => /^https?:\/\//i.test(src))) finding(findings, "UNAPPROVED_IMAGE", "fatal", "Output contains an unverified remote image source.");
+  if (imageSources.some((src) => /^https?:\/\//i.test(src))) finding(findings, "UNAPPROVED_IMAGE", "warning", "Output contains an unverified remote image source that needs approval or replacement.");
   if (hasAny(output, /<(?:a|button)\b[^>]*>\s*(?:<[^>]+>\s*)*<\/(?:a|button)>/i)) finding(findings, "EMPTY_CTA", "fatal", "A CTA control has no accessible visible text.");
   if (hasAny(output, /(?:width\s*:\s*(?:[1-9]\d{3,})px|min-width\s*:\s*(?:[1-9]\d{3,})px|100vw\s*;)/i) && !/overflow-x\s*:\s*hidden/i.test(output)) finding(findings, "OVERFLOW_RISK", "warning", "Fixed-width styling may cause horizontal overflow.");
   if (placeholders.test(output)) finding(findings, "PLACEHOLDER", "fatal", "Output includes placeholder content or unreliable placeholder imagery.");

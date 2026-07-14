@@ -39,12 +39,38 @@ export function buildBusinessContext(input: NormalizedGenerationInput): Business
 
 function parseJson(text: string) { const candidate = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] || text; const start = candidate.indexOf("{"); const end = candidate.lastIndexOf("}"); if (start < 0 || end < start) throw new Error("Planner did not return JSON."); return JSON.parse(candidate.slice(start, end + 1)); }
 
+export function fallbackUnifiedBrief(context: BusinessContext): UnifiedSiteBrief {
+  const primaryAction = context.phone ? `Call ${context.name}` : context.email ? `Email ${context.name}` : `Contact ${context.name}`;
+  const sections = context.archetype.sectionOrder.slice(0, 7).map((name) => ({ name, purpose: name === "Hero" ? "Clarify the verified offer and primary contact action." : `Help visitors understand ${context.name} using verified information only.` }));
+  return unifiedSiteBriefSchema.parse({
+    businessSummary: context.description || `${context.name} is a ${context.category}.`, verifiedFacts: context.verifiedFacts,
+    missingOrUncertainFacts: context.uncertainFacts, targetAudience: "Local customers seeking the business's verified services.",
+    primaryConversionAction: primaryAction, visualThesis: `${context.archetype.name}: ${context.archetype.tone}`,
+    brandPersonality: context.archetype.tone, colorAndTypographyDirection: `Use ${context.colors.join(", ") || "the selected archetype palette"} with ${context.tokens.fonts.heading} headings.`,
+    imageAssetStrategy: context.sourceImageDataUrl ? "Use the supplied business-owned image only when it is appropriate; otherwise use industry-specific CSS composition or no image." : "Use industry-specific CSS composition or no image; do not fabricate visual proof.",
+    pageNarrative: `Introduce ${context.name}, explain verified offerings, answer practical questions, and make contact easy.`,
+    sectionOutline: sections.length >= 4 ? sections : [{ name: "Hero", purpose: "State the verified offer." }, { name: "Services", purpose: "Explain verified services." }, { name: "About", purpose: "Provide accurate context." }, { name: "Contact", purpose: "Make the primary action clear." }],
+    copyDirection: "Specific, welcoming, and factual. Do not use generic AI language or unverified proof.",
+    seoRequirements: ["Unique title and meta description", "Open Graph title and description", "noindex, nofollow for this concept site"],
+    accessibilityRequirements: ["Semantic landmarks", "Visible keyboard focus states", "Meaningful image alternative text"],
+    factualRestrictions: ["Do not invent reviews, ratings, prices, awards, certifications, staff, or results.", "Use only verified contact details.", "Label unknown availability or specifics honestly."],
+    responsiveBehavior: ["Use a single-column mobile layout where needed.", "Avoid fixed widths and horizontal overflow.", "Keep tap targets and contact actions accessible."],
+  });
+}
+
 export function unifiedBriefPrompt(context: BusinessContext) {
   return `You are Seraphim's senior web strategist. Return ONLY one JSON object matching this exact shape: {businessSummary,verifiedFacts,missingOrUncertainFacts,targetAudience,primaryConversionAction,visualThesis,brandPersonality,colorAndTypographyDirection,imageAssetStrategy,pageNarrative,sectionOutline:[{name,purpose}],copyDirection,seoRequirements,accessibilityRequirements,factualRestrictions,responsiveBehavior}.\n\nVerified business information (use exactly; never invent beyond it):\n${context.verifiedFacts.join("\n")}\n\nUncertain/restricted information:\n${context.uncertainFacts.join("\n")}\n\nVisual inputs: colors=${context.colors.join(", ") || "choose industry-appropriate, non-generic palette"}; archetype=${context.archetype.name} (${context.archetype.tone}); services=${context.services.join(", ") || "not verified"}; source image=${context.sourceImageDataUrl ? "business-owned image supplied" : "none"}.\n\nProduce an original, premium, factual complete-page strategy. Use 5-9 purposeful sections. Include no fake proof. Require standalone HTML, embedded CSS/JS, semantic landmarks, noindex/nofollow, responsive behavior, focus states, metadata, and honest asset choices.`;
 }
 
 export async function generateUnifiedBrief(context: BusinessContext, budget: GenerationBudget) {
   const model = await callConfiguredModel({ stage: "planning", prompt: unifiedBriefPrompt(context), maxOutputTokens: 7000, json: true, budget });
-  const brief = unifiedSiteBriefSchema.parse(parseJson(model.text));
-  return { brief: brief satisfies UnifiedSiteBrief, metadata: model.metadata };
+  try {
+    const brief = unifiedSiteBriefSchema.parse(parseJson(model.text));
+    return { brief: brief satisfies UnifiedSiteBrief, metadata: model.metadata };
+  } catch {
+    // A malformed planner response should not discard a viable complete-page
+    // generation. This deterministic fallback preserves the same factual and
+    // safety constraints without adding another paid call.
+    return { brief: fallbackUnifiedBrief(context), metadata: { ...model.metadata, stage: "planning-fallback" } };
+  }
 }

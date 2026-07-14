@@ -89,6 +89,31 @@ export async function patchProspect(
   return { configured: true };
 }
 
+export async function deleteProspect(id: string) {
+  await requireServerUser();
+  const safeId = z.string().uuid().parse(id);
+  const supabase = await createClient();
+  if (!supabase) return { configured: false };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Authentication required");
+
+  const { data, error } = await supabase
+    .from("prospects")
+    .delete()
+    .eq("id", safeId)
+    .eq("user_id", user.id)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Prospect was not found or is no longer available.");
+  revalidatePath("/dashboard");
+  revalidatePath("/prospects");
+  revalidatePath(`/prospects/${safeId}`);
+  return { configured: true };
+}
+
 export async function updateProspectStatus(
   id: string,
   status: OutreachStatus,
