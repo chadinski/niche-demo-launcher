@@ -234,6 +234,25 @@ describe("lead candidate normalization", () => {
     expect(request.country).toBe("JM");
     expect(request.location).toBe("Kingston Jamaica");
     expect(request.ignoreInvalidURLs).toBe(true);
+    expect(request.limit).toBe(8);
     expect(result.warnings).toContain("Some results were omitted.");
+  });
+
+  it("returns only the requested number of unique qualified leads", async () => {
+    vi.stubEnv("FIRECRAWL_API_KEY", "fc-test");
+    const web = Array.from({ length: 8 }, (_, index) => ({
+      title: `Kingston Service ${index + 1}`,
+      url: `https://service-${index + 1}.example.test`,
+      description: "Home repair and contact service in Kingston",
+    }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: { web } }), { status: 200 })));
+    const result = await searchFirecrawlLeads({ industry: "Home services", location: "Kingston Jamaica", country: "JM", limit: 5 });
+    expect(result.candidates).toHaveLength(5);
+  });
+
+  it("rejects provider failures so failed searches can be refunded", async () => {
+    vi.stubEnv("FIRECRAWL_API_KEY", "fc-test");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: false, error: "Bad request" }), { status: 400 })));
+    await expect(searchFirecrawlLeads({ industry: "Home services", location: "Kingston Jamaica", country: "JM", limit: 5 })).rejects.toMatchObject({ code: "LEAD_SEARCH_PROVIDER_FAILED" });
   });
 });
