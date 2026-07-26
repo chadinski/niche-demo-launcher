@@ -2,12 +2,14 @@ import type { GenerationQualityFinding, ValidationResult } from "./types";
 import type { BusinessContext } from "./unified-brief";
 
 const fabricatedClaims = /\b(?:\d+(?:\.\d+)?\s*(?:star|stars|reviews?|customers?|years?)|award[- ]winning|best in|#1|five-star|licensed|certified|guaranteed?|satisfaction guaranteed|trusted by thousands|our team of)\b/i;
+const unsupportedOperationalClaims = /\b(?:authentic|handcrafted|artisan|traditional(?:ly)?|fresh(?:ly)?(?:\s+(?:baked|made|prepared|daily))?|baked fresh|daily[- ]prepared|quality ingredients?|premium ingredients?|naturally leavened|long fermentation|made with care|professional attention|currently accepting (?:orders|bookings|clients)|now accepting (?:orders|bookings|clients)|available (?:today|daily|24\/7))\b/i;
 const placeholders = /\b(?:lorem ipsum|your business name|insert (?:text|image)|coming soon|replace me|example\.com|unsplash\.com|via\.placeholder)\b/i;
 const promptLeak = /\b(?:unified site brief|creative contract|design system contract|page contract|section outline|factual restrictions|model prompt|as an ai)\b/i;
 
 function finding(findings: GenerationQualityFinding[], code: string, severity: GenerationQualityFinding["severity"], message: string) { findings.push({ code, severity, message }); }
 function hasAny(html: string, pattern: RegExp) { return pattern.test(html); }
 function escapeRegExp(value: string) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+function normalizeForComparison(value: string) { return value.toLowerCase().replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim(); }
 
 export function normalizeStandaloneHtml(html: string) {
   let output = html.trim();
@@ -40,6 +42,13 @@ export function validateGeneratedHtml(html: string, context: BusinessContext): V
   if (placeholders.test(output)) finding(findings, "PLACEHOLDER", "fatal", "Output includes placeholder content or unreliable placeholder imagery.");
   if (promptLeak.test(output)) finding(findings, "PROMPT_LEAK", "fatal", "Output exposes internal generation language.");
   if (fabricatedClaims.test(output)) finding(findings, "FABRICATED_CLAIM", "fatal", "Output contains a potentially fabricated proof or performance claim.");
+  const unsupportedClaim = output.match(unsupportedOperationalClaims)?.[0];
+  if (unsupportedClaim && !normalizeForComparison(context.verifiedFacts.join(" ")).includes(normalizeForComparison(unsupportedClaim))) finding(findings, "UNVERIFIED_OPERATIONAL_CLAIM", "fatal", `Output contains an unverified operational claim (${unsupportedClaim}).`);
+  const comparableOutput = normalizeForComparison(output);
+  if (context.privateNotes.some((note) => {
+    const comparableNote = normalizeForComparison(note);
+    return comparableNote.length >= 8 && comparableOutput.includes(comparableNote);
+  })) finding(findings, "PRIVATE_NOTE_LEAK", "fatal", "Output exposes private internal notes.");
   if (context.name && !new RegExp(escapeRegExp(context.name), "i").test(output)) finding(findings, "BUSINESS_NAME", "fatal", "Output does not preserve the verified business name.");
   for (const contact of [context.phone, context.email]) if (contact && !new RegExp(escapeRegExp(contact), "i").test(output)) finding(findings, "CONTACT_MISMATCH", "warning", "A verified contact detail was not included in the page.");
   return { html: output, findings, fatal: findings.some((item) => item.severity === "fatal"), quality: { measured: ["document structure", "metadata", "factual safety patterns", "asset safety", "accessibility basics", "responsive heuristics"], notMeasured: ["visual taste", "real-world conversion performance"], findings: findings.length } };
