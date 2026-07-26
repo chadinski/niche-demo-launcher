@@ -28,14 +28,15 @@ Creative execution requirements:
 - Make the hero exceptional: specific headline, concise verified value proposition, one dominant visual composition, clear CTA hierarchy, and useful verified confidence signals.
 - Treat imagery honestly. ${context.sourceImageDataUrl ? "A verified business-owned image is available; use this exact data URL where it strengthens identity or proof." : "No verified business image is available; prefer niche-specific CSS/inline-SVG art, or carefully labeled representative HTTPS imagery only when it materially improves the design."}
 - Use subtle purposeful motion with prefers-reduced-motion support. JavaScript must be optional enhancement only; core navigation and contact links must work without it.
-- Write complete, persuasive, business-specific copy from verified facts. Unknown details must use honest ask/confirm wording and must never appear as placeholders.
+- Keep the copy fact-closed. Every concrete sentence about the business must be supported directly by VERIFIED FACTS. Service names may be presented, but never invent how they are made, sourced, delivered, staffed, scheduled, or experienced.
+- Unknown details must use neutral ask/confirm wording and must never appear as placeholders. Do not turn an industry-typical trait into a business-specific statement.
 
 Technical and factual rules:
 - Include <!doctype html>, html/head/body, title, meta description, viewport, robots=noindex,nofollow, Open Graph metadata, Twitter card metadata, and relevant Schema.org JSON-LD.
 - Embed all CSS and JavaScript. Use semantic header/main/footer, keyboard-visible focus styles, touch-friendly controls, graceful layouts from 360px upward, and no horizontal overflow.
 - Include clear contact actions using only verified phone, email, website, social, and location details.
-- Do not invent reviews, ratings, pricing, hours, awards, guarantees, certifications, staff, metrics, results, claims, images, logos, links, availability, or credentials.
-- Never include prompt, brief, AI, design-system, demo, placeholder, or internal planning language in visible copy.
+- Do not invent reviews, ratings, pricing, hours, awards, guarantees, certifications, staff, metrics, results, claims, images, logos, links, availability, credentials, freshness, quality, tradition, authenticity, ingredients, production methods, ordering status, or consultations.
+- Internal notes are private and are not part of VERIFIED FACTS. Never include prompt, brief, AI, design-system, demo, placeholder, internal notes, or internal planning language anywhere in the HTML, including metadata, comments, structured data, and visible copy.
 - No external scripts, iframes, form submission, tracking pixels, empty controls, local file paths, placeholder image services, or javascript: URLs.`;
 }
 
