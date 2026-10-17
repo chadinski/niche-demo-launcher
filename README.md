@@ -9,16 +9,14 @@ Public marketing pages are indexable. Account data, application routes, prospect
 ## Core Workflow
 
 1. Create and verify an account, then complete the short onboarding flow.
-2. Paste messy business information into **Create Demo**.
-   You can also import a business screenshot or photo. OpenAI vision analyzes the image, extracts the business facts, classifies the industry, and populates the profile.
-3. Optionally use **Leads** to search Firecrawl for niche/location candidates, qualify them, and save selected businesses as prospects.
-4. Parse and review extracted facts and evidence.
-5. Generate a private `noindex` single-file `index.html` using a Fast or Premium allowance.
-6. Review in the scriptless sandbox, refine, and download HTML. Approved beta users may use managed deployment.
-7. Generate WhatsApp, email, DM, and follow-up drafts.
-8. Manually approve sending and update prospect status.
+2. Use **Discover** to search a market, or add a business you already know.
+3. Review source evidence and verify the business facts before generation.
+4. Create a Fast Draft, or choose Premium when a prospect warrants additional refinement.
+5. Review and edit the mobile/desktop preview, restore earlier versions, then export HTML or share an approved snapshot.
+6. Prepare WhatsApp, email, DM, and follow-up drafts in that business workspace.
+7. Send messages yourself and record the outcome in the sales pipeline.
 
-The app does not bulk-send or automatically submit outreach.
+The app does not bulk-send or automatically submit outreach. Lead search returns candidates; it does not verify an address, prove a business has no website, or validate every contact detail.
 
 Screenshot extraction requires `GEMINI_API_KEY` or `OPENAI_API_KEY`. Images are sent to the server-side `/api/business-intelligence` route, then to the configured AI provider for structured business intelligence. Gemini is used first when configured. The app does not run local screenshot OCR.
 
@@ -47,7 +45,7 @@ When Supabase variables are blank in development, the app runs in local demo mod
 ## Supabase Setup
 
 1. Create a Supabase project.
-2. Run `supabase/schema.sql` for a new project, then apply every file in `supabase/migrations/` in filename order. Existing projects apply only unapplied migrations. The current order is `202607110001_public_beta_foundation.sql`, `202607110002_durable_generation_jobs.sql`, `202607130001_auth_user_bootstrap.sql`, then `202607130002_lead_search_rls.sql`.
+2. Run `supabase/schema.sql` for a new project, then apply every file in `supabase/migrations/` in filename order. Existing projects apply only unapplied migrations. The current order is `202607110001_public_beta_foundation.sql`, `202607110002_durable_generation_jobs.sql`, `202607130001_auth_user_bootstrap.sql`, `202607130002_lead_search_rls.sql`, then `202610160001_client_workspace.sql`.
 3. Configure self-service email authentication and required redirect URLs.
 4. Optionally run `supabase/seed.sql` after the user exists.
 5. Add the project URL and anon key to `.env.local`.
@@ -129,7 +127,7 @@ The `/leads` page implements Firecrawl lead generation. Enter a niche, choose a 
 
 Lead Finder now persists authenticated searches to Supabase tables: `lead_search_runs`, `lead_candidates`, and `lead_blacklist`. Candidates are deduped by source URL, carry status (`new`, `saved`, `rejected`, `contacted`, `blacklisted`), and rejected/blacklisted leads are suppressed from repeated searches. Local development still has safe in-memory/browser fallback behavior; production requires Supabase.
 
-The Lead Finder API uses the distributed request guard when Upstash is configured, server-side quota reservation, safe structured failure logging, and tenant policies that prevent users from reading another account's searches or linking candidates to another account's search run.
+The lead discovery API uses server-side quota reservation, safe structured failure logging, and tenant policies that prevent users from reading another account's searches or linking candidates to another account's search run. It uses distributed request protection when Upstash is configured, with instance-local fallback unless distributed limits are marked required.
 
 Lead Finder supports region targeting through `lib/leads/regions.ts`. The first supported markets are the United States with all 50 states, Jamaica with parish targeting, and Trinidad and Tobago with major regional corporations/boroughs. The selected country, region, and optional city/area are composed into the Firecrawl search location while preserving the older freeform `location` API field for backward compatibility.
 
@@ -137,7 +135,7 @@ Lead Finder also includes a ranked industry targeting layer in `lib/leads/indust
 
 The selected target industry now influences Firecrawl queries, candidate scoring, visible strategy guidance, persisted candidate status, and saved prospect notes. This keeps lead generation focused on niches where a premium demo website has a clear before-and-after sales story.
 
-Saving a candidate creates a normal Seraphim prospect with status `profile_extracted`. It does not generate a demo, deploy a site, send outreach, submit forms, or contact anyone automatically. Each saved lead includes the source URL, source summary, score reasons, warnings, and a reminder to verify facts before generation or outreach.
+Saving a candidate creates a business workspace with source URL, search area, opportunity notes, and evidence coverage. Search-area filters are not presented as verified addresses; a missing official website is treated as unknown. Saving a candidate does not generate or deploy a demo, send outreach, submit forms, or contact anyone automatically.
 
 Model names are centralized in `lib/ai/modelConfig.ts` and routed through `lib/ai/modelRouter.ts`. `CREATIVE_MODEL`, `DESIGN_SYSTEM_MODEL`, `PLANNER_MODEL`, `PAGE_CONTRACT_MODEL`, and `SECTION_MODEL` default to `gemini-2.5-pro`; `QA_MODEL`, `VISUAL_QA_MODEL`, `OUTREACH_MODEL`, and `INSPIRATION_MODEL` default to `gemini-2.5-flash`. Reserve `VISION_MODEL` for screenshot/image analysis, and set `SECTION_MODEL` to the strongest writing/design model you want producing complete website HTML. `FALLBACK_MODEL` and `GEMINI_FALLBACK_MODELS` keep generation resilient when the primary model is unavailable. The router retries failed model calls twice with exponential backoff and temporarily opens a 60-second circuit after repeated route failures.
 
@@ -240,4 +238,4 @@ For one-click deployment of each generated demo:
 4. Optionally add `GITHUB_TOKEN`, `GITHUB_OWNER`, and `GITHUB_REPO_PREFIX` to archive each generated `index.html` to GitHub.
 5. Redeploy this app after changing environment variables.
 
-After that, the **Deploy Website** button on `/create` and `/prospects/[id]` sends the generated HTML to Vercel, saves the live URL, and archives to GitHub when GitHub credentials are configured. Manual copy/download remains available as a fallback.
+Managed deployment is disabled by default. To enable the operator-controlled beta path, set `AUTOMATED_DEPLOYMENT_ENABLED=1`, add only approved account emails to `DEPLOYMENT_APPROVED_EMAILS`, configure the server-side Vercel token, and keep each provider's project access and spending limits appropriate for shared deployments. The action also checks the user's deployment entitlement and rate limit. The deployment UI appears only for accounts that pass the server-side access check. Optional GitHub archival uses a tenant-scoped repository name. HTML export remains available to every account and requires no deployment credentials.

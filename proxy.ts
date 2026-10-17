@@ -8,9 +8,13 @@ export function onboardingRedirectPath(input: {
   profileCompleted: boolean;
 }) {
   const isOnboardingPage = input.pathname === "/onboarding";
-  const isProtectedPage = !input.isPublic && !input.pathname.startsWith("/api/");
+  const isProtectedPage =
+    !input.isPublic && !input.pathname.startsWith("/api/");
 
-  if (!input.profileCompleted && (input.isAuthPage || (isProtectedPage && !isOnboardingPage))) {
+  if (
+    !input.profileCompleted &&
+    (input.isAuthPage || (isProtectedPage && !isOnboardingPage))
+  ) {
     return "/onboarding";
   }
 
@@ -21,7 +25,11 @@ export function onboardingRedirectPath(input: {
   return null;
 }
 
-function redirectPreservingCookies(request: NextRequest, response: NextResponse, pathname: string) {
+function redirectPreservingCookies(
+  request: NextRequest,
+  response: NextResponse,
+  pathname: string,
+) {
   const target = request.nextUrl.clone();
   target.pathname = pathname;
   target.search = "";
@@ -56,12 +64,28 @@ export async function proxy(request: NextRequest) {
     "/robots.txt",
     "/sitemap.xml",
   ]);
-  const isPublic = publicPaths.has(pathname);
-  const isAuthPage = ["/login", "/signup", "/forgot-password"].includes(pathname);
+  const isPublic =
+    publicPaths.has(pathname) ||
+    /^\/share\/[0-9a-f-]+$/.test(pathname) ||
+    /^\/api\/share\/[0-9a-f-]+\/feedback$/.test(pathname);
+  const isAuthPage = ["/login", "/signup", "/forgot-password"].includes(
+    pathname,
+  );
   if (!url || !key) {
-    if (process.env.NODE_ENV !== "production" || isPublic) return NextResponse.next({ request });
-    if (pathname.startsWith("/api/")) return NextResponse.json({error:"Authentication is not configured.",code:"AUTH_CONFIGURATION_REQUIRED"},{status:503});
-    const unavailable=request.nextUrl.clone();unavailable.pathname="/service-unavailable";unavailable.search="";return NextResponse.redirect(unavailable);
+    if (process.env.NODE_ENV !== "production" || isPublic)
+      return NextResponse.next({ request });
+    if (pathname.startsWith("/api/"))
+      return NextResponse.json(
+        {
+          error: "Authentication is not configured.",
+          code: "AUTH_CONFIGURATION_REQUIRED",
+        },
+        { status: 503 },
+      );
+    const unavailable = request.nextUrl.clone();
+    unavailable.pathname = "/service-unavailable";
+    unavailable.search = "";
+    return NextResponse.redirect(unavailable);
   }
 
   let response = NextResponse.next({ request });
@@ -71,7 +95,9 @@ export async function proxy(request: NextRequest) {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        cookiesToSet.forEach(({ name, value }) =>
+          request.cookies.set(name, value),
+        );
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) =>
           response.cookies.set(name, value, options),
@@ -98,7 +124,10 @@ export async function proxy(request: NextRequest) {
   }
 
   const shouldResolveOnboarding = Boolean(
-    user && (isAuthPage || pathname === "/onboarding" || (!isPublic && !pathname.startsWith("/api/"))),
+    user &&
+      (isAuthPage ||
+        pathname === "/onboarding" ||
+        (!isPublic && !pathname.startsWith("/api/"))),
   );
 
   if (user && shouldResolveOnboarding) {
@@ -115,7 +144,8 @@ export async function proxy(request: NextRequest) {
         isAuthPage,
         profileCompleted: Boolean(progress?.profile_completed),
       });
-      if (destination) return redirectPreservingCookies(request, response, destination);
+      if (destination)
+        return redirectPreservingCookies(request, response, destination);
     }
   }
 

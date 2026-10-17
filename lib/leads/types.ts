@@ -1,8 +1,15 @@
 import type { LeadTemperature } from "@/lib/types";
 
-export type LeadSourceType = "website" | "social" | "directory" | "search-result";
+export type LeadSourceType =
+  | "website"
+  | "social"
+  | "directory"
+  | "search-result";
 
 export interface LeadCandidate {
+  searchLocation?: string;
+  websiteStatus?: string;
+  evidenceCoverage?: string;
   id: string;
   targetIndustryId: string;
   targetIndustryRank: number;

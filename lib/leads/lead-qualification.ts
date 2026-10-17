@@ -1,6 +1,9 @@
 import type { LeadCandidate, LeadSourceType } from "@/lib/leads/types";
 import type { LeadTemperature } from "@/lib/types";
-import { leadIndustryPriorityWeight, type LeadIndustryTarget } from "@/lib/leads/industry-targets";
+import {
+  leadIndustryPriorityWeight,
+  type LeadIndustryTarget,
+} from "@/lib/leads/industry-targets";
 
 type RawLeadResult = {
   title?: string;
@@ -74,11 +77,15 @@ export function canonicalizeLeadUrl(value: string) {
       if (trackingParameters.test(key)) url.searchParams.delete(key);
     }
 
-    if ((url.protocol === "http:" && url.port === "80") || (url.protocol === "https:" && url.port === "443")) {
+    if (
+      (url.protocol === "http:" && url.port === "80") ||
+      (url.protocol === "https:" && url.port === "443")
+    ) {
       url.port = "";
     }
 
-    url.pathname = url.pathname.replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+    url.pathname =
+      url.pathname.replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
     return url.toString();
   } catch {
     return trimmed;
@@ -101,20 +108,33 @@ function sourceType(url: string): LeadSourceType {
   const host = hostname(url);
   if (!host) return "search-result";
   if (socialHosts.some((item) => hostMatches(host, item))) return "social";
-  if (directoryHosts.some((item) => hostMatches(host, item))) return "directory";
+  if (directoryHosts.some((item) => hostMatches(host, item)))
+    return "directory";
   return "website";
 }
 
 function stripTitleNoise(title: string) {
   return title
-    .replace(/\s*[|-]\s*(Facebook|Instagram|YouTube|TikTok|LinkedIn|Official Site|Home)\s*$/i, "")
+    .replace(
+      /\s*[|-]\s*(Facebook|Instagram|YouTube|TikTok|LinkedIn|Official Site|Home)\s*$/i,
+      "",
+    )
     .replace(/\s*[|-]\s*(Reviews?|Photos?|Videos?|Menu|Services?)\s*$/i, "")
     .trim();
 }
 
-function inferBusinessName(result: RawLeadResult, url: string, industry: string) {
+function inferBusinessName(
+  result: RawLeadResult,
+  url: string,
+  industry: string,
+) {
   const title = stripTitleNoise(compact(result.title || "", 120));
-  if (title && !/^https?:\/\//i.test(title) && !genericTitles.has(title.toLowerCase())) return title;
+  if (
+    title &&
+    !/^https?:\/\//i.test(title) &&
+    !genericTitles.has(title.toLowerCase())
+  )
+    return title;
 
   const host = hostname(url);
   const hostName = host
@@ -134,7 +154,9 @@ function extractEmail(text: string) {
 }
 
 function extractPhone(text: string) {
-  return text.match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/)?.[0] ?? "";
+  return (
+    text.match(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/)?.[0] ?? ""
+  );
 }
 
 function temperature(score: number): LeadTemperature {
@@ -156,35 +178,55 @@ function scoreCandidate(input: {
 }) {
   let score = 24;
   const reasons: string[] = [];
-  const text = `${input.category} ${input.location} ${input.snippet}`.toLowerCase();
-  const targetMatches = input.target.qualificationSignals.filter((signal) => text.includes(signal.toLowerCase()));
-  const avoidMatches = input.target.avoidSignals.filter((signal) => text.includes(signal.toLowerCase()));
+  const text =
+    `${input.category} ${input.location} ${input.snippet}`.toLowerCase();
+  const targetMatches = input.target.qualificationSignals.filter((signal) =>
+    text.includes(signal.toLowerCase()),
+  );
+  const avoidMatches = input.target.avoidSignals.filter((signal) =>
+    text.includes(signal.toLowerCase()),
+  );
 
   const priorityBoost = leadIndustryPriorityWeight(input.target.priority);
   if (priorityBoost) {
     score += priorityBoost;
-    reasons.push(`${input.target.priority} priority niche with strong website-sales fit.`);
+    reasons.push(
+      `${input.target.priority} priority niche with strong website-sales fit.`,
+    );
   }
 
   if (targetMatches.length) {
     score += Math.min(14, targetMatches.length * 4);
-    reasons.push(`Matches target signals: ${targetMatches.slice(0, 4).join(", ")}.`);
+    reasons.push(
+      `Matches target signals: ${targetMatches.slice(0, 4).join(", ")}.`,
+    );
   }
 
   if (!input.websiteUrl) {
-    score += 20;
-    reasons.push("No clear standalone website was found in the search result.");
-  } else if (/(old|outdated|slow|not secure|basic|facebook only|no menu|no booking)/i.test(input.snippet)) {
+    reasons.push(
+      "The official website is not verified. A social or directory result does not prove there is no website.",
+    );
+  } else if (
+    /(old|outdated|slow|not secure|basic|facebook only|no menu|no booking)/i.test(
+      input.snippet,
+    )
+  ) {
     score += 18;
-    reasons.push("The visible result suggests a presentation or conversion improvement angle.");
+    reasons.push(
+      "The visible result suggests a presentation or conversion improvement angle.",
+    );
   } else {
     score += 6;
-    reasons.push("A website exists, so the angle should focus on improving presentation and conversion.");
+    reasons.push(
+      "A website exists, so the angle should focus on improving presentation and conversion.",
+    );
   }
 
   if (input.socialUrl) {
     score += 12;
-    reasons.push("Social presence gives manual outreach a warmer reference point.");
+    reasons.push(
+      "Social presence gives manual outreach a warmer reference point.",
+    );
   }
 
   if (input.phone || input.email) {
@@ -194,27 +236,40 @@ function scoreCandidate(input: {
 
   if (input.location) {
     score += 8;
-    reasons.push("Location signal is present, which supports local-business positioning.");
+    reasons.push(
+      "Location signal is present, which supports local-business positioning.",
+    );
   }
 
-  if (/(auto|detailing|restaurant|food|dental|clinic|salon|spa|pet|home|contractor|repair|fitness|real estate|law|accounting|travel|tour|event|catering)/.test(text)) {
+  if (
+    /(auto|detailing|restaurant|food|dental|clinic|salon|spa|pet|home|contractor|repair|fitness|real estate|law|accounting|travel|tour|event|catering)/.test(
+      text,
+    )
+  ) {
     score += 12;
-    reasons.push("The niche has clear commercial intent and benefits from a stronger website demo.");
+    reasons.push(
+      "The niche has clear commercial intent and benefits from a stronger website demo.",
+    );
   }
 
   if (input.type === "social") {
-    score += 10;
-    reasons.push("The lead appears social-first, often a strong fit for a polished demo website.");
+    reasons.push(
+      "Found through a social profile. Check for an existing website before proposing a new one.",
+    );
   }
 
   if (input.type === "directory") {
     score += 5;
-    reasons.push("Directory discovery suggests customers may be finding scattered business information.");
+    reasons.push(
+      "Directory discovery suggests customers may be finding scattered business information.",
+    );
   }
 
   if (avoidMatches.length) {
     score -= Math.min(18, avoidMatches.length * 6);
-    reasons.push(`Review carefully; possible low-fit signals detected: ${avoidMatches.slice(0, 3).join(", ")}.`);
+    reasons.push(
+      `Review carefully; possible low-fit signals detected: ${avoidMatches.slice(0, 3).join(", ")}.`,
+    );
   }
 
   const finalScore = Math.min(100, Math.max(0, score));
@@ -241,7 +296,9 @@ export function normalizeLeadCandidate(
   const sourceUrl = compact(canonicalizeLeadUrl(result.url || ""), 300);
   const sourceTitle = compact(result.title || "", 160);
   const sourceSnippet = compact(
-    [result.description, result.summary, result.markdown].filter(Boolean).join(" "),
+    [result.description, result.summary, result.markdown]
+      .filter(Boolean)
+      .join(" "),
     700,
   );
 
@@ -255,7 +312,12 @@ export function normalizeLeadCandidate(
   const websiteUrl = type === "website" ? sourceUrl : "";
   const category = compact(industry || "Local business", 80);
   const businessName = inferBusinessName(result, sourceUrl, industry);
-  const inferredLocation = location || compact(sourceSnippet.match(/\b(Kingston|Portmore|Montego Bay|Ocho Rios|Jamaica|Mandeville|Spanish Town)\b/i)?.[0] || "", 80);
+  const inferredLocation = compact(
+    sourceSnippet.match(
+      /\b(Kingston|Portmore|Montego Bay|Ocho Rios|Jamaica|Mandeville|Spanish Town)\b/i,
+    )?.[0] || "",
+    80,
+  );
   const scoring = scoreCandidate({
     type,
     target,
@@ -268,11 +330,21 @@ export function normalizeLeadCandidate(
     snippet: sourceSnippet,
   });
   const warnings = [
-    type === "directory" ? "Directory result; verify the official business profile before outreach." : "",
-    !phone && !email && !socialUrl && !websiteUrl ? "No direct contact route found in this result." : "",
+    "Search results are research leads, not verified business records. Confirm the name, location, contact details, and official site.",
+    type === "directory"
+      ? "Directory result; verify the official business profile before outreach."
+      : "",
+    !phone && !email && !socialUrl && !websiteUrl
+      ? "No direct contact route found in this result."
+      : "",
   ].filter(Boolean);
 
   return {
+    searchLocation: location,
+    websiteStatus: websiteUrl
+      ? "Website candidate found — confirm ownership and inspect the site."
+      : "Official website not verified — do not assume there is no site.",
+    evidenceCoverage: `${[sourceTitle, sourceSnippet, phone, email, inferredLocation].filter(Boolean).length} of 5 source fields available (name, summary, phone, email, location). Verification still required.`,
     id: stableId(`${sourceUrl}|${sourceTitle}|${industry}|${location}`),
     targetIndustryId: target.id,
     targetIndustryRank: target.rank,
@@ -298,7 +370,13 @@ export function normalizeLeadCandidate(
     leadTemperature: scoring.temperature,
     scoreReasons: scoring.reasons,
     recommendedAngle: scoring.recommendedAngle,
-    confidence: Math.min(95, 45 + scoring.reasons.length * 10 + (businessName ? 10 : 0)),
+    confidence: Math.round(
+      ([sourceTitle, sourceSnippet, phone, email, inferredLocation].filter(
+        Boolean,
+      ).length /
+        5) *
+        100,
+    ),
     warnings,
   };
 }
