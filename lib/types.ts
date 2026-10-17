@@ -61,6 +61,24 @@ export interface LeadScoreResult {
 }
 
 export interface BusinessIntelligence {
+  services?: string;
+  brandColors?: string;
+  fieldEvidence?: Record<
+    string,
+    {
+      value?: unknown;
+      source?: string;
+      evidence?: string[];
+      needsReview?: boolean;
+    }
+  >;
+  research?: {
+    sourceUrl: string;
+    searchLocation: string;
+    websiteStatus: string;
+    evidenceCoverage: string;
+    opportunity: string;
+  };
   summary: string;
   targetCustomer: string;
   onlineWeakness: string;
@@ -153,6 +171,17 @@ export interface DeploymentResult {
 }
 
 export interface Prospect {
+  sales_stage?:
+    | "new"
+    | "qualified"
+    | "contacted"
+    | "replied"
+    | "proposal"
+    | "won"
+    | "lost"
+    | "opt_out";
+  demo_status?: "not_started" | "draft" | "reviewed" | "shared";
+  revision?: number;
   id: string;
   business_name: string;
   category: string;

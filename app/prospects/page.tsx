@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
-import { ProspectsTable } from "@/components/prospects-table";
+import { BusinessCollection } from "@/components/business-collection";
 
 export const metadata: Metadata = {
-  title: "Prospects",
+  title: "Pipeline",
   description:
     "Track website concepts, outreach status, follow-ups, replies, and client outcomes.",
-  robots:{index:false,follow:false},
+  robots: { index: false, follow: false },
 };
 
 export default function ProspectsPage() {
-  return <ProspectsTable />;
+  return <BusinessCollection />;
 }

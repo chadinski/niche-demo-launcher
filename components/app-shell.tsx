@@ -6,6 +6,7 @@ import Image from "next/image";
 import {
   ChevronRight,
   LayoutDashboard,
+  PanelsTopLeft,
   LogOut,
   Menu,
   PanelLeftClose,
@@ -24,16 +25,13 @@ import { cn } from "@/lib/utils";
 import { buttonClass } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { clearWorkspaceStorage } from "@/lib/generation/session";
+import { WorkspaceSaveStatus } from "@/components/prospect-provider";
 
 const navigation = [
-  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-  { href: "/leads", label: "Leads", icon: Target },
-  { href: "/create", label: "Create Demo", icon: Sparkles },
-  { href: "/prospects", label: "Prospects", icon: Users },
-  { href: "/usage", label: "Usage", icon: Gauge },
-  { href: "/help", label: "Help", icon: HelpCircle },
-  { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/account", label: "Account", icon: UserRound },
+  { href: "/dashboard", label: "Today", icon: LayoutDashboard },
+  { href: "/leads", label: "Discover", icon: Target },
+  { href: "/prospects", label: "Pipeline", icon: Users },
+  { href: "/demos", label: "Demos", icon: PanelsTopLeft },
 ];
 
 const publicPaths = new Set([
@@ -73,7 +71,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [mobileOpen]);
 
-  if (publicPaths.has(pathname)) return <>{children}</>;
+  if (publicPaths.has(pathname) || pathname.startsWith("/share/"))
+    return <>{children}</>;
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -95,7 +94,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       </a>
 
       <aside className="hidden min-h-screen border-r border-[#e7e8ef] bg-white lg:fixed lg:inset-y-0 lg:flex lg:w-[260px] lg:flex-col">
-        <Sidebar pathname={pathname} signingOut={signingOut} onSignOut={handleSignOut} />
+        <Sidebar
+          pathname={pathname}
+          signingOut={signingOut}
+          onSignOut={handleSignOut}
+        />
       </aside>
 
       <div
@@ -143,9 +146,19 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="min-w-0 lg:col-start-2">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-[#e7e8ef] bg-white/88 px-4 backdrop-blur-xl sm:px-6 lg:hidden">
-          <Link href="/dashboard" className="flex items-center gap-2.5 font-bold tracking-[-0.03em]">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-2.5 font-bold tracking-[-0.03em]"
+          >
             <span className="grid size-9 place-items-center rounded-xl bg-white p-1 shadow-[0_6px_16px_rgba(8,120,149,.16)] ring-1 ring-brand-100">
-              <Image src="/seraphim-logo.png" alt="Seraphim" width={72} height={72} className="size-full object-contain" priority />
+              <Image
+                src="/seraphim-logo.png"
+                alt="Seraphim"
+                width={72}
+                height={72}
+                className="size-full object-contain"
+                priority
+              />
             </span>
             Seraphim
           </Link>
@@ -164,6 +177,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           id="main-content"
           className="mx-auto min-h-screen w-full max-w-[1560px] px-4 py-5 sm:px-6 sm:py-7 xl:px-9 xl:py-8"
         >
+          <WorkspaceSaveStatus />
           {children}
         </main>
       </div>
@@ -186,22 +200,32 @@ function Sidebar({
     <>
       <div className="flex h-20 items-center gap-3 border-b border-[#ececf2] px-5">
         <span className="grid size-10 place-items-center rounded-2xl bg-white p-1 shadow-[0_10px_24px_rgba(8,120,149,.18)] ring-1 ring-brand-100">
-          <Image src="/seraphim-logo.png" alt="Seraphim" width={80} height={80} className="size-full object-contain" />
+          <Image
+            src="/seraphim-logo.png"
+            alt="Seraphim"
+            width={80}
+            height={80}
+            className="size-full object-contain"
+          />
         </span>
         <div className="min-w-0">
           <div className="truncate text-[0.94rem] font-extrabold tracking-[-0.035em]">
             Seraphim
           </div>
           <div className="text-[0.68rem] font-semibold tracking-[0.12em] text-[#969bad] uppercase">
-            Prospect demo workspace
+            Client acquisition studio
           </div>
         </div>
       </div>
 
       <div className="px-4 pt-5">
-        <Link href="/create" className={buttonClass("primary", "w-full min-h-11")} onClick={onNavigate}>
+        <Link
+          href="/create"
+          className={buttonClass("primary", "w-full min-h-11")}
+          onClick={onNavigate}
+        >
           <Plus className="size-4" />
-          Create Demo
+          Add a business
         </Link>
       </div>
 
@@ -212,7 +236,9 @@ function Sidebar({
         <div className="space-y-1">
           {navigation.map((item) => {
             const active =
-              item.href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(item.href);
+              item.href === "/dashboard"
+                ? pathname === "/dashboard"
+                : pathname.startsWith(item.href);
             const Icon = item.icon;
             return (
               <Link
@@ -226,12 +252,33 @@ function Sidebar({
                     : "text-[#666d81] hover:bg-[#f4f4f8] hover:text-ink-950",
                 )}
               >
-                <Icon className={cn("size-[18px]", active && "text-brand-600")} />
+                <Icon
+                  className={cn("size-[18px]", active && "text-brand-600")}
+                />
                 <span>{item.label}</span>
                 {active ? <ChevronRight className="ml-auto size-4" /> : null}
               </Link>
             );
           })}
+        </div>
+        <div className="mt-8 border-t border-slate-100 pt-5">
+          {[
+            { href: "/usage", label: "Usage", icon: Gauge },
+            { href: "/help", label: "Help", icon: HelpCircle },
+            { href: "/settings", label: "Settings", icon: Settings },
+            { href: "/account", label: "Account", icon: UserRound },
+          ].map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              onClick={onNavigate}
+              aria-current={pathname === href ? "page" : undefined}
+              className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-slate-500 hover:bg-slate-50"
+            >
+              <Icon className="size-4" />
+              {label}
+            </Link>
+          ))}
         </div>
       </nav>
 
@@ -241,7 +288,8 @@ function Sidebar({
           Review before sharing
         </div>
         <p className="mt-2 text-xs leading-5 text-[#70778b]">
-          Verify extracted facts, review every demo, and approve outreach manually.
+          Verify extracted facts, review every demo, and approve outreach
+          manually.
         </p>
       </div>
 
@@ -259,14 +307,17 @@ function Sidebar({
           {signingOut ? "Signing out..." : "Sign Out"}
         </button>
         <div className="flex items-center gap-3">
-        <div className="grid size-9 place-items-center rounded-full bg-ink-950 text-xs font-bold text-white">
-          CT
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-bold">Your workspace</div>
-          <div className="truncate text-xs text-[#8b91a2]">Seraphim</div>
-        </div>
-        <PanelLeftClose className="size-4 text-[#a1a6b5]" aria-hidden="true" />
+          <div className="grid size-9 place-items-center rounded-full bg-ink-950 text-xs font-bold text-white">
+            CT
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-bold">Your workspace</div>
+            <div className="truncate text-xs text-[#8b91a2]">Seraphim</div>
+          </div>
+          <PanelLeftClose
+            className="size-4 text-[#a1a6b5]"
+            aria-hidden="true"
+          />
         </div>
       </div>
     </>
